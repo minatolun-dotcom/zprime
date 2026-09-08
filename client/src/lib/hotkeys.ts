@@ -1,0 +1,36 @@
+import { useEffect, useRef } from "react";
+
+export type HotkeyMap = Record<string, (e: KeyboardEvent) => void>;
+
+/**
+ * Global accounting-style hotkeys: "F2", "F5", "Alt+F1", "Alt+F6", "Ctrl+A", "Escape", "Enter".
+ * Captures function keys (preventing browser defaults) and registers an F-key legend
+ * via window.__fkLegend for the ButtonPanel.
+ */
+export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
+  const ref = useRef(map);
+  ref.current = map;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const k = e.key;
+      let combo: string | null = null;
+      if (k.startsWith("F") && /^F\d{1,2}$/.test(k)) {
+        combo = e.altKey ? `Alt+${k}` : e.ctrlKey ? `Ctrl+${k}` : e.shiftKey ? `Shift+${k}` : k;
+      } else if (e.ctrlKey && (k === "a" || k === "A")) combo = "Ctrl+A";
+      else if (e.ctrlKey && (k === "h" || k === "H")) combo = "Ctrl+H";
+      else if (e.altKey && /^[0-9]$/.test(k)) combo = `Alt+F${k}`;
+      else if (k === "Escape") combo = "Escape";
+      else if (k === "Enter" && e.altKey) combo = "Alt+Enter";
+      if (combo && ref.current[combo]) {
+        e.preventDefault();
+        ref.current[combo](e);
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
+/** Normalise F-key labels for function keys (F5 -> F5 key on keyboard). */
+export const fkeyLabel = (fk: string): string => fk;

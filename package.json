@@ -1,0 +1,18 @@
+{
+  "name": "zprime",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "db:generate": "npm run db:generate -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2"
+  }
+}
