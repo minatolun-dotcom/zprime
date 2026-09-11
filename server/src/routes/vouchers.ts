@@ -115,7 +115,7 @@ async function lockPartyLedgers(tx: Tx, entries: { ledgerId: number; bills?: { b
  * Open amount of a bill = sum of every allocation with the same
  * (ledgerId, billName) across the company's non-cancelled vouchers.
  */
-async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput["entries"]) {
+async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput["entries"], excludeVoucherId?: number) {
   const billEntries = entries.filter((e) => (e.bills?.length ?? 0) > 0);
   if (billEntries.length === 0) return;
 
@@ -126,6 +126,43 @@ async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput[
   const billWise = new Map(lrows.map((l) => [l.id, l.billWise]));
   for (const e of billEntries) {
     if (!billWise.get(e.ledgerId)) throw bad("Ledger is not enabled for bill-wise details");
+  }
+
+  // A-02 invariant: a bill allocation must ALWAYS resolve to the intended
+  // outstanding bill. Bills are identified by (party ledger, bill name) — so a
+  // NEW bill whose name already exists on the same party ledger (any voucher
+  // type, any other voucher) would merge into that bill and corrupt outstanding.
+  // The party rows are locked above, so this check is race-safe.
+  const newRefs = billEntries.flatMap((e) =>
+    e.bills!.filter((b) => b.billType === "new_ref" || b.billType === "advance").map((b) => ({ ledgerId: e.ledgerId, name: b.billName.trim() }))
+  );
+  if (newRefs.length > 0) {
+    const names = [...new Set(newRefs.map((n) => n.name))];
+    const conds = [
+      eq(vouchers.companyId, companyId),
+      eq(vouchers.isCancelled, false),
+      inArray(billAllocations.billName, names),
+    ];
+    // When EDITING a voucher, its own previous allocations are still in the DB
+    // (the PUT deletes+rewrites the body later in the same transaction) — they
+    // must not collide with the voucher's own rewritten bill names.
+    if (excludeVoucherId != null) conds.push(ne(voucherEntries.voucherId, excludeVoucherId));
+    const existing = await tx
+      .select({ ledgerId: voucherEntries.ledgerId, billName: billAllocations.billName })
+      .from(billAllocations)
+      .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .where(and(...conds));
+    const taken = new Set(existing.map((r) => `${r.ledgerId}::${r.billName}`));
+    // Also enforce uniqueness WITHIN this voucher's own new refs.
+    const seen = new Set<string>();
+    for (const n of newRefs) {
+      const key = `${n.ledgerId}::${n.name}`;
+      if (taken.has(key) || seen.has(key)) {
+        throw bad(`Bill name "${n.name}" already exists on this party ledger. Use a unique bill name (auto-numbered bills include the voucher type prefix).`, 409);
+      }
+      seen.add(key);
+    }
   }
 
   // Bill names we must verify as open bills
@@ -356,7 +393,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await assertRefsTx(tx, c, input);
         validateEntries(input.entries, (input.inventoryEntries ?? []).length, type.category === "Inventory");
         const number = input.number?.trim() || existing.number;
-        await validateBillsTx(tx, c, input.entries);
+        await validateBillsTx(tx, c, input.entries, id);
 
         await tx
           .update(vouchers)

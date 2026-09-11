@@ -58,6 +58,7 @@ export function pgFriendly(err: any): Error {
     case "22001": return bad("Value too long for a field");
     case "23514": return bad("Value violates a data constraint");
     case "22003": return bad("Numeric value out of range");
+    case "23502": return bad("A required field is missing");
     default: return err?.statusCode ? err : err;
   }
 }
@@ -109,3 +110,51 @@ export const voucherSchema = z.object({
 });
 
 export type VoucherInput = z.infer<typeof voucherSchema>;
+
+// ---------- master schemas (group/TDS/payroll masters have real domain rules) ----------
+
+// The UI (and historic API consumers) send numeric fields as strings (form
+// inputs / <select> values). Coerce numeric-looking strings before validating —
+// null/undefined pass through for optional fields. Each use builds its own
+// refined schema (ZodEffects doesn't chain number refinements).
+const numF = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? Number(v) : v);
+
+const GROUP_NATURES = ["Assets", "Liabilities", "Income", "Expenses"] as const;
+
+export const groupSchema = z.object({
+  name: z.string().trim().min(1, "Group name is required").max(200),
+  parentId: z.preprocess(numF, z.number().int().positive().nullable().optional()),
+  nature: z.preprocess((v) => (v === "" || v == null ? undefined : v),
+    z.enum(GROUP_NATURES, { message: "nature must be Assets | Liabilities | Income | Expenses" }).optional()),
+  affectsGross: z.boolean().optional(),
+});
+
+export const tdsSectionSchema = z.object({
+  section: z.string().trim().min(1, "Section is required (e.g. 194C)").max(50),
+  description: z.string().max(1000).nullable().optional(),
+  rate: z.preprocess(numF, z.number().finite().min(0, "rate cannot be negative").max(100, "rate cannot exceed 100%").nullable().optional()),
+  threshold: z.preprocess(numF, z.number().finite().min(0, "threshold cannot be negative").nullable().optional()),
+});
+
+export const payHeadSchema = z.object({
+  name: z.string().trim().min(1, "Pay head name is required").max(200),
+  type: z.enum(["earning", "deduction", "employer_contribution"], { message: "type must be earning | deduction | employer_contribution" }),
+  ledgerId: z.preprocess(numF, z.number().int().positive()),
+  affectsGross: z.boolean().optional(),
+});
+
+export const salaryStructureSchema = z.object({
+  lines: z.array(z.object({
+    headId: z.preprocess(numF, z.number().int().positive()),
+    // A deduction head's amount is the amount DEDUCTED — always non-negative.
+    // Negative values would silently inflate net pay (finding A-03).
+    monthlyAmount: z.preprocess(numF, z.number().finite().min(0, "Salary amounts cannot be negative")),
+  })).min(1, "At least one pay head line is required"),
+});
+
+/** Trim every string value (master create/update payloads). */
+export function trimStrings<T extends Record<string, unknown>>(data: T): T {
+  const out: any = {};
+  for (const [k, v] of Object.entries(data)) out[k] = typeof v === "string" ? v.trim() : v;
+  return out;
+}

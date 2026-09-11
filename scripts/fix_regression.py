@@ -293,7 +293,11 @@ try:
     s, v = req("DELETE", f"{CA}/vouchers/999999")
     check("delete nonexistent voucher -> 404", s == 404, (s, v))
     s, v = req("POST", f"{CA}/ledgers", {"name": "Cash Reg", "groupId": g["Cash-in-Hand"]})
-    check("duplicate ledger name -> 400 (was 500)", s == 400, (s, v))
+    # Final-repair pass: duplicate masters now return 409 Conflict (the canonical
+    # status for "already exists", required by the final acceptance spec:
+    # "duplicate/conflicting groups must return a clean 4xx/409"). The original
+    # defect was the 500; any clean 4xx proves it fixed.
+    check("duplicate ledger name -> clean 4xx (was 500)", s in (400, 409), (s, v))
     s, v = req("POST", f"{CA}/vouchers", {"voucherTypeId": T["Journal"], "date": "2025-05-01",
         "narration": "x" * 5000, "entries": [{"ledgerId": cash["id"], "amount": 3}, {"ledgerId": exp["id"], "amount": -3}]})
     check("oversized narration rejected 400", s == 400, (s, v))

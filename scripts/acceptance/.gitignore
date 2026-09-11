@@ -1,0 +1,6 @@
+*.png
+run.log
+run1.log
+state.json
+expected.json
+__pycache__/

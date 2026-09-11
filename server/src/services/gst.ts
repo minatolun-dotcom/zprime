@@ -7,6 +7,10 @@ export interface VoucherGst {
   voucherId: number; date: string; number: string; typeName: string;
   partyName: string | null; partyGstin: string | null; placeOfSupply: string | null;
   taxable: number; igst: number; cgst: number; sgst: number; cess: number; total: number;
+  /** Resolved supply classification (place of supply vs company state). */
+  supplyType: "interstate" | "intrastate";
+  /** True when duty heads contradict the resolved supply type (A-07 guard). */
+  supplyMismatch: boolean;
   rateBuckets: { rate: number; taxable: number; igst: number; cgst: number; sgst: number; cess: number }[];
 }
 
@@ -91,6 +95,18 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     const pos = v.placeOfSupply || v.partyState;
     const posCode = stateCodeFromName(pos) ?? stateCodeFromGstin(v.partyGstin);
     const interState = posCode != null && companyState != null && posCode !== companyState;
+    // A-07 reporting-integrity rule (canonical): the DUTY HEADS POSTED ON THE
+    // VOUCHER are the accounting truth and are always reported as-is.
+    // "GST present in the transaction == GST represented in GST reports".
+    // Place-of-supply classification is advisory: when it contradicts the duty
+    // heads (or cannot be resolved), the duty heads still win and the voucher
+    // is flagged `supplyMismatch` so the contradiction is visible, never silent.
+    const intraDuty = cgst + sgst;
+    const interDuty = igst;
+    const supplyMismatch =
+      (interState && intraDuty > 0.004) ||      // CGST/SGST posted on inter-state supply
+      (!interState && interDuty > 0.004) ||     // IGST posted on intra-state/unknown supply
+      (posCode == null && interDuty + intraDuty > 0.004); // supply type unresolvable
 
     // Rate buckets: derive rate from duty amount / taxable, or entry snapshot
     const buckets = new Map<number, { rate: number; taxable: number; igst: number; cgst: number; sgst: number; cess: number }>();
@@ -109,7 +125,9 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     out.push({
       voucherId: v.voucherId, date: v.date, number: v.number, typeName: v.typeName,
       partyName: v.partyName, partyGstin: v.partyGstin, placeOfSupply: pos,
-      taxable, igst: interState ? igst : 0, cgst: interState ? 0 : cgst, sgst: interState ? 0 : sgst, cess, total,
+      taxable, igst, cgst, sgst, cess, total,
+      supplyType: interState ? "interstate" : "intrastate",
+      supplyMismatch,
       rateBuckets: [...buckets.values()].sort((a, b) => a.rate - b.rate),
     });
   }

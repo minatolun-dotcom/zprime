@@ -2,14 +2,14 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import { employees, payHeads, salaryStructures, payslips, vouchers, voucherTypes, ledgers, voucherEntries } from "../db/schema.js";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { cid, bad, pgFriendly, pgCode } from "../lib/routes.js";
+import { cid, bad, pgFriendly, pgCode, salaryStructureSchema } from "../lib/routes.js";
 import { r2, num, today, monthLabel } from "../lib/util.js";
 import { crud } from "./crud.js";
 import { nextNumber } from "./vouchers.js";
 
 export default async function payrollRoutes(app: FastifyInstance) {
-  crud(app, "employees", employees, { orderBy: (a: any, b: any) => a.name.localeCompare(b.name) });
-  crud(app, "pay-heads", payHeads, { orderBy: (a: any, b: any) => a.name.localeCompare(b.name) });
+  crud(app, "employees", employees, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "") });
+  crud(app, "pay-heads", payHeads, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "") });
 
   app.get("/salary-structure/:employeeId", async (req) => {
     const c = await cid(req);
@@ -28,10 +28,15 @@ export default async function payrollRoutes(app: FastifyInstance) {
   app.put("/salary-structure/:employeeId", async (req) => {
     const c = await cid(req);
     const empId = parseInt((req.params as any).employeeId, 10);
-    const lines = (req.body as any).lines as { headId: number; monthlyAmount: number }[];
-    if (!Array.isArray(lines)) throw bad("lines array required");
+    // A-03 guard: salary amounts are non-negative — a deduction's amount is the
+    // amount DEDUCTED. Negative values would silently inflate net pay.
+    const parsed = salaryStructureSchema.safeParse(req.body);
+    if (!parsed.success) throw bad("Invalid salary structure: " + parsed.error.issues[0]?.message);
+    // Employee must belong to the caller's company (isolation).
+    const [emp] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.companyId, c), eq(employees.id, empId)));
+    if (!emp) throw bad("Employee not found", 404);
     await db.delete(salaryStructures).where(and(eq(salaryStructures.companyId, c), eq(salaryStructures.employeeId, empId)));
-    for (const line of lines) {
+    for (const line of parsed.data.lines) {
       await db.insert(salaryStructures).values({
         companyId: c, employeeId: empId, headId: line.headId,
         monthlyAmount: String(r2(line.monthlyAmount)),
@@ -74,10 +79,13 @@ export default async function payrollRoutes(app: FastifyInstance) {
           .where(and(eq(salaryStructures.companyId, c), eq(salaryStructures.employeeId, emp.id)));
       const lines = structure.map((s) => {
         const head = headById.get(s.headId)!;
-        return { headId: s.headId, headName: head.name, type: head.type, amount: r2(num(s.monthlyAmount)) };
+        return { headId: s.headId, headName: head.name, type: head.type, amount: r2(Math.abs(num(s.monthlyAmount))) };
       });
+      // Deduction amounts are non-negative by schema (A-03). Belt-and-braces:
+      // clamp at the computation boundary too, so legacy negative rows can no
+      // longer inflate net pay.
       const gross = r2(lines.filter((l) => l.type === "earning").reduce((s, l) => s + l.amount, 0));
-      const deductions = r2(lines.filter((l) => l.type === "deduction").reduce((s, l) => s + l.amount, 0));
+      const deductions = r2(lines.filter((l) => l.type === "deduction").reduce((s, l) => s + Math.abs(l.amount), 0));
       const net = r2(gross - deductions);
       for (const l of lines) {
         const head = headById.get(l.headId)!;

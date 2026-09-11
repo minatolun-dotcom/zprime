@@ -1,6 +1,8 @@
 import { db } from "../db/index.js";
 import { and, eq, ilike, or } from "drizzle-orm";
-import { cid, bad, pgFriendly, pgCode } from "../lib/routes.js";
+import { cid, bad, pgFriendly, pgCode, trimStrings } from "../lib/routes.js";
+import type { z } from "zod";
+import { groupSchema, tdsSectionSchema } from "../lib/routes.js";
 
 /** Field caps for the generic CRUD path: reject oversized strings with a
  *  400 instead of truncating silently (truncation would corrupt names).
@@ -18,6 +20,19 @@ function capFields(data: any): any {
   return data;
 }
 
+/** A master with a blank identifying name is invalid — reject with a clear 400
+ *  (after trimming, "" and "   " must not reach the DB or the unique index). */
+function requireName(data: any): any {
+  if (data && typeof data === "object") {
+    for (const k of NAME_FIELDS) {
+      if (k in data && (data[k] === "" || data[k] === null || data[k] === undefined)) {
+        throw bad(k === "name" ? "Name is required" : `Field "${k}" is required`);
+      }
+    }
+  }
+  return data;
+}
+
 type Table = any;
 
 export function crud(
@@ -28,6 +43,10 @@ export function crud(
     orderBy?: (a: any, b: any) => number;
     searchFields?: any[];
     forbidDeleteReserved?: string;
+    /** Zod schema applied to POST/PUT bodies before insert (validated at the trust boundary). */
+    schema?: z.ZodTypeAny;
+    /** Domain hook applied after schema validation (e.g. derive nature from parent). */
+    beforeSave?: (data: any, companyId: number) => Promise<any>;
   } = {}
 ) {
   app.get(`/${name}`, async (req: any) => {
@@ -54,30 +73,45 @@ export function crud(
 
   app.post(`/${name}`, async (req: any) => {
     const c = await cid(req);
-    const data = capFields({ ...(req.body as any), companyId: c });
+    let data = capFields(trimStrings({ ...(req.body as any), companyId: c }));
+    if (opts.schema) {
+      const parsed = opts.schema.safeParse(data);
+      if (!parsed.success) throw bad(`Invalid ${name.slice(0, -1)}: ${parsed.error.issues[0]?.message}`);
+      Object.assign(data, parsed.data); // normalized fields (trimmed, defaults resolved)
+    }
+    if (opts.beforeSave) data = await opts.beforeSave(data, c);
+    requireName(data);
     try {
       const [row] = await db.insert(table).values(data).returning();
       return row;
     } catch (err: any) {
       // Duplicate names collide on the table's (companyId, name) unique index.
-      if (pgCode(err) === "23505") throw bad("A record with this name/symbol already exists");
-      throw err;
+      if (pgCode(err) === "23505") throw bad("A record with this name/symbol already exists", 409);
+      throw pgFriendly(err);
     }
   });
 
   app.put(`/${name}/:id`, async (req: any) => {
     const c = await cid(req);
     const id = parseInt((req.params as any).id, 10);
-    const data = capFields({ ...(req.body as any) });
+    let data = capFields(trimStrings({ ...(req.body as any) }));
+    if (opts.schema) {
+      const parsed = opts.schema.safeParse({ ...data, id: undefined });
+      if (!parsed.success) throw bad(`Invalid ${name.slice(0, -1)}: ${parsed.error.issues[0]?.message}`);
+      Object.assign(data, parsed.data);
+      delete (data as any).id;
+    }
     delete data.id;
     delete data.companyId;
+    if (opts.beforeSave) data = await opts.beforeSave(data, c);
+    requireName(data);
     try {
       const [row] = await db.update(table).set(data).where(and(eq(table.companyId, c), eq(table.id, id))).returning();
       if (!row) throw bad("Not found", 404);
       return row;
     } catch (err: any) {
-      if (pgCode(err) === "23505") throw bad("A record with this name/symbol already exists");
-      throw err;
+      if (pgCode(err) === "23505") throw bad("A record with this name/symbol already exists", 409);
+      throw pgFriendly(err);
     }
   });
 

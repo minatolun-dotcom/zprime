@@ -64,3 +64,11 @@ Fresh company "Recon Traders" (Maharashtra, GSTIN 27…), then:
 - GST reports remain summaries (no e-invoice/e-way JSON).
 - No user roles / audit trail yet.
 - CSV is generated client-side; server-side CSV endpoints (if added later) must reuse `lib/csv.ts` semantics.
+
+---
+
+# Addendum — final acceptance-repair pass (2026-09-10)
+
+Repair of ACCEPTANCE_REPORT.md findings F-GRP-01, F-TDS-01, A-02…A-07 (see BUG_FIX_REPORT.md for root causes and files changed). Every suite re-run green on a fresh schema — 483 checks total, 0 failures — including the real-browser acceptance suite (117/117) against a rebuilt client, and a Docker fresh-volume deployment test (build → up → healthy → migrations auto-applied → endpoints verified in-container → restart → data intact).
+
+Key invariants re-verified after the fixes: Dr=Cr on every voucher and report; Assets = Liabilities + Capital with no difference banner; GST ledger == GSTR-1 == GSTR-3B (duty-head amounts authoritative, contradictions flagged not dropped); TDS deducted − remitted = outstanding; bills receivable/payable reconcile to named bills; sub-period P&L equals independent engine period math; company isolation and voucher-numbering protections intact; BUG-002 allocation guards hold in real use.

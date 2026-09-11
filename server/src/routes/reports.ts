@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, stockItems, units, payslips, employees } from "../db/schema.js";
-import { and, eq, gte, lte, asc } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, asc } from "drizzle-orm";
 import { cid, bad } from "../lib/routes.js";
 import { num, r2, today, fyStart, d } from "../lib/util.js";
 import {
@@ -147,7 +147,10 @@ export default async function reportRoutes(app: FastifyInstance) {
       .from(ledgers)
       .where(and(eq(ledgers.companyId, c), eq(ledgers.dutyHead, "TDS")));
 
-    // Deductions: entries on TDS duty ledgers within period
+    // Deductions: entries on TDS duty ledgers within period.
+    // A-04 fix: a TDS ledger entry is a DEDUCTION only when it CREDITS the
+    // liability (amount < 0). A debit (amount > 0) on the same ledger is a
+    // REMITTANCE — counting both made the report read double the true figure.
     const deductions = await db
       .select({
         voucherId: vouchers.id, date: vouchers.date, number: vouchers.number,
@@ -162,6 +165,7 @@ export default async function reportRoutes(app: FastifyInstance) {
         eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
         eq(ledgers.dutyHead, "TDS"),
         gte(vouchers.date, p.from), lte(vouchers.date, p.to),
+        lt(voucherEntries.amount, "0"),
       ));
 
     const sections = await db.select().from((await import("../db/schema.js")).tdsSections).where(eq((await import("../db/schema.js")).tdsSections.companyId, c));
@@ -177,10 +181,28 @@ export default async function reportRoutes(app: FastifyInstance) {
       bySection.set(key, cur);
     }
 
+    // A-04: remittances (debits on TDS ledgers) reported separately from
+    // deductions, so "deducted − remitted = outstanding" reconciles on-screen.
+    const remittances = await db
+      .select({
+        voucherId: vouchers.id, date: vouchers.date, number: vouchers.number,
+        amount: voucherEntries.amount,
+      })
+      .from(voucherEntries)
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+      .where(and(
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(ledgers.dutyHead, "TDS"),
+        gte(vouchers.date, p.from), lte(vouchers.date, p.to),
+        gt(voucherEntries.amount, "0"),
+      ));
+
     return {
       sections: [...bySection.values()].sort((a, b) => a.section.localeCompare(b.section)),
       payableLedgers: tdsLedgers.map((l) => ({ ...l })),
       deductions: deductions.map((d2) => ({ ...d2, amount: Math.abs(num(d2.amount)) })),
+      remittances: remittances.map((r3) => ({ ...r3, amount: num(r3.amount) })),
     };
   });
 

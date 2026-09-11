@@ -4,13 +4,43 @@ import {
   groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections,
 } from "../db/schema.js";
 import { and, asc, eq, ilike } from "drizzle-orm";
-import { cid, bad } from "../lib/routes.js";
+import { cid, bad, groupSchema, tdsSectionSchema } from "../lib/routes.js";
 import { crud } from "./crud.js";
 
-const byName = (a: any, b: any) => a.name.localeCompare(b.name);
+const byName = (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "");
+const bySection = (a: any, b: any) => (a.section ?? "").localeCompare(b.section ?? "");
+
+// Reserved groups that must stay childless (mirror of the server's seed rules:
+// Primary/loop-protection anchors and the system P&L ledger group).
+const RESERVED_NO_CHILDREN = new Set(["Primary", "Profit & Loss A/c"]);
 
 export default async function masterRoutes(app: FastifyInstance) {
-  crud(app, "groups", groups, { orderBy: byName, forbidDeleteReserved: "Pre-defined groups cannot be deleted" });
+  crud(app, "groups", groups, {
+    orderBy: byName,
+    forbidDeleteReserved: "Pre-defined groups cannot be deleted",
+    schema: groupSchema,
+    // F-GRP-01 fix: `nature` is NOT NULL. Resolve it at the trust boundary —
+    // explicit nature wins; otherwise inherit from the parent group (Tally
+    // semantics); a top-level group without nature is a clean 400.
+    beforeSave: async (data: any, companyId: number) => {
+      let nature: string | undefined = data.nature;
+      if (data.parentId) {
+        const [parent] = await db.select().from(groups).where(and(eq(groups.companyId, companyId), eq(groups.id, data.parentId)));
+        if (!parent) throw bad("Parent group not found in this company", 404);
+        if (parent.isReserved && RESERVED_NO_CHILDREN.has(parent.name)) {
+          throw bad(`Groups cannot be created under "${parent.name}"`);
+        }
+        nature = nature ?? parent.nature;
+      }
+      if (!nature) {
+        throw bad("A top-level group must specify its nature (Assets | Liabilities | Income | Expenses)");
+      }
+      const [dupe] = await db.select({ id: groups.id }).from(groups)
+        .where(and(eq(groups.companyId, companyId), eq(groups.name, data.name)));
+      if (dupe) throw bad(`A group named "${data.name}" already exists`, 409);
+      return { ...data, nature, isReserved: false };
+    },
+  });
   crud(app, "ledgers", ledgers, { orderBy: byName, searchFields: [ledgers.name] });
   crud(app, "units", units, { orderBy: byName });
   crud(app, "stock-groups", stockGroups, { orderBy: byName });
@@ -18,7 +48,8 @@ export default async function masterRoutes(app: FastifyInstance) {
   crud(app, "godowns", godowns, { orderBy: byName });
   crud(app, "stock-items", stockItems, { orderBy: byName, searchFields: [stockItems.name] });
   crud(app, "voucher-types", voucherTypes, { orderBy: byName });
-  crud(app, "tds-sections", tdsSections, { orderBy: byName });
+  // tds_sections has no `name` column — sorting by name crashed the list route (F-TDS-01)
+  crud(app, "tds-sections", tdsSections, { orderBy: bySection, schema: tdsSectionSchema });
 
   // Ledger lookup for voucher screens
   app.get("/ledger-lookup", async (req) => {

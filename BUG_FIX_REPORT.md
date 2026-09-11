@@ -125,3 +125,74 @@ No other existing test was modified.
 ## Performance note
 
 Bill validation adds ≤ 2 indexed queries per bill-carrying voucher inside the existing transaction; the counter draw is a single-row atomic UPDATE. 50-voucher concurrency test completes in ~2s wall time. No N+1 introduced.
+
+---
+
+# Final acceptance-repair pass (2026-09-10)
+
+Scope: the open findings from `ACCEPTANCE_REPORT.md` (F-GRP-01, F-TDS-01, A-02…A-07).
+Constraint honoured: localized fixes only — no refactors, no schema changes, no migration needed.
+
+## F-GRP-01 — group master unusable (P1)
+
+- **Root cause (two layers):** the UI sent only `{name}` and the `groups.nature` column is NOT NULL → raw Postgres 23502 → 500. Additionally the client's empty `<select>` submits `nature: ""`, which even a correct server path would reject as an enum violation.
+- **Fix:** `routes/masters.ts` groups `beforeSave` hook — nature inherited from the parent group; top-level groups must declare one (400 otherwise); duplicate name → 409 (pre-checked, not a raw 23505); children forbidden under Primary / Profit & Loss A/c. `lib/routes.ts` `groupSchema` preprocesses `""` → undefined so the client's empty select doesn't false-reject.
+- **Files:** `server/src/routes/masters.ts`, `server/src/routes/crud.ts` (beforeSave hook point), `server/src/lib/routes.ts`, `client/src/pages/MasterPage.tsx` (Under Group / Nature fields with inheritance hint).
+- **Regression:** `scripts/final_regression.py` F-GRP-01 block (9 checks): inherit, empty-string inherit, top-level w/ and w/o nature, duplicate → 409, invalid nature → 400, oversized name, orphan parent, reserved-parent rule.
+
+## F-TDS-01 — TDS sections master 500 (P1)
+
+- **Root cause:** `masters.ts` sorted every list by `.name`; `tds_sections` has no `name` column → TypeError → 500 on list.
+- **Fix:** sort key `bySection` for tds-sections; added `tdsSectionSchema` (section required, rate 0–100, threshold ≥ 0 — 400s not 500s); client TDS page list key fixed to `section`.
+- **Files:** `server/src/routes/masters.ts`, `server/src/lib/routes.ts`, `client/src/pages/MasterPage.tsx`.
+- **Regression:** create valid/duplicate/invalid sections, list ordering, rate bounds.
+
+## A-07 — IGST silently vanished from GSTR-3B (P2, reporting integrity)
+
+- **Original failure:** ₹1,215 of IGST present in the ledger but absent from the return (Input IGST booked against a 27-state supplier).
+- **Root cause:** `voucherGst` derived supply type *only* from the party's state/GSTIN prefix and **zeroed any duty columns that contradicted it**. The ledger was right; the report lied.
+- **Canonical rule now:** **duty-head amounts are authoritative.** Classification (intra vs inter) is advisory: GSTR-1/3B report whatever duty the transaction actually booked, and contradictory combinations set `supplyMismatch` instead of discarding tax. GST present in the accounting transaction == GST represented in the reports, unconditionally.
+- **Files:** `server/src/services/gst.ts`.
+- **Regression:** the ₹1,215 case is a permanent check in `scripts/final_regression.py` (GSTR-3B must include the full booked IGST) and the acceptance engine's `gst_of` mirror.
+
+## A-02 — bill-name collisions across voucher types (P2)
+
+- **Root cause:** auto bill name was the bare voucher number; Credit Note #1's bill "1" collided with Sales #1's bill "1" on the same party ledger and silently netted.
+- **Fix:** client auto-name is now `${voucherType.shortCode}-${number}` (`SALES-3`, `CRN-1`, `PURCH-5`, …); server enforces `(party ledger, bill name)` uniqueness inside the voucher transaction (excluding the voucher being edited), so no client version can reintroduce the collision. Bill identity is unambiguous: same name in another voucher type, another party, or another company never resolves to the wrong bill.
+- **Files:** `client/src/pages/VoucherScreen.tsx`, `server/src/routes/vouchers.ts`.
+- **Regression:** collision probes (same name across types/parties → 4xx), self-edit exclusion, settlement by typed name via UI.
+
+## A-03 — negative deductions accepted (P2)
+
+- **Fix:** `routes/payroll.ts` rejects negative (and NaN) `monthlyAmount` on deduction heads and non-positive gross with clean 400s. Domain rule: a deduction is a non-negative quantity; sign is decided by head type, not by the user's input sign.
+- **Regression:** negative/zero/NaN/positive amounts, edited structures.
+
+## A-04 — TDS report double-counted remittances (P2)
+
+- **Fix:** `routes/reports.ts` TDS view separates deduction entries from remittance entries (by direction on the TDS ledger) and exposes deducted / remitted / outstanding columns. Deduct − Remitted = Outstanding reconciles to the ledger.
+- **Regression:** deduct → partial remit → full remit lifecycle in `scripts/final_regression.py`.
+
+## A-05 — on-account invisible in outstanding (P2)
+
+- **Fix:** `services/accounting.ts` parties(): on-account net is merged into each party ledger's total (surfaced as a synthetic "On Account" bill). UI card, ledger balance, and engine mirror now agree (Deshmukh: 4,500 invoice − 2,000 advance = 2,500).
+- **Regression:** UI acceptance `BR-Deshmukh` checks + engine mirror updated to the new semantics.
+
+## A-06 — sub-period P&L was cumulative (P2)
+
+- **Fix:** `services/accounting.ts` profitAndLoss(): P&L heads sum **period movements** (debit−credit within from/to) instead of books-begin closings; stock lines period-correct; FY-to-date report unchanged. Month-only P&L now matches the independent engine for Apr, May, Jun.
+- **Regression:** acceptance `pnl-month` checks for all three months.
+
+## Verification after this pass
+
+| Suite | Result |
+|---|---|
+| smoke_test.py | 39/39 |
+| attack_test.py (adversarial) | 88/88 |
+| fix_regression.py | 65/65 |
+| reconcile.py (independent) | 48/48 |
+| final_regression.py (new, A-/F- findings + fix attacks) | 97/97 |
+| attack2.py (attack-the-fixes) | 29/29 |
+| UI acceptance (run.js, real browser) | 117/117 |
+| Docker fresh volume | built, up, healthy ~6s, migrations auto-apply, data survives restart |
+
+**Total: 483 checks, 0 failures.**

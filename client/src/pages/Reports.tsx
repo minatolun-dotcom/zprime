@@ -603,12 +603,12 @@ function Gstr3bView({ data }: { data: any }) {
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-20 text-right">Cess</th></tr></thead>
           <tbody>
-            <Row label="Outward supplies" {...data.outward} />
+            <Row label="Outward supplies" a={data.outward.taxable} b={data.outward.igst} c={data.outward.cgst} d={data.outward.sgst} e={data.outward.cess} />
           </tbody>
         </table>
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">4. Eligible ITC</div>
         <table className="report-table">
-          <tbody><Row label="ITC available" {...data.itc} /></tbody>
+          <tbody><Row label="ITC available" a={0} b={data.itc.igst} c={data.itc.cgst} d={data.itc.sgst} e={data.itc.cess} /></tbody>
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
@@ -644,16 +644,30 @@ function TdsView({ data }: { data: any }) {
           </tbody>
         </table>
       </Card>
-      <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">TDS Payable Balance</div>
-        <table className="report-table">
-          <tbody>
-            {data.payableLedgers.map((l: any) => (
-              <tr key={l.id}><td>{l.name}</td><td className="num">{money(num(l.closing))}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <div className="space-y-4">
+        <Card className="p-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Remittances in Period</div>
+          <table className="report-table">
+            <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
+            <tbody>
+              {data.remittances.map((r2: any, i: number) => (
+                <tr key={i}><td>{fmtDate(r2.date)}</td><td>{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
+              ))}
+              {data.remittances.length === 0 && <tr><td colSpan={3} className="text-center text-slate-400 py-4">No TDS remitted in period</td></tr>}
+            </tbody>
+          </table>
+        </Card>
+        <Card className="p-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">TDS Payable Balance (Outstanding)</div>
+          <table className="report-table">
+            <tbody>
+              {data.payableLedgers.map((l: any) => (
+                <tr key={l.id}><td>{l.name}</td><td className="num">{money(num(l.closing))}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
     </div>
   );
 }

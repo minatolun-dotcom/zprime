@@ -143,6 +143,14 @@ export async function profitAndLoss(companyId: number, period: Period) {
   const groupRows = await getGroupRows(companyId);
 
   const pick = (groupName: string) => balances.filter((b) => b.groupName === groupName || groupAncestry(groupRows, b.groupId).includes(groupName));
+
+  // A-06 fix: an income/expense report for a period must reflect THAT period's
+  // activity (debit − credit within the range), not the cumulative-through
+  // closing balance. `closing` folds in books-begin history via the opening
+  // carried into the range, so it only equals the period movement for a range
+  // that starts at books-begin.
+  const periodMovement = (b: LedgerBalance) => r2(b.debit - b.credit);
+  const sumMovement = (rows: LedgerBalance[]) => r2(rows.reduce((s, b) => s + periodMovement(b), 0));
   function groupAncestry(rows: any[], groupId: number): string[] {
     const byId = new Map(rows.map((r) => [r.id, r]));
     const out: string[] = [];
@@ -154,17 +162,16 @@ export async function profitAndLoss(companyId: number, period: Period) {
     return out;
   }
 
-  const sumClosing = (rows: LedgerBalance[]) => r2(rows.reduce((s, b) => s + b.closing, 0));
   const openingStock = r2(await stockClosingValue(companyId, addDays(period.from, -1), "Stock-in-Hand"));
   const closingStock = r2(await stockClosingValue(companyId, period.to, "Stock-in-Hand"));
 
-  // Income ledgers carry credit balances (negative closings) — flip for positive revenue
-  const sales = -sumClosing(pick("Sales Accounts"));
-  const purchases = sumClosing(pick("Purchase Accounts"));
-  const directIncome = -sumClosing(pick("Direct Incomes"));
-  const directExpenses = sumClosing(pick("Direct Expenses"));
-  const indirectIncome = -sumClosing(pick("Indirect Incomes"));
-  const indirectExpenses = sumClosing(pick("Indirect Expenses"));
+  // Income ledgers carry credit movements (credit > debit) — flip for positive revenue
+  const sales = -sumMovement(pick("Sales Accounts"));
+  const purchases = sumMovement(pick("Purchase Accounts"));
+  const directIncome = -sumMovement(pick("Direct Incomes"));
+  const directExpenses = sumMovement(pick("Direct Expenses"));
+  const indirectIncome = -sumMovement(pick("Indirect Incomes"));
+  const indirectExpenses = sumMovement(pick("Indirect Expenses"));
 
   const cogs = r2(purchases + openingStock - closingStock + directExpenses);
   const grossProfit = r2(sales + directIncome - cogs);
@@ -172,8 +179,8 @@ export async function profitAndLoss(companyId: number, period: Period) {
 
   const detail = (groupName: string, flip = false) =>
     pick(groupName)
-      .filter((b) => Math.abs(b.closing) > 0.004)
-      .map((b) => ({ ledgerId: b.ledgerId, name: b.name, amount: flip ? -b.closing : b.closing }))
+      .filter((b) => Math.abs(periodMovement(b)) > 0.004)
+      .map((b) => ({ ledgerId: b.ledgerId, name: b.name, amount: flip ? -periodMovement(b) : periodMovement(b) }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
@@ -362,7 +369,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
       .map((l) => [l.id, l.name])
   );
 
-  interface Bill { ledgerId: number; ledgerName: string; billName: string; amount: number; dueDate: string | null; date: string; }
+  interface Bill { ledgerId: number; ledgerName: string; billName: string; billType: string; amount: number; dueDate: string | null; date: string; }
   const billMap = new Map<string, Bill>();
 
   for (const row of rows) {
@@ -376,7 +383,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
       cur.amount = r2(cur.amount + amt);
       if (row.billType === "new_ref") { cur.dueDate = row.dueDate ?? cur.dueDate; cur.date = row.date; }
     } else {
-      billMap.set(key, { ledgerId: row.ledgerId, ledgerName: row.ledgerName, billName: row.billName, amount: amt, dueDate, date: row.date });
+      billMap.set(key, { ledgerId: row.ledgerId, ledgerName: row.ledgerName, billName: row.billName, billType: row.billType, amount: amt, dueDate, date: row.date });
     }
   }
 
@@ -384,6 +391,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     .select({
       ledgerId: voucherEntries.ledgerId,
       amount: sql<string>`sum(${billAllocations.amount})`,
+      firstDate: sql<string>`min(${vouchers.date})`,
     })
     .from(billAllocations)
     .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
@@ -407,6 +415,27 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     total: r2(g.total),
     bills: g.bills.sort((a, b) => cmpDate(a.date, b.date)),
   })).sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+
+  // A-05 fix: on-account allocations were computed but never merged, so an
+  // advance against a party was invisible in outstanding reports. Merge each
+  // party-ledger's on-account net into a synthetic "On Account" bill (raw
+  // signed amount, same convention as the other bills) and the total.
+  for (const oa of onAccount) {
+    if (!ledgerFilter.has(oa.ledgerId)) continue; // only party ledgers of this group
+    const amt = r2(num(oa.amount));
+    if (Math.abs(amt) <= 0.004) continue;
+    const ledgerName = ledgerFilter.get(oa.ledgerId)!;
+    let grp = result.find((g) => g.ledgerId === oa.ledgerId);
+    if (!grp) {
+      grp = { ledgerId: oa.ledgerId, ledgerName, total: 0, bills: [] };
+      result.push(grp);
+      result.sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+    }
+    const merged = grp.bills.find((b) => b.billType === "on_account");
+    if (merged) merged.amount = r2(merged.amount + amt);
+    else grp.bills.push({ ledgerId: oa.ledgerId, ledgerName, billName: "On Account", billType: "on_account", amount: amt, dueDate: null, date: String(oa.firstDate ?? "") });
+    grp.total = r2(grp.total + amt);
+  }
 
   const total = r2(result.reduce((s, g) => s + g.total, 0));
   return { parties: result, total, asOf };

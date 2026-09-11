@@ -199,7 +199,10 @@ export default function VoucherScreen() {
         const bills: any[] = [];
         if (l?.billWise) {
           if (isPartyRow && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType!.name)) {
-            bills.push({ billType: "new_ref", billName: number || `${date}-${i}`, amount: e.amount, dueDate: refDate || null });
+            // A-02 fix: auto bill names carry the voucher-type shortCode so two
+            // types numbering from 1 (Sales #1 and Credit Note #1) can no longer
+            // produce the same bill name and silently net on the same ledger.
+            bills.push({ billType: "new_ref", billName: number ? `${vType!.shortCode}-${number}` : `${date}-${i}`, amount: e.amount, dueDate: refDate || null });
           } else if (e.againstBill) {
             bills.push({ billType: "against_ref", billName: e.againstBill, amount: e.amount, dueDate: null });
           } else {

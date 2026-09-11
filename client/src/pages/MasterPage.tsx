@@ -97,7 +97,7 @@ export default function MasterPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = rows ?? [];
-    if (q) list = list.filter((r) => (r.name ?? "").toLowerCase().includes(q));
+    if (q) list = list.filter((r) => ((r.name ?? r.section ?? "") as string).toLowerCase().includes(q));
     return list;
   }, [rows, search]);
 
@@ -308,6 +308,11 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
       title: "Groups", endpoint: "groups",
       fields: [
         { name: "name", label: "Name *", type: "text", required: true },
+        { name: "parentId", label: "Under Group", type: "select", optionsFrom: "groups", hint: "Nature is inherited from the parent group" },
+        { name: "nature", label: "Nature", type: "select", options: [
+          { value: "Assets", label: "Assets" }, { value: "Liabilities", label: "Liabilities" },
+          { value: "Income", label: "Income" }, { value: "Expenses", label: "Expenses" },
+        ], hint: "Required only for top-level groups (no parent)" },
       ],
       columns: [{ key: "name", label: "Name" }, { key: "nature", label: "Nature" }],
       newRow: () => ({}),

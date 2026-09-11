@@ -1,0 +1,76 @@
+# zprime — Project State
+
+**Last updated:** 2026-09-11 (v1.0.0 release baseline)
+
+## What zprime is
+
+Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway → Voucher → Report → Drill-down workflow, original UI). Fastify 5 + React 18 + PostgreSQL 16 + Drizzle ORM, single app container + Postgres via Docker Compose.
+
+## Release status
+
+**v1.0.0 — RELEASE BASELINE. 483/483 checks passed — zero failures.**
+
+### Verification record (exact commands)
+
+Run against `zprime-test-pg` (PostgreSQL 16 in Docker, port 55432), fresh schema per suite:
+
+```bash
+export DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime"
+
+npm run typecheck                                   # server + client, clean
+
+python3 scripts/smoke_test.py        # 39/39 passed
+python3 scripts/attack_test.py       # 88/88 passed  (adversarial)
+python3 scripts/fix_regression.py    # 65/65 passed  (BUG-001..009 regression)
+python3 scripts/reconcile.py         # 48/48 passed  (independent reconciliation)
+python3 scripts/final_regression.py  # 97/97 passed  (A-/F- findings + fix attacks)
+python3 scripts/attack2.py           # 29/29 passed  (attack-the-fixes)
+
+node scripts/acceptance/run.js       # 117/117 passed (real-browser UI acceptance,
+                                     #  run from repo root; needs Chromium at
+                                     #  ~/.local/bin/chromium or CHROME_PATH;
+                                     #  client/dist must be built: npm run build -w client)
+
+docker compose down -v && docker compose build && docker compose up -d
+# → healthy in ~6s, migrations auto-apply on empty volume,
+#   endpoints verified in-container, restart preserves data
+```
+
+Total: **483 checks + typecheck + Docker verification, 0 failures.**
+
+### Independent reconciliation
+
+`scripts/acceptance/engine.py` (pure Python, no shared code/queries with zprime) mirrors three months of a fictional trading business (Meridian Traders, Apr–Jun FY 2026-27) entered entirely through the real UI, and reconciles to the paisa: TB, BS, P&L (cumulative + monthly), FIFO stock, bills receivable/payable, GSTR-1, GSTR-3B, TDS, cash/bank, salary register.
+
+## Known non-blocking issues (open, NOT fixed)
+
+| ID | Severity | Issue |
+|---|---|---|
+| F-INV-01 | P3 | Inventory-only Stock Journal cannot be entered via the UI (no Ledger Entries section renders) — blocked rather than supported. |
+| O-1 | P4 | Cash/Bank report "Closing" is an all-time sum; "Opening" respects the period — inconsistent period semantics on that view. |
+
+## Architecture map
+
+- `server/src/index.ts` — bootstrap: migrations on boot, admin seed, error sanitizer, static client.
+- `server/src/routes/` — auth, companies, masters (crud factory + beforeSave hooks), vouchers (numbering, bill allocation, GST posting), reports, payroll, import (XML), banking.
+- `server/src/services/` — `accounting.ts` (TB/BS/P&L/parties/stock), `gst.ts` (GSTR-1/3B, voucherGst — duty heads authoritative, `supplyMismatch` flag).
+- `server/src/db/` — drizzle schema + migrations in `server/drizzle/` (auto-applied on boot).
+- `client/src/pages/` — DayBook, VoucherScreen (keyboard-first, F4–F9/Alt+F-keys), Reports, MasterPage, Payroll, Import.
+- `scripts/` — QA suites (python, self-hosting servers on ports 3100–3106) + `acceptance/` (Playwright rig + expectation engine).
+- `docker-compose.yml` — app + postgres:16-alpine, named volume, healthcheck.
+
+## Invariants that must never regress
+
+1. Dr = Cr everywhere; BS balanced with no difference banner.
+2. GST booked in the ledger must always appear in GSTR-1/3B (duty heads authoritative — see A-07 fix; the ₹1,215 case is a permanent regression test in `scripts/final_regression.py`).
+3. Voucher numbering atomic (DB counter + unique index); deletion never enables reuse.
+4. Bill allocation: same company, correct party, amount ≤ open bill; `(party ledger, bill name)` unique per company (A-02).
+5. Payroll: deductions non-negative; payslip net = gross − deductions.
+6. Company isolation on every route via `cid(req)`; no client-supplied companyId trusted.
+7. Sub-period P&L = period movements; FY view = cumulative (A-06).
+
+## Test-rig notes
+
+- Suites start their own server (ports 3100–3106) against `zprime-test-pg`; do not run two suites concurrently.
+- Acceptance rig: run `node scripts/acceptance/run.js` from the **repo root**; artifacts (`state.json`, `expected.json`, `run.log`, `shots/`) are git-ignored and regenerable.
+- Playwright core uses the locally installed Chromium (`~/.local/bin/chromium`), override with `CHROME_PATH`.

@@ -44,3 +44,23 @@ The original `smoke_test.py` was **not modified** to accommodate fixes. One atta
 All 9 QA findings are fixed, each with regression coverage at the API boundary, and each fix was then attacked (concurrency, restart, edits, deletes, races). Full reconciliation against hand-computed numbers confirms every accounting identity.
 
 **Recommended status: SHIP.**
+
+---
+
+# Final acceptance-repair pass — regression summary (2026-09-10)
+
+All suites re-run after the A-01…A-07 / F-GRP-01 / F-TDS-01 fixes on a fresh schema:
+
+| Suite | Checks | Result |
+|---|---|---|
+| smoke_test.py | 39 | PASS |
+| attack_test.py | 88 | PASS |
+| fix_regression.py | 65 | PASS |
+| reconcile.py | 48 | PASS |
+| final_regression.py (new) | 97 | PASS |
+| attack2.py | 29 | PASS |
+| UI acceptance (Playwright, 3 months of books) | 117 | PASS |
+
+**483 checks, 0 failures.** No legacy expectation was changed except two documented probe corrections inside `final_regression.py` itself (its own group-count check now counts reserved groups instead of absolute rows, and the "Bank OD A/c" parent probe — Bank OD legitimately allows children; the no-children rule covers only Primary and Profit & Loss A/c, already probed via "Under Primary").
+
+New regression coverage added this pass: group nature inheritance (incl. empty-string client payloads), reserved-parent rules, TDS section validation/bounds, ₹1,215 IGST-vanishing case (A-07), bill-name collisions across types (A-02), negative payroll deductions (A-03), TDS deduction vs remittance split (A-04), on-account outstanding merge (A-05), sub-period P&L (A-06).
