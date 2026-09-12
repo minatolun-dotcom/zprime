@@ -539,6 +539,9 @@ class Engine:
         The proper expected variant (returns netted) is gstr1()."""
         out = {"b2b": {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0, "count": 0},
                "b2c": {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0, "count": 0}}
+        # R-01: independent HSN expectation — OUTWARD SALES ONLY (voucher-type
+        # semantics, never inventory direction; CN stays out of Table 12).
+        hsn = {}
         for v in self.vouchers:
             if not (frm <= v["date"] <= to) or v["type"] not in ("Sales", "Credit Note"):
                 continue
@@ -548,6 +551,13 @@ class Engine:
                 b[k] = R(b[k] + g[k])
             if v["type"] == "Sales":
                 b["count"] += 1
+                for ie in v.get("items", []):
+                    it = self.items[ie["item"]]
+                    k = (it.get("hsn", "-"), float(it.get("gstRate", 0)))
+                    h = hsn.setdefault(k, {"hsn": k[0], "rate": k[1], "qty": 0.0, "taxable": 0})
+                    h["qty"] = R(h["qty"] + abs(float(ie["qty"])))
+                    h["taxable"] = R(h["taxable"] + abs(float(ie.get("amount", 0))))
+        self._hsn_last = list(hsn.values())
         return out
 
     def gstr3b_app(self, frm, to):
@@ -585,6 +595,7 @@ class Engine:
                 "gstr1": self.gstr1(self.fyStart, me),
                 "gstr3b": self.gstr3b(self.fyStart, me),
                 "gstr1AppMonth": self.gstr1_app(ms, me),
+                "hsnMonth": getattr(self, "_hsn_last", []),
                 "gstr3bAppMonth": self.gstr3b_app(ms, me),
                 "gstr3bAppCum": self.gstr3b_app(self.fyStart, me),
                 "tds": self.tds(self.fyStart, me),

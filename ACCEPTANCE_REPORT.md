@@ -32,6 +32,10 @@ Deliberate mistakes: duplicate opening journals (deleted), negative-amount deduc
 
 The v1.1.0 run adds: `inv/sj-only` + `inv/ps-only` (F-INV-01 inventory-only vouchers through the real UI) and 12 `jun/cb-subperiod` checks (O-1: May-window Cash/Bank viewed in the browser while June vouchers exist — opening, Period Dr/Cr, closing, ledger drill-down, UI identity, future-contamination canary, per ledger). Combined release verification: **622/622 checks, 0 failures** (39 smoke, 88 adversarial, 65 bug-fix regression, 48 reconciliation, 224 final regression, 29 attack-the-fixes, 129 UI).
 
+### Post-v1.1.0 — R-01 GSTR-1 HSN fix (P1 reporting integrity, FIXED)
+
+Investigation confirmed the HSN summary selected inventory rows by quantity direction instead of outward voucher semantics (purchases/receipt notes included, sales excluded, `hsn="-"`/`rate=0` from NULL snapshots). Fixed in `gstr1()` only: population = voucher type `Sales` (same rule as `voucherGst(..., "outward")`), snapshot → stock-item-master fallback for HSN/rate, positive outward qty. The acceptance suite now **reconciles every rendered HSN row cell against the independent engine's Sales-only expectation** (`hsnMonth`) each month-end, plus purchase-exclusion canaries and a no-placeholder assertion — +11 UI checks (129 → 140). Final regression adds 59 R-01 checks (224 → 283) including the ₹91,111 purchase canary (fails against the old implementation), stock-only-movement non-pollution, master-fallback and stored-snapshot precedence, and backdate/edit/delete propagation. Post-fix verification: **711/711 checks, 0 failures**; Docker fresh-volume + restart persistence re-verified with an in-container HSN probe (`1234`, qty 2, taxable 1000, rate 18).
+
 Per month-end (Apr 30, May 31, Jun 30), every identity below was compared **screen vs independent engine**, then traced to the DB where anything looked off:
 
 | Identity | Apr | May | Jun |

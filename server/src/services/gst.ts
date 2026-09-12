@@ -147,11 +147,18 @@ export async function gstr1(companyId: number, from: string, to: string) {
   const b2b = outward.filter((v) => v.partyGstin);
   const b2c = outward.filter((v) => !v.partyGstin);
 
-  // HSN summary from inventory entries on sales vouchers
+  // R-01: HSN summary (Table 12) represents OUTWARD SUPPLIES ONLY. The
+  // population is defined by voucher-type semantics — the same rule used by
+  // voucherGst(..., "outward") — never by inventory quantity direction:
+  // stored qty is signed (+ = stock in, - = stock out), so a direction test
+  // silently includes purchases/receipt notes and excludes sales.
+  // Credit/Debit Notes are separate reporting documents and stay out of
+  // Table 12 (CDNR remains a known gap, see the cdnr field below).
   const hsnRows = await db
     .select({
       hsn: inventoryEntries.hsnSac, qty: inventoryEntries.qty, rate: inventoryEntries.rate,
-      amount: inventoryEntries.amount, gstRate: inventoryEntries.gstRate, unit: units.symbol,
+      amount: inventoryEntries.amount, gstRate: inventoryEntries.gstRate,
+      itemHsn: stockItems.hsnSac, itemGstRate: stockItems.gstRate, unit: units.symbol,
       item: stockItems.name,
     })
     .from(inventoryEntries)
@@ -161,17 +168,22 @@ export async function gstr1(companyId: number, from: string, to: string) {
     .innerJoin(units, eq(units.id, stockItems.unitId))
     .where(and(
       eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(voucherTypes.name, "Sales"),
       gte(vouchers.date, from), lte(vouchers.date, to),
     ));
 
   const hsnMap = new Map<string, { hsn: string; qty: number; taxable: number; rate: number }>();
   for (const r of hsnRows) {
-    const qty = num(r.qty);
-    if (qty <= 0) continue; // outward side only
-    const key = `${r.hsn ?? "-"}::${r.gstRate ?? 0}`;
-    const cur = hsnMap.get(key) ?? { hsn: r.hsn ?? "-", qty: 0, taxable: 0, rate: num(r.gstRate ?? 0) };
-    cur.qty = r2(cur.qty + qty);
-    cur.taxable = r2(cur.taxable + num(r.amount));
+    // Sales rows are stored with negative qty (stock out). Report outward
+    // quantity as positive. HSN/rate resolve from the voucher snapshot when
+    // present (importer history) and fall back to the stock-item master
+    // otherwise (UI-created vouchers do not populate snapshots).
+    const hsnCode = r.hsn ?? r.itemHsn ?? "-";
+    const gstRate = r.gstRate != null ? num(r.gstRate) : num(r.itemGstRate ?? 0);
+    const key = `${hsnCode}::${gstRate}`;
+    const cur = hsnMap.get(key) ?? { hsn: hsnCode, qty: 0, taxable: 0, rate: gstRate };
+    cur.qty = r2(cur.qty + Math.abs(num(r.qty)));
+    cur.taxable = r2(cur.taxable + Math.abs(num(r.amount)));
     hsnMap.set(key, cur);
   }
 

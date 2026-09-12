@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-12 (v1.1.0 released: F-INV-01 fixed, O-1 closed as NOT REPRODUCIBLE, 622 checks green)
+**Last updated:** 2026-09-12 (post-v1.1.0: R-01 GSTR-1 HSN reporting-integrity fix implemented and verified, 711 checks green, unreleased)
 
 ## What zprime is
 
@@ -8,7 +8,11 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**v1.0.0 remains tagged and untouched (483 checks). v1.1.0 is the current release: F-INV-01 fixed; O-1 closed as NOT REPRODUCIBLE (app correct, coverage added). 622/622 checks — zero failures.**
+**v1.0.0 (483 checks) and v1.1.0 (622 checks) remain tagged and untouched. Post-v1.1.0 R-01 fix is implemented and fully verified (711/711) but NOT yet committed to a release; a single fix commit on top of v1.1.0 carries it.**
+
+### R-01 (P1, fixed 2026-09-12): GSTR-1 HSN outward-supply reporting
+
+The HSN summary used inventory quantity direction instead of outward voucher semantics — purchases/receipt notes polluted Table 12, sales were excluded, and HSN/rate read NULL snapshot columns for UI-created vouchers (`hsn="-"`, `rate=0`). Fixed in `server/src/services/gst.ts` `gstr1()` only: population = `voucherTypes.name = "Sales"` (same rule as `voucherGst(..., "outward")`), snapshot → stock-item-master fallback for HSN/rate, positive outward qty. Credit Notes stay out of Table 12 (CDNR remains a known gap). Regression: final_regression 224 → 283 (incl. the ₹91,111 canary); independent engine `hsnMonth` now reconciled cell-by-cell in the browser acceptance (129 → 140). **711/711 total.**
 
 ### Verification record (exact commands)
 
@@ -44,7 +48,7 @@ Total: **622 checks + typecheck + Docker verification, 0 failures** (was 483 at 
 
 ## Known non-blocking issues (open, NOT fixed)
 
-**None open.** v1.1.0 status — both prior items are closed:
+**None open.** Post-v1.1.0 status — R-01 was fixed and verified (see above); both prior items are closed:
 
 - **F-INV-01 (P3) — CLOSED (2026-09-12), FIXED:** inventory-only Stock Journal and Physical Stock are enterable through the real UI. `entries: []` is valid only for inventory-category vouchers carrying ≥1 real stock movement (item + non-zero qty); accounting-only vouchers still require balanced non-zero ledger entries; negative Physical-Stock counted quantities are rejected; no artificial accounting entries are created. Verified by new regression/attack checks, real-browser UI scenarios, and an in-container Docker probe.
 - **O-1 (P4) — CLOSED (2026-09-12), NOT REPRODUCIBLE:** Phase 1 investigation proved Cash/Bank period semantics correct (Opening ≤ from−1, Movement [from,to], Closing = Opening + Dr − Cr, future vouchers excluded); code is character-identical to v1.0.0; controlled reproduction failed. Root cause of the observation: a test-coverage gap (all prior windows were FY→month-end). Remediation was test-only — 92 API-level sub-period/boundary/edit/backdate/delete checks, an independent engine `cashBankSub` snapshot, and the `jun/cb-subperiod` real-browser scenario with a future-contamination canary. **No production Cash/Bank logic was modified.**

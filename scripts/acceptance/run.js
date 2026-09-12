@@ -326,6 +326,32 @@ async function checkMonthEnd(tag) {
   }
   await D.shot(`${tag}-gstr1`);
 
+  // ---------- GSTR-1 HSN table (R-01: independent reconciliation) ----------
+  // Compare every rendered HSN row cell against the engine's independent
+  // Sales-only expectation (qty, taxable, rate) — not text-presence. Also
+  // assert the canary: a purchase's taxable value must never appear in HSN.
+  {
+    const expectedHsn = (E.hsnMonth || []);
+    const rows = await D.reportRows(); // rendered GSTR-1 page (HSN table rows included)
+    for (const h of expectedHsn) {
+      const r = rows.find((x) => x[0] === h.hsn);
+      if (!r) { D.record(false, `${tag}/hsn-row-${h.hsn}`, "HSN row present with exact cells", `missing ${h.hsn}`); continue; }
+      const qty = D.inrNum(r[1]), taxable = D.inrNum(r[2]), rate = D.inrNum(r[3]);
+      D.record(close(qty, h.qty) && close(taxable, h.taxable) && close(rate, h.rate),
+        `${tag}/hsn-row-${h.hsn}`, "HSN row qty/taxable/rate match engine",
+        `ui=[${r}] exp qty=${h.qty} taxable=${h.taxable} rate=${h.rate}`);
+    }
+    D.record(expectedHsn.every((h) => h.hsn !== "-"), `${tag}/hsn-no-placeholder`, "no '-' HSN placeholder rows", JSON.stringify(expectedHsn));
+    // canary: any recorded purchase amount must not surface in the HSN table
+    const purchTaxables = state.vouchers.filter((v) => !v._deleted && v.type === "Purchase" && v.items?.length && v.date >= ms + "-01" && v.date <= me)
+      .map((v) => Math.round(v.items.reduce((s, it) => s + it.amount, 0) * 100) / 100);
+    for (const pt of purchTaxables) {
+      const appears = rows.some((x) => x.length >= 4 && x[0] !== "HSN" && D.inrNum(x[2]) === pt);
+      D.record(!appears, `${tag}/hsn-purchase-excluded-${pt}`, "purchase taxable absent from HSN table", `purchase=${pt}`);
+    }
+  }
+  await D.shot(`${tag}-gstr1-hsn`);
+
   // ---------- TDS ----------
   await D.openReport("tds", { from: FY, to: me });
   {

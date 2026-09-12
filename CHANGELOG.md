@@ -1,5 +1,33 @@
 # Changelog
 
+## Post-v1.1.0 — R-01 GSTR-1 HSN outward-supply reporting fix (unreleased)
+
+**711/711 checks passed — zero failures.**
+
+### R-01 — GSTR-1 HSN summary direction & attribution (FIXED, P1 reporting integrity)
+
+**Root cause (investigation-confirmed):** the GSTR-1 HSN summary (Table 12) selected inventory rows by *quantity direction* (`qty > 0`) instead of outward voucher semantics. In zprime's signed convention (+ = stock in, − = stock out) this silently included **purchases, receipt notes, stock-journal targets** and **excluded sales**; it also had no voucher-type filter at all. Additionally the HSN code and GST rate were read only from inventory snapshot columns that UI-created vouchers leave NULL, so rows rendered as `hsn="-"`, `rate=0`. B2B/B2C and GSTR-3B use a different, correct pipeline (`voucherGst(..., "outward")`), which is why the 622-check baseline (asserting only b2b/b2c/3B totals) never caught it.
+
+**Fix (server/src/services/gst.ts, `gstr1()` only):** the HSN population is now defined by voucher type — `voucherTypes.name = "Sales"` — the same semantics as `voucherGst(..., "outward")`; Credit/Debit Notes stay out of Table 12 (CDNR remains a documented gap). HSN/rate resolve snapshot → stock-item master fallback (`inventoryEntries.hsnSac ?? stockItems.hsnSac`, same for rate); historical imported snapshots still win. Outward quantity is reported positive (`Math.abs`). Ledger/TB/BS/P&L/GSTR-3B/TDS/stock/numbering are untouched — the change affects only the HSN block of one read-only report.
+
+**Regression coverage:** `final_regression.py` grew 224 → **283** (+59): purchase-only HSN empty; exact sale row (code/qty/taxable/rate); the ₹91,111 canary purchase vs ₹1,000 sale on the same HSN (must be absent — this check fails against the old implementation); Receipt Note / Delivery Note / Stock Journal / Physical Stock non-pollution; master-fallback attribution (HSN 9999 @ 12% from the item master); stored-snapshot precedence; multiple HSNs aggregating independently; intra- and inter-state rows; backdated/edited/deleted sale propagation; documented population relationship (HSN = Sales-with-inventory taxable; credit notes NOT netted; accounting-only Sales excluded). The independent engine's HSN expectation is now actually consumed: `engine.py` emits `hsnMonth` (Sales-only, computed from recorded items) and `run.js` asserts each rendered HSN row's qty/taxable/rate cell-by-cell plus purchase-exclusion canaries — **+11 UI checks, 129 → 140**.
+
+### Verification record (post-v1.1.0 R-01 fix)
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 48 | PASS |
+| Final regression (now incl. R-01) | 283 | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance (now incl. HSN reconciliation) | 140 | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume + restart persistence + HSN probe | — | PASS |
+
+**Total: 711/711 checks — zero failures** (v1.1.0 was 622; +89, none removed or weakened). Not tagged yet; v1.0.0 and v1.1.0 remain untouched.
+
 ## v1.1.0 — Inventory-only vouchers and report coverage (2026-09-12)
 
 **622/622 checks passed — zero failures.** Previous baseline v1.0.0 (483 checks) remains tagged and untouched. No new tag had been created for the post-release work until this release; see sections below for the exact per-suite record.

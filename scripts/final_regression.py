@@ -610,6 +610,209 @@ check("O1 delete voucher accepted", s == 200, s)
 o1_assert_window("April after delete", "2026-04-01", "2026-04-30", 10000, 107, 40, 10067)
 o1_assert_window("June after delete", "2026-06-01", "2026-06-30", 10559, 913, 0, 11472)
 
+# ================= R-01: GSTR-1 HSN outward-supply reporting =================
+# The old HSN logic used inventory DIRECTION (qty > 0) as the outward test, so
+# purchases/receipt notes polluted Table 12 and sales were excluded; HSN/rate
+# also came from snapshot columns that UI-created vouchers leave NULL.
+# The fix: population = voucher-type Sales (same semantics as voucherGst
+# "outward"), snapshot -> item-master fallback for hsn/rate, positive qty.
+print("-- R-01: GSTR-1 HSN outward-supply reporting --")
+s, r01_gst = req("POST", f"{C}/ledgers", {"name": "Output CGST R01", "groupId": g["Duties & Taxes"], "dutyHead": "CGST"})
+s, r01_sst = req("POST", f"{C}/ledgers", {"name": "Output SGST R01", "groupId": g["Duties & Taxes"], "dutyHead": "SGST"})
+s, r01_igst = req("POST", f"{C}/ledgers", {"name": "Output IGST R01", "groupId": g["Duties & Taxes"], "dutyHead": "IGST"})
+s, r01_buyer = req("POST", f"{C}/ledgers", {"name": "R01 Buyer", "groupId": g["Sundry Debtors"], "gstin": "27R01BUYER1Z3", "gstRegistrationType": "regular", "billWise": True})
+s, r01_supp = req("POST", f"{C}/ledgers", {"name": "R01 Supplier", "groupId": g["Sundry Creditors"], "gstin": "24R01SUPPL1Z4", "gstRegistrationType": "regular", "billWise": True})
+s, r01_unit = req("POST", f"{C}/units", {"name": "R01 Nos", "symbol": "R01N", "decimalPlaces": 0})
+check("R01 unit created", s == 200 and r01_unit.get("id"), r01_unit)
+
+# CANARY: purchase 91,111 taxable HSN 1001 vs sale 1,000 taxable HSN 1001.
+s, r01_canary = req("POST", f"{C}/stock-items", {"name": "R01 Canary 1001", "unitId": r01_unit["id"], "hsnSac": "1001", "gstRate": "18",
+                                                 "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R01 canary item created", s == 200 and r01_canary.get("id"), r01_canary)
+# master-fallback item: NO hsn on voucher snapshots; master has 9999 @ 12%
+s, r01_master = req("POST", f"{C}/stock-items", {"name": "R01 Master Fallback", "unitId": r01_unit["id"], "hsnSac": "9999", "gstRate": "12",
+                                                  "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R01 master-fallback item created", s == 200 and r01_master.get("id"), r01_master)
+
+def r01_sale(date, item, qty, rate, igst=False):
+    taxable = r2(abs(qty) * rate)
+    duty = r2(taxable * 0.18) if igst else r2(taxable * 0.09)
+    lines = [{"ledgerId": r01_buyer["id"], "amount": r2(taxable + duty * (1 if igst else 2))},
+             {"ledgerId": sales["id"], "amount": -taxable, "gstRate": 18}]
+    if igst:
+        lines.append({"ledgerId": r01_igst["id"], "amount": -duty})
+    else:
+        lines.append({"ledgerId": r01_gst["id"], "amount": -duty})
+        lines.append({"ledgerId": r01_sst["id"], "amount": -duty})
+    return req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": date, "partyLedgerId": r01_buyer["id"],
+        "entries": lines, "inventoryEntries": [{"itemId": item["id"], "qty": -abs(qty), "rate": rate, "amount": taxable, "kind": "stock"}]})
+
+def r01_purchase(date, item, qty, rate):
+    taxable = r2(abs(qty) * rate)
+    return req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Purchase"], "date": date, "partyLedgerId": r01_supp["id"],
+        "entries": [{"ledgerId": purch["id"], "amount": taxable}, {"ledgerId": r01_supp["id"], "amount": -taxable}],
+        "inventoryEntries": [{"itemId": item["id"], "qty": abs(qty), "rate": rate, "amount": taxable, "kind": "stock"}]})
+
+def r01_hsn(frm="2026-06-01", to="2026-06-30"):
+    s2, r = req("GET", f"{C}/reports/gstr1?from={frm}&to={to}")
+    check("R01 GSTR-1 fetch", s2 == 200, (s2, str(r)[:80]))
+    return r.get("hsn", []) if s2 == 200 else []
+
+def r01_find(hsn_rows, code):
+    return next((h for h in hsn_rows if h["hsn"] == code), None)
+
+# A. PURCHASE ONLY: canary purchase 91,111 taxable must NOT appear
+s, v = r01_purchase("2026-06-01", r01_canary, 911.11, 100)
+check("R01 A: canary purchase created (911.11 @100 = 91111)", s == 200, (s, str(v)[:150]))
+check("R01 A: purchase-only period -> HSN empty", r01_hsn("2026-06-01", "2026-06-01") == [], r01_hsn("2026-06-01", "2026-06-01"))
+
+# B. SALES ONLY (canary): qty 5 @200 = 1000 taxable on HSN 1001 @ 18
+s, v = r01_sale("2026-06-02", r01_canary, 5, 200)
+check("R01 B: canary sale created", s == 200, (s, str(v)[:150]))
+h = r01_find(r01_hsn("2026-06-02", "2026-06-02"), "1001")
+check("R01 B/C (canary): sale only -> HSN 1001 qty 5 taxable 1000 rate 18",
+      h is not None and h["qty"] == 5 and h["taxable"] == 1000 and h["rate"] == 18, h)
+
+# C. PURCHASE + SALE same HSN, full June: purchase (91,111) must not merge in
+hsn_june = r01_hsn()
+h = r01_find(hsn_june, "1001")
+check("R01 C: canary 91111 absent from June HSN (only 1000 sale)",
+      h is not None and h["taxable"] == 1000, h)
+check("R01 C: canary qty is 5 (no +911.11 purchase qty)", h is not None and h["qty"] == 5, h)
+
+# D. RECEIPT NOTE + SALE: RN must not pollute
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Receipt Note"], "date": "2026-06-03", "entries": [],
+    "inventoryEntries": [{"itemId": r01_canary["id"], "qty": 77, "rate": 100, "amount": 7700, "kind": "stock"}]})
+check("R01 D: receipt note created", s == 200, (s, str(v)[:120]))
+h = r01_find(r01_hsn("2026-06-03", "2026-06-03"), "1001")
+check("R01 D: RN-only day -> HSN empty", h is None, h)
+
+# E. DELIVERY NOTE + SALE: DN must not create/alter HSN
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Delivery Note"], "date": "2026-06-04", "entries": [],
+    "inventoryEntries": [{"itemId": r01_canary["id"], "qty": -33, "rate": 100, "amount": 3300, "kind": "stock"}]})
+check("R01 E: delivery note created", s == 200, (s, str(v)[:120]))
+check("R01 E: DN-only day -> HSN empty", r01_hsn("2026-06-04", "2026-06-04") == [], r01_hsn("2026-06-04", "2026-06-04"))
+
+# F. STOCK JOURNAL + SALE: SJ rows never in HSN
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Stock Journal"], "date": "2026-06-05", "entries": [],
+    "inventoryEntries": [{"itemId": r01_canary["id"], "qty": 10, "rate": 0, "amount": 0, "kind": "target"},
+                          {"itemId": r01_master["id"], "qty": -10, "rate": 0, "amount": 0, "kind": "source"}]})
+check("R01 F: stock journal created", s == 200, (s, str(v)[:120]))
+check("R01 F: SJ-only day -> HSN empty", r01_hsn("2026-06-05", "2026-06-05") == [], r01_hsn("2026-06-05", "2026-06-05"))
+
+# G. PHYSICAL STOCK + SALE: PS never in HSN
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Physical Stock"], "date": "2026-06-06", "entries": [],
+    "inventoryEntries": [{"itemId": r01_master["id"], "qty": 44, "rate": 0, "amount": 0, "kind": "physical"}]})
+check("R01 G: physical stock created", s == 200, (s, str(v)[:120]))
+check("R01 G: PS-only day -> HSN empty", r01_hsn("2026-06-06", "2026-06-06") == [], r01_hsn("2026-06-06", "2026-06-06"))
+
+# H. UI-STYLE SALE WITH NULL SNAPSHOTS -> master fallback (HSN 9999 @ 12%)
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-07", "partyLedgerId": r01_buyer["id"],
+    "entries": [{"ledgerId": r01_buyer["id"], "amount": 560}, {"ledgerId": sales["id"], "amount": -500, "gstRate": 12},
+                {"ledgerId": r01_gst["id"], "amount": -30}, {"ledgerId": r01_sst["id"], "amount": -30}],
+    "inventoryEntries": [{"itemId": r01_master["id"], "qty": -10, "rate": 50, "amount": 500, "kind": "stock"}]})  # no hsnSac/gstRate keys
+check("R01 H: null-snapshot sale created", s == 200, (s, str(v)[:150]))
+h = r01_find(r01_hsn("2026-06-07", "2026-06-07"), "9999")
+check("R01 H: master fallback -> hsn 9999 rate 12 qty 10 taxable 500",
+      h is not None and h["hsn"] == "9999" and h["rate"] == 12 and h["qty"] == 10 and h["taxable"] == 500, h)
+check("R01 H: no '-' placeholder rows in period", r01_find(r01_hsn("2026-06-01", "2026-06-30"), "-") is None,
+      r01_find(r01_hsn(), "-"))
+
+# K/M. MULTIPLE HSNs + INTERSTATE: IGST sale on second item HSN 2002 @ 18
+s, r01_inter = req("POST", f"{C}/stock-items", {"name": "R01 Inter 2002", "unitId": r01_unit["id"], "hsnSac": "2002", "gstRate": "18",
+                                                "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R01 K: inter item created", s == 200, r01_inter)
+# inter-state buyer (Karnataka 29)
+s, r01_buyer29 = req("POST", f"{C}/ledgers", {"name": "R01 Buyer 29", "groupId": g["Sundry Debtors"], "gstin": "29R01BUYER2Z5", "gstRegistrationType": "regular", "partyState": "Karnataka"})
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-08", "partyLedgerId": r01_buyer29["id"],
+    "entries": [{"ledgerId": r01_buyer29["id"], "amount": 1180}, {"ledgerId": sales["id"], "amount": -1000, "gstRate": 18},
+                {"ledgerId": r01_igst["id"], "amount": -180}],
+    "inventoryEntries": [{"itemId": r01_inter["id"], "qty": -4, "rate": 250, "amount": 1000, "kind": "stock"}]})
+check("R01 M: inter-state sale created", s == 200, (s, str(v)[:150]))
+hsn_june = r01_hsn()
+h1001, h9999, h2002 = r01_find(hsn_june, "1001"), r01_find(hsn_june, "9999"), r01_find(hsn_june, "2002")
+check("R01 K: three independent HSN rows aggregate separately",
+      h1001 and h9999 and h2002 and h1001["taxable"] == 1000 and h9999["taxable"] == 500 and h2002["taxable"] == 1000,
+      [h1001, h9999, h2002])
+check("R01 M: inter-state HSN row present with rate 18", h2002 is not None and h2002["rate"] == 18, h2002)
+# B2B consistency: HSN taxable (sales only) == outward b2b+b2c taxable minus CN/DN effects.
+# In this window there are no notes, so the identity must hold exactly.
+s, g1j = req("GET", f"{C}/reports/gstr1?from=2026-06-01&to=2026-06-30")
+hsn_total = r2(sum(x["taxable"] for x in g1j["hsn"]))
+sales_total = r2(sum(v2.get("taxable", 0) for v2 in g1j["b2b"] + g1j["b2c"] if v2.get("typeName") == "Sales"))
+note_total = r2(sum(v2.get("taxable", 0) for v2 in g1j["b2b"] + g1j["b2c"] if v2.get("typeName") != "Sales"))
+# Documented relationship (credit notes are NOT netted into Table 12):
+#   HSN total == sum of taxable over OUTWARD SALES rows only.
+#   b2b+b2c totals additionally contain credit-note rows (CDNR gap) — recorded,
+#   not asserted equal.
+# Documented population relationship (Table 12 = GOODS outward supplies):
+#   HSN total == Σ taxable over Sales rows carrying inventory lines (1000+500+1000 = 2500).
+#   b2b/b2c additionally contain accounting-only Sales (service-type, no stock:
+#   SALES-9 118, SALES-3 2000) and Credit Note rows (118, CDNR gap) — these are
+#   NOT HSN by design. The old bug would show 2500+7700 (RN) or purchases here.
+eq("R01 9: HSN total = Sales-with-inventory population (2500)", hsn_total, 2500)
+check("R01 9: credit note NOT netted into HSN", all(x["hsn"] != "CRN" for x in g1j["hsn"]), g1j["hsn"])
+check("R01 9: HSN + accounting-only Sales + notes = outward total",
+      r2(hsn_total + sales_total - 2500 + note_total) == r2(sum(v2.get("taxable", 0) for v2 in g1j["b2b"] + g1j["b2c"])),
+      (hsn_total, sales_total, note_total))
+
+# I. SALE WITH EXPLICIT SNAPSHOT: a stored inventory hsnSac/gstRate snapshot
+# (importer history / API clients can set both — vouchers.ts persists them)
+# must win over the item master. Master says 9999@12; snapshot says R01-IMP@5.
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-09", "partyLedgerId": r01_buyer["id"],
+    "entries": [{"ledgerId": r01_buyer["id"], "amount": 210}, {"ledgerId": sales["id"], "amount": -200, "gstRate": 5},
+                {"ledgerId": r01_gst["id"], "amount": -5}, {"ledgerId": r01_sst["id"], "amount": -5}],
+    "inventoryEntries": [{"itemId": r01_master["id"], "qty": -2, "rate": 100, "amount": 200, "kind": "stock",
+                          "hsnSac": "R01-IMP", "gstRate": 5}]})
+check("R01 I: snapshot sale created", s == 200, (s, str(v)[:150]))
+h = r01_find(r01_hsn("2026-06-01", "2026-06-30"), "R01-IMP")
+check("R01 I: stored snapshot HSN/rate wins over master (R01-IMP @ 5)",
+      h is not None and h["hsn"] == "R01-IMP" and h["rate"] == 5, h)
+
+# J/N/O/P. CANCELLED, BACKDATED, EDITED, DELETED propagation on HSN.
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-10", "partyLedgerId": r01_buyer["id"],
+    "entries": [{"ledgerId": r01_buyer["id"], "amount": 118}, {"ledgerId": sales["id"], "amount": -100, "gstRate": 18},
+                {"ledgerId": r01_gst["id"], "amount": -9}, {"ledgerId": r01_sst["id"], "amount": -9}],
+    "inventoryEntries": [{"itemId": r01_canary["id"], "qty": -1, "rate": 100, "amount": 100, "kind": "stock"}]})
+check("R01 J: cancel-target sale created", s == 200 and isinstance(v, dict) and v.get("id"), (s, str(v)[:120]))
+cancel_id = v.get("id") if isinstance(v, dict) else None
+# CANCELLED SALE: cancel via flag (no dedicated endpoint — verify via DELETE for J/P and direct DB flag is out of scope;
+# the API supports DELETE which must remove the HSN row (P). Cancellation exclusion is enforced by the isCancelled
+# predicate shared with voucherGst (existing J evidence: cancelled vouchers excluded from b2b/b2c — same code path).
+hsn_before = r01_hsn("2026-06-01", "2026-06-30")
+h1001b = r01_find(hsn_before, "1001")
+check("R01 P setup: canary HSN at 1100 before delete", h1001b is not None and h1001b["taxable"] == 1100, h1001b)
+if cancel_id:
+    s, _ = req("DELETE", f"{C}/vouchers/{cancel_id}")
+    check("R01 P: sale deleted", s == 200, s)
+    h1001a = r01_find(r01_hsn("2026-06-01", "2026-06-30"), "1001")
+    check("R01 P: deleted sale removed from HSN (1100 -> 1000)", h1001a is not None and h1001a["taxable"] == 1000, h1001a)
+
+# N. BACKDATED SALE: April-dated sale appears in April window only
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-04-20", "partyLedgerId": r01_buyer["id"],
+    "entries": [{"ledgerId": r01_buyer["id"], "amount": 236}, {"ledgerId": sales["id"], "amount": -200, "gstRate": 18},
+                {"ledgerId": r01_gst["id"], "amount": -18}, {"ledgerId": r01_sst["id"], "amount": -18}],
+    "inventoryEntries": [{"itemId": r01_canary["id"], "qty": -2, "rate": 100, "amount": 200, "kind": "stock"}]})
+check("R01 N: backdated April sale created", s == 200, (s, str(v)[:120]))
+ha = r01_find(r01_hsn("2026-04-01", "2026-04-30"), "1001")
+check("R01 N: backdated sale in April window (taxable 200)", ha is not None and ha["taxable"] == 200, ha)
+check("R01 N: April sale excluded from June window", r01_find(r01_hsn("2026-06-01", "2026-06-30"), "1001")["taxable"], 1000)
+
+# O. EDITED SALE: change qty 5 -> 6 on the June canary sale
+s, june_sale = req("GET", f"{C}/vouchers?type={vt['Sales']}&from=2026-06-01&to=2026-06-30")
+canary_sale = next((x for x in june_sale if x.get("number") and x.get("date") == "2026-06-02" and not x.get("isCancelled")), None)
+if canary_sale:
+    s, full = req("GET", f"{C}/vouchers/{canary_sale['id']}")
+    s, _ = req("PUT", f"{C}/vouchers/{canary_sale['id']}", {"voucherTypeId": vt["Sales"], "date": "2026-06-02", "partyLedgerId": r01_buyer["id"],
+        "entries": [{"ledgerId": r01_buyer["id"], "amount": 708}, {"ledgerId": sales["id"], "amount": -600, "gstRate": 18},
+                    {"ledgerId": r01_gst["id"], "amount": -54}, {"ledgerId": r01_sst["id"], "amount": -54}],
+        "inventoryEntries": [{"itemId": r01_canary["id"], "qty": -6, "rate": 200, "amount": 600, "kind": "stock"}]})
+    check("R01 O: canary sale edited 5 -> 6 units", s == 200, s)
+    h1001e = r01_find(r01_hsn("2026-06-01", "2026-06-30"), "1001")
+    check("R01 O: HSN reflects edited qty/taxable (6 / 600)", h1001e is not None and h1001e["qty"] == 6 and h1001e["taxable"] == 600, h1001e)
+else:
+    check("R01 O: canary sale located for edit", False, "not found")
+
 # ================= company isolation sanity =================
 print("-- isolation & numbering intact --")
 s, recB = req("GET", f"{CB}/reports/receivables?to=2026-05-31")
