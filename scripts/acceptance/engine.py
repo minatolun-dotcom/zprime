@@ -589,6 +589,11 @@ class Engine:
                 "gstr3bAppCum": self.gstr3b_app(self.fyStart, me),
                 "tds": self.tds(self.fyStart, me),
                 "cashBank": self.cash_bank(self.fyStart, me),
+                # O-1: sub-period cash/bank — a FIXED mid-FY window (May 1–31)
+                # viewed with LATER (June) vouchers already in the books. The UI
+                # scenario in run.js pins this same window. Independently computed
+                # by the period-correct cash_bank() (opening < frm, movement in [frm,to]).
+                "cashBankSub": self.cash_bank("2026-05-01", "2026-05-31"),
                 "salesRegister": self.register(self.fyStart, me, "Sales"),
                 "purchaseRegister": self.register(self.fyStart, me, "Purchase"),
                 "salaryRegister": self.salary_register(),

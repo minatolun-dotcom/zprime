@@ -27,7 +27,10 @@ Deliberate mistakes: duplicate opening journals (deleted), negative-amount deduc
 
 ```
 == ACCEPTANCE RESULT: ALL CHECKS PASSED ==  (117 checks, 0 failures — post-repair re-run)
+== ACCEPTANCE RESULT: ALL CHECKS PASSED ==  (129 checks, 0 failures — v1.1.0 release run)
 ```
+
+The v1.1.0 run adds: `inv/sj-only` + `inv/ps-only` (F-INV-01 inventory-only vouchers through the real UI) and 12 `jun/cb-subperiod` checks (O-1: May-window Cash/Bank viewed in the browser while June vouchers exist — opening, Period Dr/Cr, closing, ledger drill-down, UI identity, future-contamination canary, per ledger). Combined release verification: **622/622 checks, 0 failures** (39 smoke, 88 adversarial, 65 bug-fix regression, 48 reconciliation, 224 final regression, 29 attack-the-fixes, 129 UI).
 
 Per month-end (Apr 30, May 31, Jun 30), every identity below was compared **screen vs independent engine**, then traced to the DB where anything looked off:
 
@@ -68,8 +71,8 @@ Key numeric spot-checks that verified against the DB:
 | **A-05** | P2 | `onAccount` allocations are computed in `parties()` (accounting.ts:383) but **never merged** into party totals — an on-account advance against a party is invisible in outstanding reports (Deshmukh: ledger 2,500, card 4,500). | **Fixed** (`services/accounting.ts`: on-account net merged per party ledger as a synthetic "On Account" bill). UI re-run: Deshmukh card = ledger truth (4,500 − 2,000 = 2,500). |
 | **A-06** | P2 | P&L for any sub-period shows **cumulative-through** figures (server sums books-begin closings, not period movements). May-only P&L wrong (ui 252,350 vs true 75,400). | **Fixed** (`services/accounting.ts` profitAndLoss: P&L heads use period movements debit−credit; stock lines period-correct; FY report unchanged). UI re-run: `pnl-month` checks pass for Apr/May/Jun. |
 | **A-07** | P2 | `voucherGst` resolves supply type **only** from party state/GSTIN; when duty heads contradict the party (Input IGST on a 27-supplier), the IGST columns are silently zeroed in GSTR-3B while the ledger still carries the tax (1,215 vanished from May's return). No warning anywhere. | **Fixed** (`services/gst.ts` canonical rule: **duty-head amounts are authoritative**; classification is advisory. Contradictions are no longer silently zeroed — the IGST/CGST+SGST columns report the ledger's actual duty amounts, and `supplyMismatch` is flagged). Regression: the ₹1,215 case is a permanent check in `scripts/final_regression.py` + the engine mirror. |
-| **F-INV-01** | P3 | Inventory-only Stock Journal cannot be entered via UI (no Ledger Entries section at all) — blocked rather than supported; undocumented. | Open |
-| **O-1** | P4 | Cash/Bank "Closing" includes vouchers dated after the report's `to` date (all-time sum), while Opening respects it — period semantics inconsistent. | Open |
+| **F-INV-01** | P3 | Inventory-only Stock Journal cannot be entered via UI (no Ledger Entries section at all) — blocked rather than supported; undocumented. | **Fixed** (post-release: client save-gate exception for inventory-category vouchers with ≥1 real stock movement; server `assertLedgersTx` relaxed, `validateEntries` still authoritative; +35 checks incl. concurrency/cross-company attacks, `inv/sj-only` + `inv/ps-only` UI scenarios, in-container Docker probe). |
+| **O-1** | P4 | Cash/Bank "Closing" includes vouchers dated after the report's `to` date (all-time sum), while Opening respects it — period semantics inconsistent. | **Closed — NOT REPRODUCIBLE** (post-release investigation: Opening ≤ from−1, Movement [from,to] inclusive, Closing = Opening + Dr − Cr, future vouchers excluded; code identical to v1.0.0; controlled reproduction failed; attributed to a FY→month-end-only coverage gap). Test-only remediation: 92 sub-period/boundary/edit/backdate/delete checks, independent engine `cashBankSub`, `jun/cb-subperiod` real-browser scenario with future-contamination canary. No production Cash/Bank logic modified. |
 
 ### Reconciliation against the earlier QA pass
 

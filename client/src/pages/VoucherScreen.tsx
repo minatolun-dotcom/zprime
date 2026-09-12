@@ -183,7 +183,21 @@ export default function VoucherScreen() {
     setError("");
     if (Math.abs(diff) > 0.004) { setError(`Voucher does not balance — difference ${diff.toFixed(2)}`); return; }
     const validEntries = entries.filter((e) => e.ledgerId && Math.abs(e.amount) > 0.004);
-    if (validEntries.length === 0) { setError("Add at least one ledger entry"); return; }
+    // F-INV-01: inventory-category vouchers may be inventory-only — no accounting
+    // rows — when at least one real stock movement (item + non-zero qty) exists.
+    // All other voucher types still require ledger entries. The server enforces
+    // the same rule (validateEntries) — this is UX, not the trust boundary.
+    const validInv = vType?.category === "Inventory"
+      ? inv.filter((r) => r.itemId && Math.abs(num(r.qty)) > 1e-9)
+      : [];
+    if (validEntries.length === 0 && validInv.length === 0) {
+      setError("Add at least one ledger entry");
+      return;
+    }
+    if (vType?.category === "Inventory" && inv.some((r) => r.itemId && Math.abs(num(r.qty)) <= 1e-9)) {
+      setError("Inventory rows need a quantity");
+      return;
+    }
 
     const payload: any = {
       voucherTypeId: vType!.id,
@@ -372,7 +386,12 @@ export default function VoucherScreen() {
 
             {/* accounting entries */}
             <div>
-              <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Ledger Entries</div>
+              <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Ledger Entries
+                {vType?.category === "Inventory" && (
+                  <span className="ml-2 font-normal normal-case text-slate-400">optional for an inventory-only voucher</span>
+                )}
+              </div>
               <table className="report-table">
                 <thead>
                   <tr>

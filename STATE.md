@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-11 (v1.0.0 release baseline)
+**Last updated:** 2026-09-12 (v1.1.0 released: F-INV-01 fixed, O-1 closed as NOT REPRODUCIBLE, 622 checks green)
 
 ## What zprime is
 
@@ -8,7 +8,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**v1.0.0 — RELEASE BASELINE. 483/483 checks passed — zero failures.**
+**v1.0.0 remains tagged and untouched (483 checks). v1.1.0 is the current release: F-INV-01 fixed; O-1 closed as NOT REPRODUCIBLE (app correct, coverage added). 622/622 checks — zero failures.**
 
 ### Verification record (exact commands)
 
@@ -23,20 +23,20 @@ python3 scripts/smoke_test.py        # 39/39 passed
 python3 scripts/attack_test.py       # 88/88 passed  (adversarial)
 python3 scripts/fix_regression.py    # 65/65 passed  (BUG-001..009 regression)
 python3 scripts/reconcile.py         # 48/48 passed  (independent reconciliation)
-python3 scripts/final_regression.py  # 97/97 passed  (A-/F- findings + fix attacks)
+python3 scripts/final_regression.py  # 224/224 passed (F-INV-01 + O-1 sub-period + fix attacks)
 python3 scripts/attack2.py           # 29/29 passed  (attack-the-fixes)
 
-node scripts/acceptance/run.js       # 117/117 passed (real-browser UI acceptance,
+node scripts/acceptance/run.js       # 129/129 passed (real-browser UI acceptance,
                                      #  run from repo root; needs Chromium at
                                      #  ~/.local/bin/chromium or CHROME_PATH;
                                      #  client/dist must be built: npm run build -w client)
 
 docker compose down -v && docker compose build && docker compose up -d
-# → healthy in ~6s, migrations auto-apply on empty volume,
+# → healthy, migrations auto-apply on empty volume,
 #   endpoints verified in-container, restart preserves data
 ```
 
-Total: **483 checks + typecheck + Docker verification, 0 failures.**
+Total: **622 checks + typecheck + Docker verification, 0 failures** (was 483 at v1.0.0; +35 F-INV-01, +104 O-1 API-level, +12 O-1 UI, +12 F-INV-01 rig; none removed or weakened).
 
 ### Independent reconciliation
 
@@ -44,10 +44,10 @@ Total: **483 checks + typecheck + Docker verification, 0 failures.**
 
 ## Known non-blocking issues (open, NOT fixed)
 
-| ID | Severity | Issue |
-|---|---|---|
-| F-INV-01 | P3 | Inventory-only Stock Journal cannot be entered via the UI (no Ledger Entries section renders) — blocked rather than supported. |
-| O-1 | P4 | Cash/Bank report "Closing" is an all-time sum; "Opening" respects the period — inconsistent period semantics on that view. |
+**None open.** v1.1.0 status — both prior items are closed:
+
+- **F-INV-01 (P3) — CLOSED (2026-09-12), FIXED:** inventory-only Stock Journal and Physical Stock are enterable through the real UI. `entries: []` is valid only for inventory-category vouchers carrying ≥1 real stock movement (item + non-zero qty); accounting-only vouchers still require balanced non-zero ledger entries; negative Physical-Stock counted quantities are rejected; no artificial accounting entries are created. Verified by new regression/attack checks, real-browser UI scenarios, and an in-container Docker probe.
+- **O-1 (P4) — CLOSED (2026-09-12), NOT REPRODUCIBLE:** Phase 1 investigation proved Cash/Bank period semantics correct (Opening ≤ from−1, Movement [from,to], Closing = Opening + Dr − Cr, future vouchers excluded); code is character-identical to v1.0.0; controlled reproduction failed. Root cause of the observation: a test-coverage gap (all prior windows were FY→month-end). Remediation was test-only — 92 API-level sub-period/boundary/edit/backdate/delete checks, an independent engine `cashBankSub` snapshot, and the `jun/cb-subperiod` real-browser scenario with a future-contamination canary. **No production Cash/Bank logic was modified.**
 
 ## Architecture map
 

@@ -84,7 +84,8 @@ export const inventoryEntrySchema = z.object({
   qty: z.number().finite(),
   rate: z.number().finite().default(0),
   amount: z.number().finite().default(0),
-  kind: z.enum(["stock", "source", "target"]).default("stock"),
+  // "physical" = Physical Stock counted-qty row (stock.ts computes the diff at running avg)
+  kind: z.enum(["stock", "source", "target", "physical"]).default("stock"),
   hsnSac: z.string().max(50).nullable().optional(),
   gstRate: z.number().finite().min(0).max(100).nullable().optional(),
 });

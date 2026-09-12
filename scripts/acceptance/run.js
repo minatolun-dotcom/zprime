@@ -474,22 +474,20 @@ async function checkMonthEnd(tag) {
     { ledger: "Input SGST", dr: 900 }, { ledger: "Vision Components", cr: 11800 }],
     items: [{ item: "LED Tube 20W", qty: 200, rate: 50, amount: 10000 }] });
 
-  // INVENTORY-ONLY VOUCHER PROBE: Stock Journal with no ledger lines (Tally-style
-  // godown transfer). Server accepts these (smoke suite proves it); check whether
-  // the client allows saving — if it saves, clean up and record the finding.
+  // F-INV-01 (FIXED): inventory-only Stock Journal entered through the real UI —
+  // godown-style transfer of the same item, NO accounting legs (entries: []).
+  // Saved via the normal keyboard-first flow; engine mirrors the movements.
   {
-    // F-INV-01: the UI gives Stock Journal no ledger-entries section at all, so an
-    // inventory-only SJ cannot even be composed (blocked earlier than save).
     const saved = await D.enterVoucher({ type: "Stock Journal", date: "2026-05-26",
       items: [
-        { item: "LED Bulb 9W", qty: 50, rate: 40, kind: "source", godown: "Main Warehouse" },
-        { item: "LED Bulb 9W", qty: 50, rate: 40, kind: "target", godown: "Retail Shop" }],
-      lines: [] }).then(() => true).catch(() => false);
+        { item: "LED Bulb 9W", qty: 50, rate: 40, kind: "source" },
+        { item: "LED Bulb 9W", qty: 50, rate: 40, kind: "target" }],
+      lines: [] }).then(() => true).catch((e) => { D.record(false, "inv/sj-only", "Stock Journal (inventory-only) via UI", e.message); return false; });
     if (saved) {
-      D.record(false, "inv/sj-blocked", "Stock Journal (inventory-only) via UI", "inventory-only voucher saved — UI does not block");
-      await D.deleteVoucher("Stock Journal");
-    } else {
-      D.record(true, "inv/sj-blocked", "Stock Journal (inventory-only) blocked by UI (F-INV-01)");
+      D.record(true, "inv/sj-only", "Stock Journal (inventory-only) via UI (F-INV-01)", "saved with entries:[] — no accounting legs");
+      record({ type: "Stock Journal", date: "2026-05-26", items: [
+        { item: "LED Bulb 9W", qty: 50, rate: 40, amount: 2000, kind: "source" },
+        { item: "LED Bulb 9W", qty: 50, rate: 40, amount: 2000, kind: "target" }] });
     }
   }
 
@@ -645,14 +643,17 @@ async function checkMonthEnd(tag) {
   await accVoucher({ type: "Payment", date: "2026-06-29", narration: "Salary payment",
     lines: [{ ledger: "Salary Payable", dr: 141200 }, { ledger: "HDFC Bank", cr: 141200 }] }, "SAL-PAY");
 
-  // INVENTORY-ONLY VOUCHER PROBE: Physical Stock (counted qty) — same client behaviour
+  // F-INV-01 (FIXED): inventory-only Physical Stock entered through the real UI —
+  // counted qty, NO accounting legs. Stock engine values the diff at running avg;
+  // the independent engine mirrors the same documented semantics.
   {
-    const saved = await D.enterVoucher({ type: "Physical Stock", date: "2026-06-30", expectError: true, id: "inv/ps-blocked",
-      items: [{ item: "LED Bulb 9W", qty: 700, rate: 40 }], lines: [] })
-      .catch((e) => { D.record(false, "inv/ps-blocked", "Physical Stock (inventory-only) via UI", e.message); return false; });
+    const saved = await D.enterVoucher({ type: "Physical Stock", date: "2026-06-30", id: "inv/ps-only",
+      items: [{ item: "LED Bulb 9W", qty: 400, rate: 40 }], lines: [] })
+      .then(() => true).catch((e) => { D.record(false, "inv/ps-only", "Physical Stock (inventory-only) via UI", e.message); return false; });
     if (saved) {
-      D.record(false, "inv/ps-blocked", "Physical Stock (inventory-only) via UI", "save unexpectedly succeeded");
-      await D.deleteVoucher("Physical Stock");
+      D.record(true, "inv/ps-only", "Physical Stock (inventory-only) via UI (F-INV-01)", "counted 400, saved with entries:[]");
+      record({ type: "Physical Stock", date: "2026-06-30",
+        items: [{ item: "LED Bulb 9W", qty: 400, rate: 40, amount: 16000 }] });
     }
   }
 
@@ -663,6 +664,56 @@ async function checkMonthEnd(tag) {
   state.monthEnds.push("2026-06-30");
   await writeState();
   await checkMonthEnd("jun");
+
+  // ================= O-1: sub-period Cash/Bank via real UI =================
+  // A HISTORICAL window (May) opened while June transactions already exist.
+  // The old coverage only used FY→monthEnd windows, which could never expose a
+  // future-contaminated closing. Expectations come from the INDEPENDENT engine
+  // (cash_bank(): opening < from, movement in [from,to]) — never the app itself.
+  {
+    const Ej = (await recompute()).months["2026-06-30"]; // fresh engine snapshot incl. cashBankSub
+    const may = Ej.cashBankSub;
+    await D.openReport("cash-bank", { from: "2026-05-01", to: "2026-05-31" });
+    for (const B of may) {
+      // locate THIS ledger's card (grid layout: one card per bank/cash ledger)
+      const card = D.page().locator("div.overflow-hidden", { hasText: B.name }).first();
+      const rowCells = await card.locator("tr.row-link td").allInnerTexts();
+      const uiDr = D.inrNum(rowCells[0]);
+      const uiCr = D.inrNum(rowCells[1]);
+      const cardText = await card.innerText();
+      const uiClosing = D.inrNum((cardText.match(/Closing: (-?[\d,\.]+)/) || [])[1]);
+      D.record(uiClosing != null && close(uiClosing, B.closing), `jun/cb-subperiod-${B.name}-closing`,
+        "May-window closing with June vouchers present", `ui=${uiClosing} exp=${B.closing}`);
+      D.record(close(uiDr ?? 0, B.periodDr, 0.01) && close(uiCr ?? 0, B.periodCr, 0.01),
+        `jun/cb-subperiod-${B.name}-movement`, "May-window Period Dr/Cr", `ui=[${uiDr}/${uiCr}] exp=[${B.periodDr}/${B.periodCr}]`);
+      // drill into the ledger for the UI-rendered OPENING (cash-bank cards omit it)
+      await card.locator("tr.row-link").click();
+      await D.page().waitForSelector("text=Opening:", { timeout: 10000 });
+      await D.sleep(400);
+      const lt = await D.reportText();
+      const uiOp = D.inrNum((lt.match(/Opening: (-?[\d,\.]+)/) || [])[1]);
+      const rows = await D.reportRows();
+      const closingRow = [...rows].reverse().find((r) => r[0] === "Closing");
+      const uiLedgerClosing = closingRow ? D.inrNum(closingRow[closingRow.length - 1]) : null;
+      D.record(uiOp != null && close(uiOp, B.opening, 0.01), `jun/cb-subperiod-${B.name}-opening`,
+        "May-window opening (ledger drill-down)", `ui=${uiOp} exp=${B.opening}`);
+      D.record(uiLedgerClosing != null && close(uiLedgerClosing, B.closing, 0.01),
+        `jun/cb-subperiod-${B.name}-ledger-closing`, "Ledger statement closing for the same window", `ui=${uiLedgerClosing} exp=${B.closing}`);
+      // the identity, computed from UI-rendered numbers only
+      const uiSum = Math.round((uiOp + uiDr - uiCr) * 100) / 100;
+      D.record(close(uiSum, uiClosing, 0.01), `jun/cb-subperiod-${B.name}-identity`,
+        "UI identity: closing = opening + Dr - Cr", `${uiOp}+${uiDr}-${uiCr} = ${uiSum} vs ${uiClosing}`);
+      await D.openReport("cash-bank", { from: "2026-05-01", to: "2026-05-31" });
+    }
+    // contamination canary: the May-window closing must differ from the FY-window
+    // closing (June activity exists); UI matched the WINDOW value above.
+    for (const B of may) {
+      const fy = (Ej.cashBank || []).find((x) => x.name === B.name);
+      if (fy) D.record(Math.abs(fy.closing - B.closing) > 0.004,
+        `jun/cb-subperiod-${B.name}-distinct`, "May-window closing differs from FY closing (test distinguishes correct vs all-time)",
+        `sub=${B.closing} fy=${fy.closing}`);
+    }
+  }
 
   // ---------------- Company B: isolation probe ----------------
   await createCompanyB();

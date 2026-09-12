@@ -1,5 +1,79 @@
 # Changelog
 
+## v1.1.0 — Inventory-only vouchers and report coverage (2026-09-12)
+
+**622/622 checks passed — zero failures.** Previous baseline v1.0.0 (483 checks) remains tagged and untouched. No new tag had been created for the post-release work until this release; see sections below for the exact per-suite record.
+
+### F-INV-01 — Inventory-only Stock Journal / Physical Stock (FIXED)
+
+Inventory-category vouchers (Stock Journal, Physical Stock, Delivery/Receipt Note, Mfg Journal) may now be **inventory-only** through the real UI: zero accounting rows (`entries: []`) are accepted when at least one real stock movement (item + non-zero qty) exists. Accounting-only vouchers still require valid, balanced double-entry rows — nothing else was relaxed. A Physical Stock counted quantity cannot be negative. The inventory `kind` enum mismatch (`physical` rejected by schema though sent by the client) was corrected. No phantom accounting entries are created by inventory-only vouchers (TB/BS/P&L/GST/cash/bank/AR-AP untouched). Verified via API regression, adversarial tests, concurrency, cross-company isolation, independent reconciliation, the real browser (`inv/sj-only`, `inv/ps-only` scenarios), and a clean Docker deployment with restart persistence.
+
+### O-1 — Cash/Bank period coverage (CLOSED — NOT REPRODUCIBLE)
+
+**Production Cash/Bank closing logic was verified correct. No production Cash/Bank logic was changed.** The originally suspected all-time-closing defect does not exist: Opening is postings before `from`, Movement is `[from, to]` inclusive, Closing = Opening + Dr − Cr, and future transactions are excluded (controlled reproduction + cross-report audit; code character-identical to v1.0.0). The genuine weakness was a test-coverage gap — every prior check used FY→month-end windows, which cannot distinguish period-correct closing from an all-time sum. Additional regression and UI coverage was added to prevent recurrence: 92 API-level sub-period/boundary/edit/backdate/delete checks (mutation analysis: an all-time closing would fail April δ 1,405, May δ 913, one-day δ 1,412), an independent engine `cashBankSub` snapshot for a fixed May window, and the `jun/cb-subperiod` real-browser scenario that opens a historical report while later vouchers exist, asserting opening, Period Dr/Cr, closing, and the identity from UI-rendered numbers only. O-1 is **not** a production bug fix.
+
+### Verification record (this release)
+
+| Suite | Command | Checks | Result |
+|---|---|---|---|
+| Smoke | `python3 scripts/smoke_test.py` | 39 | PASS |
+| Adversarial attack | `python3 scripts/attack_test.py` | 88 | PASS |
+| Bug-fix regression | `python3 scripts/fix_regression.py` | 65 | PASS |
+| Independent reconciliation | `python3 scripts/reconcile.py` | 48 | PASS |
+| Final regression (F-INV-01 + O-1 + fix attacks) | `python3 scripts/final_regression.py` | 224 | PASS |
+| Attack-the-fixes | `python3 scripts/attack2.py` | 29 | PASS |
+| Real-browser UI acceptance | `node scripts/acceptance/run.js` | 129 | PASS |
+| Typecheck | `npm run typecheck` | — | PASS |
+| Docker fresh volume + restart persistence + in-container probes | `docker compose down -v && build && up -d && restart` | — | PASS |
+
+**Total: 622/622 checks — zero failures** (v1.0.0 was 483; +139, none removed or weakened).
+
+### Detailed F-INV-01 / O-1 work record
+
+### Fixed: F-INV-01 (P3) — inventory-only Stock Journal & Physical Stock via UI
+
+**Original behavior:** the client unconditionally rejected vouchers with zero ledger entries, so an inventory-only Stock Journal (godown-style transfer) or Physical Stock count could not be composed or saved through the UI, even though the server already supported them.
+
+**Correct semantics (documented):**
+- *Accounting-only* vouchers (Payment, Receipt, Journal, Sales, Purchase, …) still require ≥1 non-zero, balanced ledger entry — unchanged.
+- *Inventory-category* vouchers (Stock Journal, Physical Stock, Delivery/Receipt Note, Mfg Journal) may be **inventory-only** (`entries: []`) when at least one valid inventory row (item + non-zero qty) exists; mixed inventory + accounting vouchers behave exactly as before.
+- A Physical Stock counted quantity cannot be negative (a count is an absolute quantity).
+- No artificial accounting entries are created: TB, BS, P&L, GST, cash/bank and AR/AP are untouched by an inventory-only voucher; only stock position/valuation move (server and the independent engine share these documented semantics — the engine was not changed to force agreement).
+
+**Implementation (minimal):**
+- `server/src/routes/vouchers.ts` — `assertLedgersTx` allows zero ledger ids (reference validation for the ids that exist); `validateEntries` remains the authoritative gate and only permits the zero-entry case for inventory-category vouchers with ≥1 real movement; new `assertPhysicalRows` rejects negative counted quantities; both POST and PUT are covered.
+- `client/src/pages/VoucherScreen.tsx` — the save gate permits zero ledger rows only when the voucher type is inventory-category and a valid inventory row exists; small hint shown for inventory-only composition; ledger grid stays fully usable for mixed vouchers.
+- No changes to stock valuation, FIFO/WAV algorithms, accounting posting, numbering, bill allocation or company isolation.
+
+**Latent defect also fixed en route:** the Zod inventory-row schema accepted only `stock|source|target` while the client sends `kind: "physical"` for Physical Stock — the value is now part of the schema enum, and `stock.ts` handling of it is unchanged.
+
+### Closed: O-1 (P4) — NOT REPRODUCIBLE, coverage added
+
+Phase 1 investigation (no code changed) proved the alleged defect does not exist: Cash/Bank receives the correct `from`/`to`; Opening is postings before `from` (`≤ from−1`); Movement is `[from, to]` inclusive; Closing = Opening + Dr − Cr; future transactions are correctly excluded (controlled reproduction: April report with a May +500 voucher shows closing 10,060, not 10,560); the relevant code is character-identical to v1.0.0; the cross-report audit found no affected report. **No production Cash/Bank logic was modified.**
+
+The original observation is attributed to a coverage gap: every existing check used FY→month-end windows, which cannot distinguish period-correct closing from an all-time sum.
+
+**Test-only remediation (+128 checks):**
+- `scripts/final_regression.py` — 92 new checks on a dedicated probe ledger (opening 10,000) with boundary-placed vouchers: April window excludes May/June; May opening = April closing (continuity); one-day windows; `to`-inclusive canary (Apr 30 +7 in April, May 1 +3 in May); future canary (Jun 10 +900 excluded from every historical window); empty late window; identity `closing = opening + Dr − Cr` per window; edit-into-period (+50), backdate-out-of-period (April/May opening shift, June cumulative invariant), and delete-remove-effect propagation. Mutation analysis: an all-time closing would fail April (δ 1,405), May (δ 913) and one-day (δ 1,412) assertions.
+- `scripts/acceptance/engine.py` — `cashBankSub` snapshot: the independent engine's period-correct `cash_bank()` computed for a fixed May 1–31 window (no accounting-semantics change).
+- `scripts/acceptance/run.js` — `jun/cb-subperiod` real-browser scenario: the May Cash/Bank report opened in the browser while June vouchers exist; per-ledger UI closing/movement vs the independent engine, opening via ledger drill-down, the identity recomputed from UI-rendered numbers only, and a canary that the May-window closing differs from the FY-window closing.
+
+**Verification:**
+
+| Suite | Command | Checks | Result |
+|---|---|---|---|
+| Smoke | `python3 scripts/smoke_test.py` | 39 | PASS |
+| Adversarial attack | `python3 scripts/attack_test.py` | 88 | PASS |
+| Bug-fix regression | `python3 scripts/fix_regression.py` | 65 | PASS |
+| Independent reconciliation | `python3 scripts/reconcile.py` | 48 | PASS |
+| Final regression (incl. F-INV-01 + O-1 sub-period coverage) | `python3 scripts/final_regression.py` | 224 | PASS |
+| Attack-the-fixes | `python3 scripts/attack2.py` | 29 | PASS |
+| Real-browser UI acceptance (incl. `inv/sj-only`, `inv/ps-only`, `jun/cb-subperiod`) | `node scripts/acceptance/run.js` | 129 | PASS |
+| Typecheck | `npm run typecheck` | — | PASS |
+| Docker fresh volume + restart persistence + in-container inventory-only SJ | `docker compose down -v && build && up -d && restart` | — | PASS |
+
+**Total: 622/622 checks passed — zero failures** (baseline was 483 at v1.0.0; +35 F-INV-01 checks, +104 O-1 API-level checks within final_regression, +12 O-1 UI checks, +12 acceptance-rig checks from the F-INV-01 scenarios; none removed or weakened).
+
 ## v1.0.0 — Release Baseline (2026-09-11)
 
 Tag: `v1.0.0` · Baseline commit: see `git rev-list -n 1 v1.0.0`
@@ -38,8 +112,7 @@ Earlier hardening (BUG-001…BUG-009) is included: atomic voucher numbering, bil
 
 ### Known non-blocking issues (NOT fixed — documented, do not treat as resolved)
 
-- **F-INV-01 (P3):** An inventory-only Stock Journal (no accounting leg) cannot be entered through the UI — no Ledger Entries section renders, so the workflow is blocked rather than supported.
-- **O-1 (P4):** The Cash/Bank report's "Closing" figure is an all-time sum (includes vouchers dated after the report's `to` date) while "Opening" respects the period — period semantics are inconsistent on that view.
+- None open. O-1 (P4) is **CLOSED — NOT REPRODUCIBLE**: the application was verified correct (see the O-1 section above); only regression coverage was added.
 
 ### Accounting invariants verified at this baseline
 

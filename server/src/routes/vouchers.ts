@@ -17,9 +17,14 @@ async function assertTypeTx(tx: Tx, companyId: number, typeId: number) {
   return t;
 }
 
+/** Every referenced ledger must belong to this company. An empty ledger-id list
+ *  is NOT rejected here: F-INV-01 allows inventory-category vouchers to be
+ *  inventory-only (entries: []). Double-entry safety is enforced afterwards by
+ *  validateEntries(), which still rejects empty/unbalanced accounting vouchers —
+ *  so no other voucher type can pass with zero ledger rows. */
 async function assertLedgersTx(tx: Tx, companyId: number, ledgerIds: (number | null | undefined)[]) {
   const ids = [...new Set(ledgerIds.filter((x): x is number => typeof x === "number" && Number.isFinite(x) && x > 0))];
-  if (ids.length === 0) throw bad("Voucher needs at least one ledger entry");
+  if (ids.length === 0) return;
   const rows = await tx.select({ id: ledgers.id }).from(ledgers).where(and(eq(ledgers.companyId, companyId), inArray(ledgers.id, ids)));
   if (rows.length !== ids.length) throw bad("Unknown ledger in entries");
 }
@@ -46,9 +51,25 @@ async function assertRefsTx(tx: Tx, companyId: number, input: VoucherInput) {
 // ---------- double entry ----------
 /** Accounting vouchers reject zero-amount entries and zero totals outright.
  *  Inventory-category vouchers (Stock Journal, Physical Stock, Delivery/
- *  Receipt Note, Mfg Journal) may be inventory-only with a zero-value ledger
- *  line meaning "no accounting impact" — that is a legitimate entry.
+ *  Receipt Note, Mfg Journal) may be inventory-only (entries: []) when valid
+ *  inventory rows exist — that is a legitimate entry (F-INV-01).
  *  Still rejected: unbalanced amounts, or a completely empty voucher. */
+/** Inventory rows that represent a real movement: an item + non-zero qty.
+ *  Used to decide whether an inventory-category voucher legitimately carries
+ *  zero accounting entries (F-INV-01). */
+function validInventoryCount(input: VoucherInput): number {
+  return (input.inventoryEntries ?? []).filter((ie) => ie.itemId > 0 && Math.abs(r2(ie.qty)) >= 1e-9).length;
+}
+
+/** A physical count is an absolute quantity — a negative "counted qty" is
+ *  meaningless and would drive stock deeply negative. */
+function assertPhysicalRows(input: VoucherInput, isPhysicalType: boolean) {
+  if (!isPhysicalType) return;
+  for (const ie of input.inventoryEntries ?? []) {
+    if (ie.qty < -1e-9) throw bad("Physical Stock counted quantity cannot be negative");
+  }
+}
+
 function validateEntries(entries: { amount: number }[], inventoryCount: number, isInventoryType: boolean) {
   const total = r2(entries.reduce((s, e) => s + e.amount, 0));
   if (Math.abs(total) > 0.004) throw bad(`Debits and credits do not balance (difference ${total.toFixed(2)})`);
@@ -251,7 +272,8 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
   const type = await assertTypeTx(tx, companyId, input.voucherTypeId);
   await assertLedgersTx(tx, companyId, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
   await assertRefsTx(tx, companyId, input);
-  validateEntries(input.entries, (input.inventoryEntries ?? []).length, type.category === "Inventory");
+  assertPhysicalRows(input, type.name === "Physical Stock");
+  validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
   const number = input.number?.trim() || (await nextNumber(tx, companyId, input.voucherTypeId));
   await validateBillsTx(tx, companyId, input.entries);
 
@@ -391,7 +413,8 @@ export default async function voucherRoutes(app: FastifyInstance) {
         const type = await assertTypeTx(tx, c, input.voucherTypeId);
         await assertLedgersTx(tx, c, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
         await assertRefsTx(tx, c, input);
-        validateEntries(input.entries, (input.inventoryEntries ?? []).length, type.category === "Inventory");
+        assertPhysicalRows(input, type.name === "Physical Stock");
+        validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
         const number = input.number?.trim() || existing.number;
         await validateBillsTx(tx, c, input.entries, id);
 

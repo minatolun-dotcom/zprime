@@ -267,8 +267,8 @@ async function enterVoucher(v) {
       const table = page.locator("table").filter({ hasText: "Qty" }).last();
       const row = table.locator("tbody tr").nth(i);
       await pickAhead(row.locator("input").first(), it.item);
-      if (it.kind) await row.locator("select").first().selectOption(it.kind);
-      else if (it.godown) await row.locator("select").first().selectOption({ label: it.godown });
+      if (it.kind) await row.locator("select").nth(1).selectOption(it.kind);
+      else if (it.godown) await row.locator("select").nth(0).selectOption({ label: it.godown });
       const nums = row.locator('input[type="number"]');
       await nums.nth(0).fill(String(it.qty));
       await nums.nth(1).fill(String(it.rate));
