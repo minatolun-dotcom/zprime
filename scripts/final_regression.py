@@ -813,6 +813,308 @@ if canary_sale:
 else:
     check("R01 O: canary sale located for edit", False, "not found")
 
+# ================= R-02: voucher cancellation (Model A: mark + exclude) =================
+# Cancellation preserves the voucher row, its number and all body rows; every
+# active report/inventory/GST/bill reader already excludes isCancelled = true.
+# The strongest invariant: BEFORE cancel == AFTER uncancel, to the paisa.
+print("-- R-02: voucher cancellation --")
+import urllib.request as _ur
+opener2 = _ur.build_opener()  # no cookies — unauthenticated probes
+
+def req2(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json"} if body is not None else {}
+    r = _ur.Request(BASE + path, data=data, method=method, headers=h)
+    try:
+        with opener2.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except Exception as e:
+        return -1, {"error": str(e)}
+
+# --- fresh, self-contained masters so FIFO/WAVG numbers are controlled ---
+s, r02_cap = req("POST", f"{C}/ledgers", {"name": "R02 Capital", "groupId": g["Capital Account"]})
+s, r02_deb = req("POST", f"{C}/ledgers", {"name": "R02 Debtor", "groupId": g["Sundry Debtors"], "gstin": "27R02DEBT0R1Z9", "gstRegistrationType": "regular", "billWise": True})
+s, r02_sup = req("POST", f"{C}/ledgers", {"name": "R02 Supplier 29", "groupId": g["Sundry Creditors"], "gstin": "29R02SUPP0R1Z8", "gstRegistrationType": "regular", "billWise": True})
+s, r02_igst = req("POST", f"{C}/ledgers", {"name": "R02 IGST Duty", "groupId": g["Duties & Taxes"], "dutyHead": "IGST"})
+s, r02_cg = req("POST", f"{C}/ledgers", {"name": "R02 CGST Duty", "groupId": g["Duties & Taxes"], "dutyHead": "CGST"})
+s, r02_sg = req("POST", f"{C}/ledgers", {"name": "R02 SGST Duty", "groupId": g["Duties & Taxes"], "dutyHead": "SGST"})
+s, r02_unit = req("POST", f"{C}/units", {"name": "R02 Nos", "symbol": "R02N", "decimalPlaces": 0})
+s, r02_item = req("POST", f"{C}/stock-items", {"name": "R02 Widget", "unitId": r02_unit["id"], "hsnSac": "7777", "gstRate": "18",
+                                                "openingQty": "0", "openingRate": "0", "openingValue": "0", "costingMethod": "weighted_avg"})
+s, r02_alpha = req("POST", f"{C}/stock-items", {"name": "R02 Alpha", "unitId": r02_unit["id"], "hsnSac": "7801", "gstRate": "18",
+                                                 "openingQty": "0", "openingRate": "0", "openingValue": "0", "costingMethod": "weighted_avg"})
+s, r02_beta = req("POST", f"{C}/stock-items", {"name": "R02 Beta", "unitId": r02_unit["id"], "hsnSac": "7802", "gstRate": "18",
+                                                "openingQty": "0", "openingRate": "0", "openingValue": "0", "costingMethod": "weighted_avg"})
+check("R02 masters created", all(x in (200, 201) for x in [s]), s)
+
+# --- §28 scenario: purchase (IGST) -> sale (CGST+SGST) -> receipt against bill ---
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Purchase"], "date": "2026-06-20", "partyLedgerId": r02_sup["id"],
+    "entries": [{"ledgerId": purch["id"], "amount": 40000}, {"ledgerId": r02_igst["id"], "amount": 7200}, {"ledgerId": r02_sup["id"], "amount": -47200}],
+    "inventoryEntries": [{"itemId": r02_item["id"], "qty": 100, "rate": 400, "amount": 40000, "kind": "stock"}]})
+check("R02 purchase created (100@400 + IGST 7200)", s == 200, (s, str(v)[:150]))
+s, vtl = req("GET", f"{C}/voucher-types")
+sc_sales = next(x["shortCode"] for x in vtl if x["name"] == "Sales")
+s, r02_sale = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-21", "partyLedgerId": r02_deb["id"],
+    "entries": [{"ledgerId": r02_deb["id"], "amount": 28320, "bills": [{"billType": "new_ref", "billName": "R02-SALE-1", "amount": 28320}]},
+                {"ledgerId": sales["id"], "amount": -24000, "gstRate": 18},
+                {"ledgerId": r02_cg["id"], "amount": -2160}, {"ledgerId": r02_sg["id"], "amount": -2160}],
+    "inventoryEntries": [{"itemId": r02_item["id"], "qty": -40, "rate": 600, "amount": 24000, "kind": "stock"}]})
+check("R02 sale created (40@600 = 24000 + 2160+2160)", s == 200 and isinstance(r02_sale, dict) and r02_sale.get("id"), (s, str(r02_sale)[:150]))
+r02_sale_id = r02_sale.get("id")
+r02_sale_num = r02_sale.get("number")
+r02_bill = "R02-SALE-1"  # explicit new_ref (API clients name their own bills)
+s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Receipt"], "date": "2026-06-22",
+    "entries": [{"ledgerId": cash["id"], "amount": 10000}, {"ledgerId": r02_deb["id"], "amount": -10000, "bills": [{"billType": "against_ref", "billName": r02_bill, "amount": -10000}]}]})
+check("R02 receipt 10000 against sale bill created", s == 200, (s, str(v)[:150]))
+
+# --- helpers over the affected reports ---
+def r02_stock(item_id, to="2026-06-30"):
+    s2, ss = req("GET", f"{C}/reports/stock-summary?from=2026-04-01&to={to}")
+    row = next((r for r in ss if r.get("itemId") == item_id or r.get("id") == item_id), None) if s2 == 200 else None
+    return (row.get("closingQty", row.get("qty")), row.get("closingValue", row.get("value"))) if row else (None, None)
+
+def r02_rec():
+    s2, r = req("GET", f"{C}/reports/receivables?to=2026-06-30")
+    p = next((x for x in r.get("parties", []) if x["ledgerName"] == "R02 Debtor"), None) if s2 == 200 else None
+    return p
+
+def r02_hsn_row():
+    s2, r = req("GET", f"{C}/reports/gstr1?from=2026-06-01&to=2026-06-30")
+    if s2 != 200: return None
+    return next((h for h in r.get("hsn", []) if h["hsn"] == "7777"), None)
+
+def r02_3b():
+    s2, r = req("GET", f"{C}/reports/gstr3b?from=2026-06-01&to=2026-06-30")
+    return r if s2 == 200 else None
+
+def r02_deb_row():
+    s2, tb2 = req("GET", f"{C}/reports/trial-balance?from=2026-06-01&to=2026-06-30")
+    if s2 != 200: return None
+    row = next((x for x in tb2.get("rows", []) if x.get("name") == "R02 Debtor"), None)
+    return row
+def r02_deb_net():
+    row = r02_deb_row()
+    # signed net = debit - credit
+    return (row["debit"] - row["credit"]) if row else None
+
+def r02_cash_close():
+    s2, rows2 = req("GET", f"{C}/reports/cash-bank?from=2026-06-01&to=2026-06-30")
+    row = next((r for r in rows2 if r.get("ledgerId") == cash["id"]), None) if s2 == 200 and isinstance(rows2, list) else None
+    return row.get("closing") if row else None
+
+# --- BEFORE snapshot ---
+(opp, ovv) = r02_stock(r02_item["id"])
+rec_before = r02_rec()
+hsn_before = r02_hsn_row()
+b3b = r02_3b()
+dc_before = r02_deb_net()
+cc_before = r02_cash_close()
+check("R02 BEFORE: stock 60 @ value 24000 (FIFO 60x400)", opp == 60 and r2(ovv or 0) == 24000, (opp, ovv))
+check("R02 BEFORE: debtor bill open 18320", rec_before is not None and r2(rec_before["total"]) == 18320, rec_before)
+check("R02 BEFORE: HSN 7777 qty 40 taxable 24000 rate 18",
+      hsn_before is not None and hsn_before["qty"] == 40 and hsn_before["taxable"] == 24000 and hsn_before["rate"] == 18, hsn_before)
+check("R02 BEFORE: GSTR-3B outward CGST/SGST present", b3b is not None and r2(b3b["outward"]["cgst"]) >= 2160 and r2(b3b["outward"]["sgst"]) >= 2160, b3b and b3b.get("outward"))
+s, r02_tb_full = req("GET", f"{C}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+r02_tb_before = (r02_tb_full["totalDebit"], r02_tb_full["totalCredit"])
+r02_tb_diff = r2(r02_tb_full["totalDebit"] - r02_tb_full["totalCredit"])  # constant opening-balance skew (O-1 probe ledger), must never drift
+
+# --- guards that must fire BEFORE the cancellation flow mutates state ---
+s, b = req("POST", f"{C}/vouchers/{r02_sale_id}/cancel", {"reason": 123})
+check("R02 guard: non-string reason -> 400", s == 400, (s, str(b)[:100]))
+s, b = req2("POST", f"{C}/vouchers/{r02_sale_id}/cancel", {"reason": "x"})
+check("R02 guard: unauthenticated cancel -> 401", s == 401, (s, str(b)[:100]))
+s, b = req("POST", f"{CB}/vouchers/{r02_sale_id}/cancel", {})
+check("R02 guard: cross-company cancel -> 404 (no existence leak)", s == 404, (s, str(b)[:100]))
+s, b = req("POST", f"{C}/vouchers/999999/cancel", {})
+check("R02 guard: nonexistent id -> 404", s == 404, (s, str(b)[:100]))
+s, b = req("POST", f"{C}/vouchers/abc/cancel", {})
+check("R02 guard: malformed id -> clean 4xx", s in (400, 404), (s, str(b)[:100]))
+s, v2 = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Journal"], "date": "2026-06-23", "entries": [{"ledgerId": cash["id"], "amount": 1}, {"ledgerId": r02_cap["id"], "amount": -1}]})
+s, _ = req("DELETE", f"{C}/vouchers/{v2['id']}")
+s, b = req("POST", f"{C}/vouchers/{v2['id']}/cancel", {})
+check("R02 guard: cancel deleted voucher -> 404", s == 404, (s, str(b)[:100]))
+
+# settled-bill guard: cancelling the RECEIPT (which settles the active sale bill) -> 409
+s, rec_list = req("GET", f"{C}/vouchers?from=2026-06-22&to=2026-06-22&type={vt['Receipt']}")
+r02_receipt_id = rec_list[0]["id"] if rec_list else None
+check("R02 setup: receipt located", r02_receipt_id is not None, rec_list)
+if r02_receipt_id:
+    s, b = req("POST", f"{C}/vouchers/{r02_receipt_id}/cancel", {})
+    check("R02 guard: cancel of voucher holding against_ref settlements -> 409", s == 409, (s, str(b)[:140]))
+
+# --- CANCEL the sale (settled bill does NOT block cancellation — Model A) ---
+s, b = req("POST", f"{C}/vouchers/{r02_sale_id}/cancel", {"reason": "  R02 acceptance cancel  "})
+check("R02 cancel sale -> 200", s == 200 and b.get("isCancelled") is True, (s, str(b)[:120]))
+s, full = req("GET", f"{C}/vouchers/{r02_sale_id}")
+check("R02 cancelled voucher: number preserved + reason trimmed + timestamp set",
+      full.get("number") == r02_sale_num and full.get("cancelReason") == "R02 acceptance cancel" and bool(full.get("cancelledAt")),
+      {k: full.get(k) for k in ("number", "cancelReason", "cancelledAt")})
+check("R02 cancelled voucher: body rows survive (entries + inventory intact)",
+      len(full.get("entries", [])) == 4 and len(full.get("inventoryEntries", [])) == 1, (len(full.get("entries", [])), len(full.get("inventoryEntries", []))))
+s, b = req("POST", f"{C}/vouchers/{r02_sale_id}/cancel", {})
+check("R02 guard: double cancel -> 409", s == 409, (s, str(b)[:100]))
+s, b = req("PUT", f"{C}/vouchers/{r02_sale_id}", {"voucherTypeId": vt["Sales"], "date": "2026-06-21", "number": r02_sale_num,
+    "entries": [{"ledgerId": r02_deb["id"], "amount": 1}, {"ledgerId": sales["id"], "amount": -1}]})
+check("R02 guard: edit cancelled voucher -> 409", s == 409, (s, str(b)[:110]))
+s, b = req("DELETE", f"{C}/vouchers/{r02_sale_id}")
+check("R02 guard: delete cancelled voucher -> 409", s == 409, (s, str(b)[:110]))
+
+# effects disappear
+(ap, av) = r02_stock(r02_item["id"])
+check("R02 AFTER CANCEL: stock restored to 100 @ 40000", ap == 100 and r2(av or 0) == 40000, (ap, av))
+rec_after = r02_rec()
+# The receipt's settlement SURVIVES the sale's cancellation (Model A keeps bill
+# rows); billWiseOutstanding renders it under its own bill name as a party
+# credit. The sale's open +18320 bill must vanish from the active population.
+check("R02 AFTER CANCEL: debtor outstanding = -10000 (settlement visible, open sale bill gone)",
+      rec_after is not None and r2(rec_after["total"]) == -10000
+      and not any(r2(x["amount"]) == 18320 for x in rec_after["bills"]), rec_after)
+check("R02 AFTER CANCEL: HSN 7777 row gone", r02_hsn_row() is None, r02_hsn_row())
+a3b = r02_3b()
+check("R02 AFTER CANCEL: GSTR-3B outward CGST/SGST drop by exactly the sale's duty",
+      a3b is not None and r2(b3b["outward"]["cgst"] - a3b["outward"]["cgst"]) == 2160 and r2(b3b["outward"]["sgst"] - a3b["outward"]["sgst"]) == 2160,
+      (b3b["outward"], a3b and a3b.get("outward")))
+check("R02 AFTER CANCEL: GSTR-3B ITC untouched", a3b is not None and r2(a3b["itc"]["igst"]) == r2(b3b["itc"]["igst"]), (b3b["itc"], a3b and a3b.get("itc")))
+dc_after = r02_deb_net()
+check("R02 AFTER CANCEL: debtor net (Dr-Cr) drops by exactly 28320", dc_before is not None and r2(dc_before - dc_after) == 28320, (dc_before, dc_after))
+check("R02 AFTER CANCEL: cash closing unchanged (credit sale)", r2(cc_before or 0) == r2(r02_cash_close() or 0), (cc_before, r02_cash_close()))
+s, r02_tb_mid = req("GET", f"{C}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+check("R02 AFTER CANCEL: TB Dr-Cr unchanged (balance preserved; totals legitimately drop by the sale's net effect)",
+      r2(r02_tb_mid["totalDebit"] - r02_tb_mid["totalCredit"]) == r02_tb_diff, (r02_tb_diff, r02_tb_mid))
+s, dl = req("GET", f"{C}/vouchers?from=2026-06-21&to=2026-06-21&type={vt['Sales']}")
+check("R02 Day Book still lists cancelled voucher with flag", any(x["id"] == r02_sale_id and x.get("isCancelled") for x in dl), dl)
+
+# --- UNCANCEL: state must return EXACTLY to BEFORE (no mutations in between) ---
+s, b = req("POST", f"{C}/vouchers/{r02_sale_id}/uncancel", {})
+check("R02 uncancel sale -> 200", s == 200, (s, str(b)[:120]))
+(uq, uv) = r02_stock(r02_item["id"])
+check("R02 AFTER UNCANCEL: stock == before (60 @ 24000)", uq == opp and r2(uv or 0) == r2(ovv or 0), (uq, uv))
+rec_unc = r02_rec()
+check("R02 AFTER UNCANCEL: receivables == before (bill open 18320, no On Account)",
+      rec_unc is not None and r2(rec_unc["total"]) == r2(rec_before["total"]) and
+      any(x["billName"] == r02_bill and r2(x["amount"]) == 18320 for x in rec_unc["bills"]), rec_unc)
+h_unc = r02_hsn_row()
+check("R02 AFTER UNCANCEL: HSN row == before (qty/taxable/rate)",
+      h_unc is not None and hsn_before is not None and h_unc["qty"] == hsn_before["qty"] and h_unc["taxable"] == hsn_before["taxable"] and h_unc["rate"] == hsn_before["rate"], h_unc)
+u3b = r02_3b()
+check("R02 AFTER UNCANCEL: GSTR-3B == before",
+      u3b is not None and all(r2(u3b["outward"][k]) == r2(b3b["outward"][k]) for k in ("taxable", "igst", "cgst", "sgst", "cess"))
+      and all(r2(u3b["itc"][k]) == r2(b3b["itc"][k]) for k in ("igst", "cgst", "sgst", "cess")),
+      (b3b, u3b))
+check("R02 AFTER UNCANCEL: debtor net == before", r2(r02_deb_net() or 0) == r2(dc_before or 0), (dc_before, r02_deb_net()))
+check("R02 AFTER UNCANCEL: cash closing == before", r2(r02_cash_close() or 0) == r2(cc_before or 0), (cc_before, r02_cash_close()))
+s, full2 = req("GET", f"{C}/vouchers/{r02_sale_id}")
+check("R02 AFTER UNCANCEL: metadata cleared", full2.get("isCancelled") is False and full2.get("cancelledAt") is None and full2.get("cancelReason") is None, {k: full2.get(k) for k in ("isCancelled", "cancelledAt", "cancelReason")})
+s, r02_tb_restored = req("GET", f"{C}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+check("R02 AFTER UNCANCEL: TB totals restored EXACTLY to before (totalDebit/totalCredit)",
+      (r02_tb_restored["totalDebit"], r02_tb_restored["totalCredit"]) == r02_tb_before, (r02_tb_before, (r02_tb_restored["totalDebit"], r02_tb_restored["totalCredit"])))
+s, b = req("POST", f"{C}/vouchers/{r02_sale_id}/uncancel", {})
+check("R02 guard: uncancel of active voucher -> 409", s == 409, (s, str(b)[:100]))
+
+# numbering: counter never rewound (AFTER the equality checks — this adds state)
+s, v3 = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-24", "partyLedgerId": r02_deb["id"],
+    "entries": [{"ledgerId": r02_deb["id"], "amount": 100}, {"ledgerId": sales["id"], "amount": -100}]})
+check("R02 numbering: cancelled number never reused", s == 200 and isinstance(v3, dict) and v3.get("number") not in (None, r02_sale_num), (r02_sale_num, v3.get("number") if isinstance(v3, dict) else v3))
+
+# concurrency: 3 simultaneous cancels of one voucher — exactly one 200, rest 409
+s, v4 = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Journal"], "date": "2026-06-24", "entries": [{"ledgerId": cash["id"], "amount": 2}, {"ledgerId": r02_cap["id"], "amount": -2}]})
+import concurrent.futures as _cf
+def _canceller(_i):
+    return req("POST", f"{C}/vouchers/{v4['id']}/cancel", {})[0]
+with _cf.ThreadPoolExecutor(max_workers=3) as ex:
+    codes = list(ex.map(_canceller, range(3)))
+check("R02 concurrency: 3 parallel cancels -> one 200 + two 409, no 5xx",
+      codes.count(200) == 1 and codes.count(409) == 2, codes)
+
+# --- payroll cancellation (delete blocked; month guard preserved) ---
+s, r02_emp = req("POST", f"{C}/employees", {"name": "R02 Emp", "isActive": True})
+s, r02_sal = req("POST", f"{C}/ledgers", {"name": "R02 Salaries", "groupId": g["Indirect Expenses"]})
+s, r02_ph = req("POST", f"{C}/pay-heads", {"name": "R02 Basic", "type": "earning", "ledgerId": r02_sal["id"]})
+s, _ = req("PUT", f"{C}/salary-structure/{r02_emp['id']}", {"lines": [{"headId": r02_ph["id"], "monthlyAmount": 10000}]})
+s, r02_pay = req("POST", f"{C}/payroll/process", {"month": "2026-05"})
+check("R02 payroll May processed", s == 200 and r02_pay.get("voucherId"), (s, str(r02_pay)[:120]))
+if s == 200 and r02_pay.get("voucherId"):
+    pid = r02_pay["voucherId"]
+    s, b = req("DELETE", f"{C}/vouchers/{pid}")
+    check("R02 payroll voucher hard-delete blocked (payslip cascade guard)", s == 409, (s, str(b)[:140]))
+    s, b = req("POST", f"{C}/vouchers/{pid}/cancel", {"reason": "R02 payroll cancel"})
+    check("R02 payroll voucher cancel -> 200", s == 200, (s, str(b)[:120]))
+    s, sr = req("GET", f"{C}/reports/salary-register?month=2026-05")
+    check("R02 Salary Register excludes cancelled payroll", s == 200 and len(sr) == 0, (s, str(sr)[:120]))
+    s, b = req("POST", f"{C}/payroll/process", {"month": "2026-05"})
+    check("R02 payroll re-run still blocked while voucher cancelled", s == 400, (s, str(b)[:120]))
+    s, b = req("POST", f"{C}/vouchers/{pid}/uncancel", {})
+    check("R02 payroll uncancel -> 200", s == 200, (s, str(b)[:120]))
+    s, sr = req("GET", f"{C}/reports/salary-register?month=2026-05")
+    check("R02 Salary Register shows restored payroll (2 employees)", s == 200 and len(sr) == 2, (s, str(sr)[:120]))
+
+# --- every inventory voucher type: cancel removes active movement, uncancel restores ---
+# Each roundtrip is fully self-contained: a seed RN brings the item to its base
+# state, the tested voucher is cancelled/uncancelled, then BOTH seed and tested
+# voucher are deleted so nothing leaks into the next roundtrip.
+def r02_move(vtype, date, inv_rows, entries=None):
+    return req("POST", f"{C}/vouchers", {"voucherTypeId": vt[vtype], "date": date, "entries": entries or [], "inventoryEntries": inv_rows})
+
+def r02_roundtrip(label, vtype, date, inv_rows, entries, qty_on, val_on, qty_off, val_off, item_id, seed_item, seed_qty=7, seed_rate=50):
+    s0, seed = r02_move("Receipt Note", "2026-06-25", [{"itemId": seed_item, "qty": seed_qty, "rate": seed_rate, "amount": seed_qty * seed_rate, "kind": "stock"}])
+    if s0 != 200:
+        check(f"R02 {label}: seed created", False, str(seed)[:130]); return
+    s2, v5 = r02_move(vtype, date, inv_rows, entries)
+    check(f"R02 {label}: voucher created", s2 == 200, (s2, str(v5)[:130]))
+    if s2 != 200:
+        req("DELETE", f"{C}/vouchers/{seed['id']}"); return
+    (q1, w1) = r02_stock(item_id)
+    check(f"R02 {label}: active effect (qty {qty_on}, value {val_on})", q1 == qty_on and r2(w1 or 0) == r2(val_on), (q1, w1))
+    s2, _ = req("POST", f"{C}/vouchers/{v5['id']}/cancel", {})
+    check(f"R02 {label}: cancel 200", s2 == 200, s2)
+    (q2, w2) = r02_stock(item_id)
+    check(f"R02 {label}: cancelled -> qty {qty_off}, value {val_off}", q2 == qty_off and r2(w2 or 0) == r2(val_off), (q2, w2))
+    s2, _ = req("POST", f"{C}/vouchers/{v5['id']}/uncancel", {})
+    check(f"R02 {label}: uncancel 200", s2 == 200, s2)
+    (q3, w3) = r02_stock(item_id)
+    check(f"R02 {label}: uncancel restores exactly", q3 == qty_on and r2(w3 or 0) == r2(val_on), (q3, w3))
+    req("DELETE", f"{C}/vouchers/{v5['id']}")   # tested voucher gone
+    req("DELETE", f"{C}/vouchers/{seed['id']}")  # seed gone — clean slate
+
+# Receipt Note +7 -> cancel -> 0 -> uncancel -> 7 (value at declared rate 50)
+r02_roundtrip("RN", "Receipt Note", "2026-06-26", [{"itemId": r02_alpha["id"], "qty": 7, "rate": 50, "amount": 350, "kind": "stock"}], None, 14, 700, 7, 350, r02_alpha["id"], r02_alpha["id"])
+# Delivery Note: seed 7, DN -4 -> 3 left @50
+r02_roundtrip("DN", "Delivery Note", "2026-06-26", [{"itemId": r02_alpha["id"], "qty": -4, "rate": 50, "amount": 200, "kind": "stock"}], None, 3, 150, 7, 350, r02_alpha["id"], r02_alpha["id"])
+# Stock Journal: seed 7; move -6 alpha -> +6 beta (alpha 1@50; beta 6@50)
+r02_roundtrip("SJ", "Stock Journal", "2026-06-27",
+              [{"itemId": r02_alpha["id"], "qty": -6, "rate": 50, "amount": 300, "kind": "source"}, {"itemId": r02_beta["id"], "qty": 6, "rate": 50, "amount": 300, "kind": "target"}],
+              None, 1, 50, 7, 350, r02_alpha["id"], r02_alpha["id"])
+# Physical Stock on beta: seed 7@50, count 9 -> +2 @ running avg 50 => 9@450
+r02_roundtrip("PS", "Physical Stock", "2026-06-28", [{"itemId": r02_beta["id"], "qty": 9, "rate": 0, "amount": 0, "kind": "physical"}], None,
+              9, 450, 7, 350, r02_beta["id"], r02_beta["id"])
+# Manufacturing Journal: seed 7@50, target +2@50 -> 9@450
+r02_roundtrip("MJ", "Manufacturing Journal", "2026-06-29", [{"itemId": r02_beta["id"], "qty": 2, "rate": 50, "amount": 100, "kind": "target"}], None, 9, 450, 7, 350, r02_beta["id"], r02_beta["id"])
+
+# --- cheque register respects cancellation (route lives at /cheque-register) ---
+s, v5 = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Payment"], "date": "2026-06-26", "chequeNumber": "CH-R02", "chequeDate": "2026-06-26",
+    "entries": [{"ledgerId": rent["id"], "amount": 500}, {"ledgerId": cash["id"], "amount": -500}]})
+check("R02 cheque payment created", s == 200, (s, str(v5)[:100]))
+s, cr = req("GET", f"{C}/cheque-register?from=2026-06-01&to=2026-06-30")
+check("R02 cheque register lists active cheque", s == 200 and any(x.get("chequeNumber") == "CH-R02" for x in cr), str(cr)[:150])
+req("POST", f"{C}/vouchers/{v5['id']}/cancel", {})
+s, cr = req("GET", f"{C}/cheque-register?from=2026-06-01&to=2026-06-30")
+check("R02 cheque register excludes cancelled cheque", s == 200 and not any(x.get("chequeNumber") == "CH-R02" for x in cr), str(cr)[:150])
+req("POST", f"{C}/vouchers/{v5['id']}/uncancel", {})
+s, cr = req("GET", f"{C}/cheque-register?from=2026-06-01&to=2026-06-30")
+check("R02 cheque register shows restored cheque", s == 200 and any(x.get("chequeNumber") == "CH-R02" for x in cr), str(cr)[:150])
+
+# final: no TB drift after the whole R-02 block (absolute totals legitimately
+# grew with balanced probes — payroll, numbering sale, cheque payment; the
+# Dr-Cr difference must be identical to before, proving zero net drift)
+s, r02_tb_fin = req("GET", f"{C}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+check("R02 final: TB Dr-Cr unchanged after all cancel/uncancel round-trips (no drift)",
+      r2(r02_tb_fin["totalDebit"] - r02_tb_fin["totalCredit"]) == r02_tb_diff, (r02_tb_diff, r02_tb_fin))
+
 # ================= company isolation sanity =================
 print("-- isolation & numbering intact --")
 s, recB = req("GET", f"{CB}/reports/receivables?to=2026-05-31")

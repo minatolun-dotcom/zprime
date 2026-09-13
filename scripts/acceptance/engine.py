@@ -64,6 +64,11 @@ class Engine:
         for v in state["vouchers"]:
             if v.get("_deleted"):
                 continue
+            # R-02 cancellation semantics: a cancelled voucher is INACTIVE — it
+            # contributes to no active report, inventory movement, GST figure or
+            # bill. Model A (mark + exclude), exactly like the application.
+            if v.get("_cancelled"):
+                continue
             lines = []
             for e in self.lines_of(v):
                 if "amount" not in e:

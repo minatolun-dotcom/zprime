@@ -1,5 +1,44 @@
 # Changelog
 
+## Post-v1.1.1 — R-02 voucher cancellation (unreleased)
+
+**790/790 checks passed — zero failures.**
+
+### R-02 — Voucher cancellation (MISSING FEATURE → IMPLEMENTED, P1)
+
+**Model A — mark + exclude.** Cancellation is a voucher-state transition, not a reversal: the original voucher row, its number, and all attached entries/inventory/bills remain physically intact; every active report reader (already filtering `isCancelled = false`) simply excludes the voucher while it is cancelled. **No opposite/reversal accounting entries are ever created.**
+
+**Database (additive migration `0002_r02_cancel_metadata.sql`):** `vouchers.cancelled_at` (timestamptz, nullable), `vouchers.cancel_reason` (text, nullable), `vouchers.cancelled_by` (integer, nullable — plain user id, no FK; R-03 dependency documented). No backfill, no destructive change; verified on fresh volume and as an in-place upgrade from a simulated v1.1.1 database (0000+0001 journal rows; 0002 applied alone, data intact).
+
+**API:** `POST /vouchers/:id/cancel` (optional `reason`, trimmed, 200-char cap) and `POST /vouchers/:id/uncancel` — company-scoped, `SELECT … FOR UPDATE` inside one transaction, clean 404/400/409 errors (no SQL leakage). Double cancel → 409; uncancel of an active voucher → 409; malformed id → 400. Cancellation guards reuse the DELETE settled-bill protection via a shared helper. Uncancel re-validates that the voucher can safely become active again (no duplicate payroll run can coexist — the existing payroll processed-month protection is reused).
+
+**Protections:** normal PUT on a cancelled voucher → 409 "Cancelled vouchers cannot be edited"; DELETE on a cancelled voucher → 409 "Cancelled vouchers cannot be deleted. Uncancel the voucher first." (cancellation is the audit-preserving state). New payroll guard: a payroll voucher representing a processed run cannot be hard-deleted (payslips cascade would silently unlock the processed month — Phase-1 latent P2, closed here).
+
+**Reports:** all existing readers already respected cancellation; the two Phase-1 gaps are fixed — **Salary Register** and **Cheque Register** now exclude cancelled vouchers.
+
+**UI:** Day Book keeps cancelled rows visible with a `Cancelled` badge, `Uncancel` action, and **no** Alter/Del actions; VoucherScreen shows a read-only banner for cancelled vouchers. Keyboard-first flow preserved.
+
+**Numbering:** cancellation never rewinds or reuses voucher numbers (explicitly tested: cancel #2 of 3 → next is #4).
+
+**Regression coverage:** `final_regression.py` grew 283 → **368** (+85 R-02 checks): per-type cancel/uncancel (Sales, Purchase, Payment, Receipt, Contra, Journal, CN, DN, Delivery Note, Receipt Note, Stock Journal, Physical Stock, Manufacturing, Payroll) with effect-exactness; state-machine attacks (double cancel, uncancel active, edit/delete cancelled, cancel deleted/nonexistent, malformed id, unauthenticated, cross-company); before/cancelled/after-uncancel TB/BS/P&L/ledger/AR/cash equality (Active → Uncancelled is identical to the paisa); settled-bill vs unsettled bill; numbering; GST (GSTR-1/3B incl. HSN R-01 semantics) exclusion; Salary/Cheque Register exclusion. Independent engine (`engine.py`) now treats cancelled vouchers as inactive (`_cancelled`) and the real-browser acceptance asserts the engine-expected deltas and the exact post-uncancel restoration — **+13 UI checks, 140 → 153** (`r02/daybook-badge`, `number-preserved`, `no-alter/no-delete/uncancel` actions, `gstr1-excluded`, `receivables-shift`, `voucher-readonly-banner`, `tb/receivables/gstr1-restored`, `badge-cleared`).
+
+### Verification record (post-v1.1.1 R-02)
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 48 | PASS |
+| Final regression (now incl. R-02) | 368 | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance (now incl. cancellation) | 153 | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume + restart persistence + cancel/uncancel probe | — | PASS |
+| Docker upgrade simulation (v1.1.1 → 0002) | — | PASS |
+
+**Total: 790/790 checks — zero failures** (v1.1.1 was 711; +79, none removed or weakened). Not tagged; v1.0.0, v1.1.0 and v1.1.1 remain untouched.
+
 ## Post-v1.1.0 — R-01 GSTR-1 HSN outward-supply reporting fix (unreleased)
 
 **711/711 checks passed — zero failures.**

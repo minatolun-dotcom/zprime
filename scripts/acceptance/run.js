@@ -33,6 +33,8 @@ const state = {
 };
 const record = (v) => { state.vouchers.push({ seq: ++state.seq, ...v }); };
 const markDeleted = (ref) => { const v = state.vouchers.find((x) => x.reference === ref && !x._deleted); if (v) v._deleted = true; };
+// R-02: cancellation flag for the independent engine (Model A: cancelled = inactive)
+const markCancelled = (ref, flag = true) => { const v = state.vouchers.find((x) => x.reference === ref && !x._deleted); if (v) v._cancelled = flag; };
 const editState = (ref, patch) => Object.assign(state.vouchers.find((x) => x.reference === ref && !x._deleted) || {}, patch);
 
 async function writeState() {
@@ -739,6 +741,97 @@ async function checkMonthEnd(tag) {
         `jun/cb-subperiod-${B.name}-distinct`, "May-window closing differs from FY closing (test distinguishes correct vs all-time)",
         `sub=${B.closing} fy=${fy.closing}`);
     }
+  }
+
+  // ================= R-02: voucher cancellation via real UI =================
+  // Cancel a May Credit Note through the Day Book; verify badge, preserved
+  // number, report exclusion (independently expected), protections, then
+  // uncancel and verify the state returns EXACTLY to before.
+  {
+    const cn = state.vouchers.find((x) => x.reference === "CN-1" && !x._deleted);
+    if (!cn) throw new Error("CN-1 not found for R-02 scenario");
+
+    // --- engine expectation BEFORE (with CN active) ---
+    const E0 = await recompute();
+    const jun0 = E0.months["2026-06-30"];
+    const tb0 = jun0.tb; const g1_0 = jun0.gstr3bAppCum; const rec0 = jun0.receivables;
+
+    // --- CANCEL through the real UI (confirm dialog auto-accepted) ---
+    await D.page().goto(`${BASE_URL}/company/${D.cid()}/daybook`);
+    await D.page().waitForSelector("table tbody tr");
+    D.page().once("dialog", (d) => d.accept()); // cancel confirm (reason prompt: accept with empty reason)
+    const cnRow = D.page().locator("table tbody tr", { hasText: "Credit Note" }).filter({ hasText: "2,360" }).first();
+    await cnRow.locator('button:has-text("Cancel")').click();
+    await D.sleep(800);
+    // badge + row still present + number preserved
+    const rowText = await cnRow.innerText().catch(() => "");
+    D.record(/Cancelled/.test(rowText), "r02/daybook-badge", "Day Book shows Cancelled badge on the cancelled voucher", rowText.slice(0, 120));
+    D.record(rowText.includes(cn.number), "r02/number-preserved", "Cancelled voucher keeps its voucher number in Day Book", `num=${cn.number}`);
+    // actions: no Alter / no Del on a cancelled row
+    D.record(!(await cnRow.locator('a:has-text("Alter")').count()), "r02/no-alter-action", "Cancelled row offers no Alter action");
+    D.record(!(await cnRow.locator('button:has-text("Del")').count()), "r02/no-delete-action", "Cancelled row offers no Del action");
+    D.record(!!(await cnRow.locator('button:has-text("Uncancel")').count()), "r02/uncancel-action", "Cancelled row offers Uncancel action");
+    markCancelled("CN-1");
+    await writeState();
+
+    // --- reports exclude the cancelled CN: independent engine expectation ---
+    // CN-1 is dated in MAY, so the exclusion must be asserted on the FY-cumulative
+    // mirrors (jun*.gstr3bAppCum totals / receivables at 2026-06-30), not the June
+    // month window.
+    const E1 = await recompute();
+    const jun1 = E1.months["2026-06-30"];
+    const g1_1 = jun1.gstr3bAppCum;
+    const cnAmount = 2360;
+    const outTotal = (g) => g.outward.taxable + g.outward.igst + g.outward.cgst + g.outward.sgst;
+    D.record(close(outTotal(g1_0) - outTotal(g1_1), cnAmount, 0.02),
+      "r02/gstr1-excluded", "FY outward total drops by exactly the cancelled CN (engine-expected)",
+      `before=${outTotal(g1_0)} after=${outTotal(g1_1)}`);
+    // receivables: Sharma's CN credit removed → Sharma outstanding increases by 2360
+    const sharma0 = rec0["Sharma Electricals"];
+    const sharma1 = jun1.receivables["Sharma Electricals"];
+    D.record(sharma0 && sharma1 && close(sharma1.total - sharma0.total, cnAmount, 0.02),
+      "r02/receivables-shift", "Receivables shift by exactly +2360 when the CN is cancelled (engine-expected)",
+      `before=${sharma0 && sharma0.total} after=${sharma1 && sharma1.total}`);
+    // Day Book via API still lists the voucher with the flag (server truth)
+    const daybookApi = await D.getJson(`/api/c/${D.cid()}/vouchers?from=2026-05-01&to=2026-05-31`);
+    const cnApi = daybookApi.find((x) => x.number === cn.number && x.typeName === "Credit Note");
+    D.record(cnApi && cnApi.isCancelled === true, "r02/daybook-api-flag", "Day Book API still lists the voucher with isCancelled=true");
+
+    // --- edit protection through the UI: opening a cancelled voucher shows read-only banner ---
+    await D.page().goto(`${BASE_URL}/company/${D.cid()}/voucher/${cnApi.id}/edit`);
+    await D.page().waitForSelector("text=Ledger Entries");
+    const banner = D.page().locator("text=Cancelled voucher").first();
+    D.record(await banner.isVisible().catch(() => false), "r02/voucher-readonly-banner", "Voucher screen shows cancelled/read-only banner");
+    await D.page().keyboard.press("Escape");
+    await D.sleep(300);
+
+    // --- UNCANCEL through the real UI (confirm dialog auto-accepted) ---
+    await D.page().goto(`${BASE_URL}/company/${D.cid()}/daybook`);
+    await D.page().waitForSelector("table tbody tr");
+    D.page().once("dialog", (d) => d.accept()); // uncancel confirm
+    const cnRow2 = D.page().locator("table tbody tr", { hasText: "Credit Note" }).filter({ hasText: "2,360" }).first();
+    await cnRow2.locator('button:has-text("Uncancel")').click();
+    await D.sleep(800);
+    markCancelled("CN-1", false);
+    await writeState();
+
+    // --- state restored EXACTLY (engine + UI) ---
+    const E2 = await recompute();
+    const jun2 = E2.months["2026-06-30"];
+    D.record(close(jun2.tb.totalDebit, tb0.totalDebit, 0.01) && close(jun2.tb.totalCredit, tb0.totalCredit, 0.01),
+      "r02/tb-restored", "TB restored exactly after uncancel (engine)",
+      `before=${tb0.totalDebit}/${tb0.totalCredit} after=${jun2.tb.totalDebit}/${jun2.tb.totalCredit}`);
+    const rec2 = jun2.receivables;
+    const sharma2 = rec2["Sharma Electricals"];
+    D.record(sharma0 && sharma2 && close(sharma2.total, sharma0.total, 0.01),
+      "r02/receivables-restored", "Receivables restored exactly after uncancel (engine)",
+      `before=${sharma0 && sharma0.total} after=${sharma2 && sharma2.total}`);
+    const g1_2 = jun2.gstr3bAppCum;
+    D.record(close(outTotal(g1_2), outTotal(g1_0), 0.02),
+      "r02/gstr1-restored", "FY outward total restored exactly after uncancel (engine)");
+    // UI: badge gone
+    const rowText2 = await cnRow2.innerText().catch(() => "");
+    D.record(!/Cancelled/.test(rowText2), "r02/badge-cleared", "Cancel badge cleared after uncancel");
   }
 
   // ---------------- Company B: isolation probe ----------------

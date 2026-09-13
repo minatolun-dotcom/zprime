@@ -25,3 +25,9 @@ export const get = <T = any>(path: string) => api<T>(path);
 export const post = <T = any>(path: string, body: unknown) => api<T>(path, { method: "POST", body: JSON.stringify(body) });
 export const put = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });
 export const del = <T = any>(path: string) => api<T>(path, { method: "DELETE" });
+// R-02 voucher cancellation — explicit state transitions (not part of the
+// voucher PUT schema). Reason is optional and capped server-side.
+export const cancelVoucher = (cid: string | number, id: number | string, reason?: string) =>
+  post(`/api/c/${cid}/vouchers/${id}/cancel`, reason ? { reason } : {});
+export const uncancelVoucher = (cid: string | number, id: number | string) =>
+  api(`/api/c/${cid}/vouchers/${id}/uncancel`, { method: "POST", body: JSON.stringify({}) });

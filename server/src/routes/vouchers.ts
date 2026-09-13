@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
-  stockItems, godowns, tdsSections, voucherCounters,
+  stockItems, godowns, tdsSections, voucherCounters, payslips,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
@@ -121,6 +121,49 @@ async function lockPartyLedgers(tx: Tx, entries: { ledgerId: number; bills?: { b
   const ids = [...new Set(entries.filter((e) => (e.bills?.length ?? 0) > 0).map((e) => e.ledgerId))].sort((a, b) => a - b);
   if (ids.length === 0) return;
   await tx.select({ id: ledgers.id }).from(ledgers).where(inArray(ledgers.id, ids)).for("update");
+}
+
+// ---------- shared settled-bill guard (R-02) ----------
+/** R-02: DELETE and CANCEL share ONE settled-bill integrity rule.
+ *
+ *  DELETE: blocking is correct — deleting a voucher physically destroys its bill
+ *  rows, so settlements by other vouchers would dangle and corrupt outstanding.
+ *
+ *  CANCEL: the voucher's bill rows SURVIVE (they are read only through non-
+ *  cancelled vouchers), so its own open bills simply become invisible to future
+ *  settlements and its settled bills keep their settlement history intact —
+ *  that is exactly Tally-style cancellation, so cancellation is NOT blocked by
+ *  settled bills.
+ *
+ *  What BOTH must reject: cancelling/deleting a voucher that itself CONTAINS
+ *  settlements (against_ref) of another voucher's bills — that would make the
+ *  settled bill reappear as open without removing the settlement history.
+ *  (Settlements die with the voucher's body rows; Model A never resurrects
+ *  them on uncancel.)
+ */
+async function assertNoOutgoingSettlementsTx(tx: Tx, companyId: number, voucherId: number) {
+  const mine = await tx
+    .select({ billName: billAllocations.billName, billType: billAllocations.billType })
+    .from(billAllocations)
+    .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
+    .where(eq(voucherEntries.voucherId, voucherId));
+  const settleNames = [...new Set(mine.filter((m) => m.billType === "against_ref").map((m) => m.billName))];
+  if (settleNames.length === 0) return;
+  const targets = await tx
+    .select({ ledgerId: voucherEntries.ledgerId, billName: billAllocations.billName })
+    .from(billAllocations)
+    .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
+    .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+    .where(and(
+      eq(vouchers.companyId, companyId),
+      eq(vouchers.isCancelled, false),
+      eq(billAllocations.billType, "new_ref"),
+      inArray(billAllocations.billName, settleNames),
+      ne(voucherEntries.voucherId, voucherId),
+    ));
+  if (targets.length > 0) {
+    throw bad("Cannot cancel or delete: this voucher settles bills on other vouchers. Edit or cancel the settling allocations out first.", 409);
+  }
 }
 
 // ---------- bill-wise validation ----------
@@ -410,6 +453,10 @@ export default async function voucherRoutes(app: FastifyInstance) {
       return await db.transaction(async (tx) => {
         const [existing] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
         if (!existing) throw bad("Voucher not found", 404);
+        // R-02: a cancelled voucher is frozen — date, party, entries, inventory,
+        // GST, bills, narration, amounts must all stay untouched. The only legal
+        // transition is the dedicated /uncancel endpoint.
+        if (existing.isCancelled) throw bad("Cancelled vouchers cannot be edited. Uncancel the voucher first.", 409);
         const type = await assertTypeTx(tx, c, input.voucherTypeId);
         await assertLedgersTx(tx, c, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
         await assertRefsTx(tx, c, input);
@@ -444,6 +491,102 @@ export default async function voucherRoutes(app: FastifyInstance) {
     }
   });
 
+  // ---- R-02 voucher cancellation (Model A: mark + exclude) ----
+  // The voucher row, its number and all body rows (entries / inventory / bills)
+  // are preserved; every active report, inventory, GST and bill calculation
+  // already excludes isCancelled = true, so the marked voucher becomes logically
+  // inactive with no reversal journal. /uncancel restores the exact prior state.
+  app.post("/vouchers/:id/cancel", async (req) => {
+    const c = await cid(req);
+    const id = parseInt((req.params as any).id, 10);
+    if (!Number.isFinite(id) || id <= 0) throw bad("Invalid voucher id");
+    // Optional, trimmable reason with the app's standard free-text cap.
+    let reason: string | null = null;
+    const body = req.body as any;
+    if (body?.reason != null) {
+      if (typeof body.reason !== "string") throw bad("Cancellation reason must be a string");
+      reason = body.reason.trim().slice(0, 200) || null;
+    }
+    try {
+      return await db.transaction(async (tx) => {
+        const [v] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
+        if (!v) throw bad("Voucher not found", 404);
+        if (v.isCancelled) throw bad("Voucher is already cancelled", 409);
+        // Same integrity rule as delete: must not strand settlements it holds
+        // against other vouchers' bills. Settled bills ON this voucher are fine
+        // — the bill rows survive cancellation (Model A).
+        await assertNoOutgoingSettlementsTx(tx, c, id);
+        await tx
+          .update(vouchers)
+          .set({
+            isCancelled: true,
+            cancelledAt: new Date(),
+            cancelReason: reason,
+            cancelledBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
+          })
+          .where(eq(vouchers.id, id));
+        return { ok: true, id, isCancelled: true };
+      });
+    } catch (err: any) {
+      throw pgFriendly(err);
+    }
+  });
+
+  // ---- R-02 uncancel: restore the cancelled voucher to active ----
+  // No body rows are recreated — cancellation never removed them. Numbering is
+  // untouched (the counter never rewound), but re-activating MUST respect the
+  // unique (company, type, number) index if a same-number voucher was created
+  // while this one was cancelled.
+  app.post("/vouchers/:id/uncancel", async (req) => {
+    const c = await cid(req);
+    const id = parseInt((req.params as any).id, 10);
+    if (!Number.isFinite(id) || id <= 0) throw bad("Invalid voucher id");
+    try {
+      return await db.transaction(async (tx) => {
+        const [v] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
+        if (!v) throw bad("Voucher not found", 404);
+        if (!v.isCancelled) throw bad("Voucher is not cancelled", 409);
+        // If another (still active) voucher of the same type took this number
+        // while this one was cancelled, restoring would collide — the DB unique
+        // index is the authority, but we fail with a clear application error.
+        const [clash] = await tx
+          .select({ id: vouchers.id, number: vouchers.number })
+          .from(vouchers)
+          .where(and(
+            eq(vouchers.companyId, c), eq(vouchers.voucherTypeId, v.voucherTypeId),
+            eq(vouchers.number, v.number), eq(vouchers.isCancelled, false), ne(vouchers.id, id),
+          ));
+        if (clash) throw bad(`Cannot uncancel: voucher number ${v.number} has been reissued to another voucher. Delete or cancel the other voucher first.`, 409);
+        // A payroll voucher being restored must not collide with a payroll run
+        // processed for the same month while it was cancelled (payslip unique
+        // index). Reuse the same detection as the payroll route.
+        if (v.source === "payroll") {
+          const narration = v.narration ?? "";
+          const m = narration.match(/Payroll for ([A-Za-z]+) (\d{4})/);
+          if (m) {
+            const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const mi = months.indexOf(m[1]);
+            if (mi >= 0) {
+              const month = `${m[2]}-${String(mi + 1).padStart(2, "0")}`;
+              const [{ cnt }] = await tx
+                .select({ cnt: sql<number>`count(*)::int` })
+                .from(payslips)
+                .where(and(eq(payslips.companyId, c), eq(payslips.month, month), ne(payslips.voucherId, id)));
+              if (cnt > 0) throw bad(`Cannot uncancel: payroll for ${month} has been processed again. Cancel the newer payroll voucher first.`, 409);
+            }
+          }
+        }
+        await tx
+          .update(vouchers)
+          .set({ isCancelled: false, cancelledAt: null, cancelReason: null, cancelledBy: null })
+          .where(eq(vouchers.id, id));
+        return { ok: true, id, isCancelled: false };
+      });
+    } catch (err: any) {
+      throw pgFriendly(err);
+    }
+  });
+
   app.delete("/vouchers/:id", async (req) => {
     const c = await cid(req);
     const id = parseInt((req.params as any).id, 10);
@@ -451,6 +594,12 @@ export default async function voucherRoutes(app: FastifyInstance) {
       return await db.transaction(async (tx) => {
         const [existing] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
         if (!existing) throw bad("Voucher not found", 404);
+
+        // R-02: cancelled vouchers are the audit-preserving state and cannot be
+        // hard-deleted. Uncancel first; normal delete rules then apply.
+        if (existing.isCancelled) {
+          throw bad("Cancelled vouchers cannot be deleted. Uncancel the voucher first.", 409);
+        }
 
         // Guard: a voucher whose own bills (new_ref / advance) are settled by
         // OTHER vouchers cannot be deleted — deleting it would strand the
@@ -473,6 +622,18 @@ export default async function voucherRoutes(app: FastifyInstance) {
           if (refs.some((r) => keys.has(`${r.ledgerId}::${r.billName}`))) {
             throw bad("Cannot delete: bills on this voucher are settled by other vouchers. Delete or edit the settling vouchers first.");
           }
+        }
+
+        // R-02: deleting a voucher that itself settles other vouchers' bills
+        // would make those bills reappear open while the settlements vanish —
+        // shared with cancel (same accounting integrity rule).
+        await assertNoOutgoingSettlementsTx(tx, c, id);
+        if (existing.source === "payroll") {
+          // R-02 payroll safety: the voucher's payslips carry the processed-month
+          // guard (pslip_emp_month_uq). Hard-deleting the voucher would cascade
+          // the payslips and silently make the month reprocessable — double salary
+          // is one keystroke away. Cancellation is the correct removal path.
+          throw bad("Payroll vouchers cannot be deleted. Cancel the payroll voucher instead — payslips and the processed-month guard are preserved.", 409);
         }
 
         await tx.delete(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id)));

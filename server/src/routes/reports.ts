@@ -206,11 +206,14 @@ export default async function reportRoutes(app: FastifyInstance) {
     };
   });
 
-  // Salary register
+  // Salary register. R-02: payslips whose voucher is cancelled must not display —
+  // cancellation is the audit-preserving removal path for payroll (delete is
+  // blocked), so the register must exclude cancelled payroll vouchers exactly
+  // like every other active report.
   app.get("/salary-register", async (req) => {
     const c = await cid(req);
     const q = req.query as any;
-    const conds = [eq(payslips.companyId, c)];
+    const conds = [eq(payslips.companyId, c), eq(vouchers.isCancelled, false)];
     if (q.month) conds.push(eq(payslips.month, q.month));
     const rows = await db
       .select({
@@ -220,6 +223,7 @@ export default async function reportRoutes(app: FastifyInstance) {
       })
       .from(payslips)
       .innerJoin(employees, eq(employees.id, payslips.employeeId))
+      .innerJoin(vouchers, eq(vouchers.id, payslips.voucherId))
       .where(and(...conds))
       .orderBy(asc(payslips.month), asc(employees.name));
     return rows;

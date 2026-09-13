@@ -10,7 +10,8 @@ export default async function bankingRoutes(app: FastifyInstance) {
   app.get("/cheque-register", async (req) => {
     const c = await cid(req);
     const q = req.query as any;
-    const conds = [eq(vouchers.companyId, c), isNotNull(vouchers.chequeNumber), ne(vouchers.chequeNumber, "")];
+    // R-02: cancelled vouchers must not appear as active cheque transactions.
+    const conds = [eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), isNotNull(vouchers.chequeNumber), ne(vouchers.chequeNumber, "")];
     if (q.from) conds.push(gte(vouchers.date, q.from));
     if (q.to) conds.push(lte(vouchers.date, q.to));
 

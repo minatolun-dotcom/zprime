@@ -1,6 +1,8 @@
 import {
   pgTable, serial, integer, text, boolean, date, timestamp, numeric, index, uniqueIndex, jsonb,
 } from "drizzle-orm/pg-core";
+// (drizzle-orm/pg-core exports reviewed for R-02: no new column types needed —
+// timestamp/text/integer already imported.)
 
 // ---------- Users & Companies ----------
 export const users = pgTable("users", {
@@ -159,6 +161,13 @@ export const vouchers = pgTable("vouchers", {
   narration: text("narration").notNull().default(""),
   partyLedgerId: integer("party_ledger_id"),
   isCancelled: boolean("is_cancelled").notNull().default(false),
+  // R-02 cancellation metadata (Model A: mark + exclude). cancelled_by is a
+  // plain nullable integer, NOT a FK — users have no company-scoped ownership
+  // model yet (R-03); adding FK coupling here would block the later audit-trail
+  // evolution. Populated from the authenticated session when available.
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancelReason: text("cancel_reason"),
+  cancelledBy: integer("cancelled_by"),
   source: text("source").notNull().default("manual"), // manual | import | payroll
   chequeNumber: text("cheque_number"),
   chequeDate: date("cheque_date"),

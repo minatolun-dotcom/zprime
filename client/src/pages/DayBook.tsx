@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
-import { get, del } from "../lib/api";
+import { get, del, cancelVoucher, uncancelVoucher } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, today, fmtDate, fyStart, fyEnd } from "../lib/format";
 
@@ -52,6 +52,29 @@ export default function DayBook() {
       qc.invalidateQueries({ queryKey: ["daybook"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  // R-02 voucher cancellation: preserves the voucher, its number and its body
+  // rows; active reports exclude it while cancelled. Optional reason.
+  const cancel = async (row: any) => {
+    const reason = prompt(`Cancel voucher ${row.typeName} ${row.number}? Its accounting, inventory and GST effects become inactive. Optional reason:`, "");
+    if (reason === null) return; // user aborted the confirm dialog
+    try {
+      await cancelVoucher(cid!, row.id, reason.trim() || undefined);
+      qc.invalidateQueries({ queryKey: ["daybook"] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+
+  const uncancel = async (row: any) => {
+    if (!confirm(`Uncancel (restore) voucher ${row.typeName} ${row.number}? Its effects become active again.`)) return;
+    try {
+      await uncancelVoucher(cid!, row.id);
+      qc.invalidateQueries({ queryKey: ["daybook"] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Uncancel failed");
     }
   };
 
@@ -113,19 +136,33 @@ export default function DayBook() {
           </thead>
           <tbody>
             {(rows ?? []).map((v) => (
-              <tr key={v.id} className="row-link">
+              <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`}>
                 <td>{fmtDate(v.date)}</td>
                 <td>
                   <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
                     {v.typeName}
                   </span>
+                  {v.isCancelled && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700" title="Cancelled — effects inactive; uncancel to restore">
+                      Cancelled
+                    </span>
+                  )}
                 </td>
                 <td className="font-medium">{v.number}</td>
                 <td className="text-slate-600 truncate max-w-[300px]">{v.partyName ?? v.narration}</td>
                 <td className="num">{num(v.amount).toLocaleString("en-IN")}</td>
                 <td className="text-right whitespace-nowrap">
-                  <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-[12px] hover:underline mr-2">Alter</Link>
-                  <button className="text-red-500 text-[12px] hover:underline" onClick={(e) => { e.preventDefault(); remove(v); }}>Del</button>
+                  {v.isCancelled ? (
+                    <>
+                      <button className="text-emerald-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); uncancel(v); }}>Uncancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-[12px] hover:underline mr-2">Alter</Link>
+                      <button className="text-amber-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); cancel(v); }}>Cancel</button>
+                      <button className="text-red-500 text-[12px] hover:underline" onClick={(e) => { e.preventDefault(); remove(v); }}>Del</button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-12 (post-v1.1.0: R-01 GSTR-1 HSN reporting-integrity fix implemented and verified, 711 checks green, unreleased)
+**Last updated:** 2026-09-13 (post-v1.1.1: R-02 voucher cancellation implemented and verified, 790 checks green, unreleased)
 
 ## What zprime is
 
@@ -8,7 +8,11 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**v1.0.0 (483 checks) and v1.1.0 (622 checks) remain tagged and untouched. Post-v1.1.0 R-01 fix is implemented and fully verified (711/711) but NOT yet committed to a release; a single fix commit on top of v1.1.0 carries it.**
+**v1.0.0 (483), v1.1.0 (622) and v1.1.1 (711) remain tagged and untouched. Post-v1.1.1 R-02 voucher cancellation is implemented and fully verified (790/790) but NOT yet committed or tagged; the working tree carries the R-02 changes on top of v1.1.1.**
+
+### R-02 (P1 missing feature → implemented 2026-09-13): voucher cancellation
+
+Investigation (Phase 1) proved `vouchers.isCancelled` existed with full read-side exclusion in every accounting/inventory/GST/bill query, but **zero writers** — cancellation was unreachable and users had only hard-delete. Implemented as **Model A (mark + exclude)**: cancel preserves the voucher row, number, entries, inventory and bills; no reversal entries are ever created; active reports exclude the voucher while cancelled. New additive migration `0002` (`cancelled_at`/`cancel_reason`/`cancelled_by`, nullable), `POST /vouchers/:id/cancel` + `/uncancel` (transactional, FOR UPDATE, company-scoped, clean 404/400/409), PUT/DELETE reject cancelled vouchers (409), shared settled-bill guard, payroll hard-delete guard (protects processed months), Salary Register + Cheque Register cancellation fixes (the two read-side gaps), Day Book badge/Uncancel/read-only VoucherScreen banner. Numbering never rewinds. Regression: final_regression 283 → 368; independent engine treats cancelled = inactive; UI acceptance 140 → 153 (real-browser cancel/uncancel with engine-expected report deltas and exact post-uncancel restoration). **790/790 total.** Docker verified: fresh volume, restart persistence, and in-place upgrade from a simulated v1.1.1 database (0002 applies alone, data intact).
 
 ### R-01 (P1, fixed 2026-09-12): GSTR-1 HSN outward-supply reporting
 
@@ -48,7 +52,9 @@ Total: **622 checks + typecheck + Docker verification, 0 failures** (was 483 at 
 
 ## Known non-blocking issues (open, NOT fixed)
 
-**None open.** Post-v1.1.0 status — R-01 was fixed and verified (see above); both prior items are closed:
+**None open.** Post-v1.1.1 status — R-02 is implemented and verified (see above); R-01 and both prior items are closed:
+
+- **R-02 (P1) — IMPLEMENTED (2026-09-13), verification complete:** voucher cancellation via Model A (mark + exclude). See release-status section above for the full record. Known limitations (by design, deferred): `cancelled_by` stores a plain user id without FK (R-03 ownership work will formalize it); no full audit-trail table; no period lock; CDNR/CDNUR/GSTR-9/RCM GST gaps remain GST-work, untouched by R-02.
 
 - **F-INV-01 (P3) — CLOSED (2026-09-12), FIXED:** inventory-only Stock Journal and Physical Stock are enterable through the real UI. `entries: []` is valid only for inventory-category vouchers carrying ≥1 real stock movement (item + non-zero qty); accounting-only vouchers still require balanced non-zero ledger entries; negative Physical-Stock counted quantities are rejected; no artificial accounting entries are created. Verified by new regression/attack checks, real-browser UI scenarios, and an in-container Docker probe.
 - **O-1 (P4) — CLOSED (2026-09-12), NOT REPRODUCIBLE:** Phase 1 investigation proved Cash/Bank period semantics correct (Opening ≤ from−1, Movement [from,to], Closing = Opening + Dr − Cr, future vouchers excluded); code is character-identical to v1.0.0; controlled reproduction failed. Root cause of the observation: a test-coverage gap (all prior windows were FY→month-end). Remediation was test-only — 92 API-level sub-period/boundary/edit/backdate/delete checks, an independent engine `cashBankSub` snapshot, and the `jun/cb-subperiod` real-browser scenario with a future-contamination canary. **No production Cash/Bank logic was modified.**

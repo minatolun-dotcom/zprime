@@ -36,6 +36,8 @@ export default function VoucherScreen() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [detailed, setDetailed] = useState(true);
+  // R-02: a cancelled voucher opened from Day Book is displayed read-only.
+  const [cancelledView, setCancelledView] = useState(false);
 
   const ledgerInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -55,6 +57,7 @@ export default function VoucherScreen() {
         if (isEdit) {
           const v = await get<any>(`/api/c/${cid}/vouchers/${voucherId}`);
           setVType(v.type);
+          setCancelledView(!!v.isCancelled);
           setDate(v.date.slice(0, 10));
           setNumber(v.number);
           setNumberLocked(true);
@@ -181,6 +184,7 @@ export default function VoucherScreen() {
   // ---- save ----
   const save = async () => {
     setError("");
+    if (cancelledView) { setError("This voucher is cancelled and cannot be altered. Uncancel it from the Day Book first."); return; }
     if (Math.abs(diff) > 0.004) { setError(`Voucher does not balance — difference ${diff.toFixed(2)}`); return; }
     const validEntries = entries.filter((e) => e.ledgerId && Math.abs(e.amount) > 0.004);
     // F-INV-01: inventory-category vouchers may be inventory-only — no accounting
@@ -282,6 +286,12 @@ export default function VoucherScreen() {
         <div className="text-slate-400 text-[13px]">Loading…</div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 max-w-4xl">
+          {/* R-02: cancelled banner — the voucher is shown read-only */}
+          {cancelledView && (
+            <div className="px-4 py-2 bg-red-50 border-b border-red-100 text-red-700 text-[12px] font-medium rounded-t-lg">
+              Cancelled voucher — displayed read-only. Its accounting, inventory and GST effects are inactive. Uncancel it from the Day Book to restore.
+            </div>
+          )}
           {/* header */}
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50 rounded-t-lg">
             <span className="text-[14px] font-semibold text-indigo-700">{vType.name}</span>
@@ -484,7 +494,7 @@ export default function VoucherScreen() {
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button className="btn-primary" disabled={saving} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
+              <button className="btn-primary" disabled={saving || cancelledView} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
               <button className="btn-ghost" onClick={() => nav(`/company/${cid}/daybook`)}>Cancel (Esc)</button>
               <span className="flex-1" />
               <span className="text-[11px] text-slate-400 self-center">
