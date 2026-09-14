@@ -12,6 +12,22 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// R-03: user <-> company membership junction (Model C). The authorization
+// boundary: a user may access a company ONLY through a membership row, checked
+// server-side on every request inside cid(). role is membership metadata
+// ("owner" | "accountant") — NOT an RBAC permission matrix (later feature).
+export const userCompanies = pgTable(
+  "user_companies",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("owner"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_companies_user_company_uq").on(t.userId, t.companyId), index("user_companies_company_id_idx").on(t.companyId)],
+);
+
 export const companies = pgTable("companies", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -161,13 +177,12 @@ export const vouchers = pgTable("vouchers", {
   narration: text("narration").notNull().default(""),
   partyLedgerId: integer("party_ledger_id"),
   isCancelled: boolean("is_cancelled").notNull().default(false),
-  // R-02 cancellation metadata (Model A: mark + exclude). cancelled_by is a
-  // plain nullable integer, NOT a FK — users have no company-scoped ownership
-  // model yet (R-03); adding FK coupling here would block the later audit-trail
-  // evolution. Populated from the authenticated session when available.
+  // R-02 cancellation metadata (Model A: mark + exclude). R-03: now a real FK
+  // to users.id — deleted users do not block voucher history (ON DELETE set
+  // null). Populated from the authenticated session when available.
+  cancelledBy: integer("cancelled_by").references(() => users.id, { onDelete: "set null" }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancelReason: text("cancel_reason"),
-  cancelledBy: integer("cancelled_by"),
   source: text("source").notNull().default("manual"), // manual | import | payroll
   chequeNumber: text("cheque_number"),
   chequeDate: date("cheque_date"),

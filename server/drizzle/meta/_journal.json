@@ -22,6 +22,13 @@
       "when": 1789132800000,
       "tag": "0002_r02_cancel_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0003_r03_user_companies",
+      "breakpoints": true
     }
   ]
 }

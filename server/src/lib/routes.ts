@@ -1,14 +1,25 @@
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { companies } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { companies, userCompanies } from "../db/schema.js";
+import { and, eq } from "drizzle-orm";
 
-/** Company-scoped helper: parse :cid, ensure numeric AND existing.
- *  The company must exist — never return data for a bogus/forged company id. */
+/** Company-scoped helper: parse :cid, ensure numeric, existing AND that the
+ *  authenticated user holds a membership on it (R-03 authorization boundary).
+ *  Unauthorized companies answer 404 — indistinguishable from unknown — so no
+ *  other user's company existence leaks. Membership is resolved server-side on
+ *  EVERY request (never from JWT/body/headers), so revocation is immediate.
+ *  The single authorization point for all /api/c/:cid/* routes. */
 export async function cid(req: any): Promise<number> {
   const cid = parseInt((req.params as any).cid, 10);
   if (!Number.isFinite(cid) || cid <= 0) throw bad("Invalid company");
-  const [row] = await db.select({ id: companies.id }).from(companies).where(eq(companies.id, cid)).limit(1);
+  const uid = req.userId;
+  if (!Number.isFinite(uid) || uid <= 0) throw bad("Company not found", 404);
+  const [row] = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .innerJoin(userCompanies, and(eq(userCompanies.companyId, companies.id), eq(userCompanies.userId, uid)))
+    .where(eq(companies.id, cid))
+    .limit(1);
   if (!row) throw bad("Company not found", 404);
   return cid;
 }

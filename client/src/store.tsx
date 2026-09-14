@@ -28,5 +28,19 @@ export function CompanyProvider({ children, cid }: { children: any; cid: number 
     queryFn: () => get<Company>(`/api/companies/${cid}`),
     enabled: cid > 0,
   });
+  // R-03: a stale or unauthorized company URL answers 404 server-side. Show a
+  // neutral not-found notice (never "you don't own this company") with a path
+  // back to the authorized company list.
+  if (q.isError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="text-[15px] font-medium text-slate-700">Company not found</div>
+          <div className="text-[12px] text-slate-500">It may have been removed, or you may not have access to it.</div>
+          <a href="/companies" className="btn-primary inline-block">Back to Companies</a>
+        </div>
+      </div>
+    );
+  }
   return <Ctx.Provider value={{ company: q.data, companyId: cid }}>{children}</Ctx.Provider>;
 }

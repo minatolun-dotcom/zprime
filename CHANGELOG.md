@@ -1,5 +1,37 @@
 # Changelog
 
+## Post-v1.2.0 — R-03 user→company authorization (unreleased)
+
+**680/680 checks passed — zero failures.**
+
+### R-03 — User → company authorization (CONFIRMED P1 → IMPLEMENTED)
+
+**Root cause (Phase-1 investigation):** authentication existed (JWT `{uid, username}` in an httpOnly cookie) but there was **no user→company authorization boundary anywhere** — `cid()` checked only company *existence*, `GET /companies` returned the whole table, and a second authenticated user could read, modify, delete and cancel any company's data (proven live). Safe only while deployments were single-user by convention.
+
+**Architecture (approved Model C — membership junction):** new `user_companies` table (`user_id` → users FK cascade, `company_id` → companies FK cascade, `role` metadata `owner|accountant`, unique pair, both-direction indexes). **Authorization is centralized inside `cid()`**: every `/api/c/:cid/*` route (36 routes) now requires the authenticated user to hold a membership row, resolved **server-side on every request** — revocation is immediate, no JWT change (`{uid, username}` kept; no companyId in the token). Unauthorized companies answer **404** — indistinguishable from unknown, no existence leak. Existing same-company resource validation (ledger/item/company checks) is unchanged and remains defense-in-depth.
+
+**Company routes:** `GET /companies` returns only membership-scoped rows (with role); `GET/PUT /companies/:id` membership-gated 404; `POST /companies` now atomic — company + seed + **owner membership** commit in one transaction (no orphan companies). Minimal **owner-only** member management: `GET/POST /companies/:id/members` (create user + membership; accountant role cannot manage members — 403) and `DELETE /companies/:id/members/:userId` (last-owner removal → 409; leaving as co-owner → 200). No invitations/email/password-reset/SSO — out of scope.
+
+**Migration 0003 (additive):** `user_companies` + FK on `vouchers.cancelled_by → users.id` (`ON DELETE SET NULL` — deleted users never block voucher history). **Backfill:** every existing user × every existing company gets an owner membership — exactly the pre-R-03 effective access model, so no existing deployment loses access; deterministic and status-quo-preserving by construction. Verified on a fresh volume and as an in-place upgrade from a simulated v1.2.0 database (journal 3 → 4, data intact, seeded admin creates companies with owner membership).
+
+**Frontend:** company list is automatically filtered (server-driven); a stale/revoked `/company/:cid` URL now renders a neutral **"Company not found"** notice with a *Back to Companies* recovery link — never "you don't own this company".
+
+**Verification:** final regression 368 → **399** (+31 R-03 checks: directory scoping, cross-company 404s across vouchers/masters/reports/GST/cheque-register/import, member-vs-owner rights, immediate revocation, last-owner/self-removal guards, `cancelled_by` = cancelling user). Real-browser: existing suite **153/153** plus a dedicated **12/12** R-03 UI scenario (owner sees both companies, member sees only his, direct Alpha navigation → neutral 404, no data leak, recovery link, owner revocation → immediate loss without re-login). Docker fresh volume + upgrade simulation clean, 0 log errors. Accounting mathematics untouched — authorization decides *who*, never *how*.
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 48 | PASS |
+| Final regression (now incl. R-03) | 399 | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 R-03 scenario | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh + v1.2.0 upgrade | — | PASS |
+
+**Not tagged yet; v1.0.0…v1.2.0 remain untouched. Known limitations:** `role` is metadata only (no RBAC permission matrix); no user disable/deactivate flag (JWTs valid until 7-day expiry; no revocation list); no membership-UI page (API-driven management); audit trail (created_by/updated_by) deliberately deferred.
+
 ## Post-v1.1.1 — R-02 voucher cancellation (unreleased)
 
 **790/790 checks passed — zero failures.**

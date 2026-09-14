@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-13 (post-v1.1.1: R-02 voucher cancellation implemented and verified, 790 checks green, unreleased)
+**Last updated:** 2026-09-13 (post-v1.2.0: R-03 user→company authorization implemented and verified, 821 checks green, unreleased)
 
 ## What zprime is
 
@@ -8,9 +8,21 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**v1.0.0 (483), v1.1.0 (622) and v1.1.1 (711) remain tagged and untouched. Post-v1.1.1 R-02 voucher cancellation is implemented and fully verified (790/790) but NOT yet committed or tagged; the working tree carries the R-02 changes on top of v1.1.1.**
+**v1.0.0 (483), v1.1.0 (622), v1.1.1 (711) and v1.2.0 (790) remain tagged and untouched. Post-v1.2.0 R-03 user→company authorization is implemented and fully verified (821/821) but NOT yet committed or tagged; the working tree carries the R-03 changes on top of v1.2.0.**
 
-### R-02 (P1 missing feature → implemented 2026-09-13): voucher cancellation
+### R-03 (P1 confirmed vulnerability → implemented 2026-09-13): user→company authorization
+
+Phase-1 investigation proved authentication existed (JWT `{uid, username}`, httpOnly cookie) but **no user→company authorization boundary anywhere**: `cid()` checked only company *existence*, `GET /companies` returned the whole table, and a second authenticated user could read/modify/delete/cancel any company's data (live-proven, T1–T6). Safe only while deployments were single-user by convention.
+
+Implemented as **Model C — membership junction** (approved architecture): additive migration `0003` creates `user_companies` (`user_id` FK users, `company_id` FK companies, `role` metadata `owner|accountant`, unique pair, both-direction indexes) and adds `vouchers.cancelled_by → users.id ON DELETE SET NULL` (the FK deferred by R-02). **Backfill:** every existing user × every existing company gets an owner membership — exactly the pre-R-03 effective access model, so no existing deployment loses access; deterministic, status-quo-preserving, no destructive SQL.
+
+**Authorization is centralized inside `cid()`** (server/src/lib/routes.ts): every `/api/c/:cid/*` route now requires the authenticated user to hold a membership row, resolved **server-side on every request** — revocation is immediate, no re-login, and the JWT structure is unchanged (no companyId in the token). Unauthorized companies answer **404**, indistinguishable from unknown — no existence leak. Existing same-company resource→company validation is unchanged and remains defense-in-depth. Company routes are membership-scoped: `GET /companies` returns only member companies, `GET/PUT /companies/:id` gated 404, `POST /companies` atomically creates company + seed + owner membership. Minimal **owner-only** member management (`GET/POST/DELETE /companies/:id/members`, last-owner removal → 409); no invitations/email/SSO/full RBAC — explicitly out of scope.
+
+Frontend: company list automatically filtered server-side; a stale/revoked `/company/:cid` URL renders a neutral "Company not found" notice with a recovery link (no authorization-state disclosure).
+
+Regression: final_regression 368 → **399** (+31 R-03 checks: directory scoping, cross-company 404s across vouchers/masters/reports/GST/import, member-vs-owner rights, immediate revocation, last-owner guards, `cancelled_by` = cancelling user). Real-browser: existing **153/153** + dedicated **12/12** R-03 UI scenario (login-as-B isolation, direct Alpha navigation → neutral 404, grant → immediate access, revoke → immediate loss without re-login). **821/821 total.** Accounting mathematics untouched — authorization decides *who*, never *how*. Docker verified on a fresh volume and as an upgrade from a simulated v1.2.0 database (0003 applies alone, journal 3 → 4, data intact).
+
+### R-02 (P1 missing feature → released as v1.2.0, 2026-09-13): voucher cancellation
 
 Investigation (Phase 1) proved `vouchers.isCancelled` existed with full read-side exclusion in every accounting/inventory/GST/bill query, but **zero writers** — cancellation was unreachable and users had only hard-delete. Implemented as **Model A (mark + exclude)**: cancel preserves the voucher row, number, entries, inventory and bills; no reversal entries are ever created; active reports exclude the voucher while cancelled. New additive migration `0002` (`cancelled_at`/`cancel_reason`/`cancelled_by`, nullable), `POST /vouchers/:id/cancel` + `/uncancel` (transactional, FOR UPDATE, company-scoped, clean 404/400/409), PUT/DELETE reject cancelled vouchers (409), shared settled-bill guard, payroll hard-delete guard (protects processed months), Salary Register + Cheque Register cancellation fixes (the two read-side gaps), Day Book badge/Uncancel/read-only VoucherScreen banner. Numbering never rewinds. Regression: final_regression 283 → 368; independent engine treats cancelled = inactive; UI acceptance 140 → 153 (real-browser cancel/uncancel with engine-expected report deltas and exact post-uncancel restoration). **790/790 total.** Docker verified: fresh volume, restart persistence, and in-place upgrade from a simulated v1.1.1 database (0002 applies alone, data intact).
 
@@ -31,20 +43,22 @@ python3 scripts/smoke_test.py        # 39/39 passed
 python3 scripts/attack_test.py       # 88/88 passed  (adversarial)
 python3 scripts/fix_regression.py    # 65/65 passed  (BUG-001..009 regression)
 python3 scripts/reconcile.py         # 48/48 passed  (independent reconciliation)
-python3 scripts/final_regression.py  # 224/224 passed (F-INV-01 + O-1 sub-period + fix attacks)
+python3 scripts/final_regression.py  # 399/399 passed (F-INV-01 + O-1 + R-02 + R-03)
 python3 scripts/attack2.py           # 29/29 passed  (attack-the-fixes)
 
-node scripts/acceptance/run.js       # 129/129 passed (real-browser UI acceptance,
+node scripts/acceptance/run.js       # 153/153 passed (real-browser UI acceptance,
                                      #  run from repo root; needs Chromium at
                                      #  ~/.local/bin/chromium or CHROME_PATH;
                                      #  client/dist must be built: npm run build -w client)
+node scripts/acceptance/r03_ui.js    # 12/12 passed  (R-03 multi-user browser scenario,
+                                     #  same prerequisites; test users created via API)
 
 docker compose down -v && docker compose build && docker compose up -d
 # → healthy, migrations auto-apply on empty volume,
 #   endpoints verified in-container, restart preserves data
 ```
 
-Total: **622 checks + typecheck + Docker verification, 0 failures** (was 483 at v1.0.0; +35 F-INV-01, +104 O-1 API-level, +12 O-1 UI, +12 F-INV-01 rig; none removed or weakened).
+Total: **821 checks + typecheck + Docker verification, 0 failures** (was 790 at v1.2.0; +31 R-03 API regression, +12 R-03 UI scenario; none removed or weakened).
 
 ### Independent reconciliation
 

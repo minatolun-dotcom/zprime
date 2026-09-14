@@ -1127,5 +1127,129 @@ s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026
     "entries": [{"ledgerId": cust["id"], "amount": 10}, {"ledgerId": sales["id"], "amount": -10}]})
 check("cross-company party ledger id rejected", s == 400, (s, str(v)[:100]))
 
+# ================= R-03: user -> company authorization =================
+# Model C membership junction. Authorization is centralized in cid(): company
+# must exist AND the authenticated user must hold a membership row. Unauthorized
+# access answers 404 (indistinguishable from unknown — no existence leak).
+print("-- R-03: user-company authorization --")
+
+import http.cookiejar as _cjar
+
+def _r03_session():
+    jar = _cjar.CookieJar()
+    return urllib.request.build_opener(_ur.HTTPCookieProcessor(jar))
+
+def r03(op, method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json"} if body is not None else {}
+    r = _ur.Request(BASE + path, data=data, method=method, headers=h)
+    try:
+        with op.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except Exception as e:
+        return -1, {"error": str(e)}
+
+sA, sB = _r03_session(), _r03_session()   # admin session + bob session
+s, _ = r03(sA, "POST", "/api/auth/login", {"username": "admin", "password": "admin123"})
+
+# owner creates two companies; memberships are granted automatically
+s, cA = r03(sA, "POST", "/api/companies", {"name": "R03-A-Reg", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R03REG00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R03: owner creates company A", s == 200 and cA.get("id"), (s, str(cA)[:80]))
+r03A = cA["id"]
+s, cB = r03(sA, "POST", "/api/companies", {"name": "R03-B-Reg", "state": "Karnataka", "stateCode": "29",
+    "gstin": "29R03REG00C3D4", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R03: owner creates company B", s == 200 and cB.get("id"), (s, str(cB)[:80]))
+r03B = cB["id"]
+
+# second user created through the minimal owner-only members API
+s, u2 = r03(sA, "POST", f"/api/companies/{r03B}/members", {"username": "r03bob", "password": "r03bob", "role": "accountant"})
+check("R03: owner creates accountant member on B", s == 200 and u2.get("userId"), (s, str(u2)[:80]))
+s, _ = r03(sB, "POST", "/api/auth/login", {"username": "r03bob", "password": "r03bob"})
+check("R03: member login", s == 200, s)
+
+# --- company directory: strictly membership-scoped ---
+s, lst = r03(sB, "GET", "/api/companies")
+check("R03: B sees only his company", s == 200 and [c["id"] for c in lst] == [r03B], [c.get("id") for c in (lst or [])])
+s, lst = r03(sA, "GET", "/api/companies")
+check("R03: owner sees both his companies (plus any pre-existing)", s == 200 and {r03A, r03B} <= {c["id"] for c in lst}, None)
+
+# --- company detail/update: 404 cross-company ---
+s, _ = r03(sB, "GET", f"/api/companies/{r03A}")
+check("R03: B reads A detail -> 404", s == 404, s)
+s, _ = r03(sB, "PUT", f"/api/companies/{r03A}", {"phone": "x"})
+check("R03: B updates A -> 404", s == 404, s)
+
+# --- masters/vouchers cross-company through the cid() boundary ---
+s, led = r03(sA, "GET", f"{C}/ledgers")
+for meth, path, body, label in [
+    ("GET", f"/api/c/{r03A}/ledgers", None, "B lists A ledgers -> 404"),
+    ("POST", f"/api/c/{r03A}/ledgers", {"name": "R03 Hack", "groupId": 4}, "B creates A ledger -> 404"),
+    ("GET", f"/api/c/{r03A}/vouchers?from=2026-04-01&to=2026-06-30", None, "B reads A vouchers -> 404"),
+    ("POST", f"/api/c/{r03A}/vouchers", {"voucherTypeId": 1, "date": "2026-06-20", "entries": [], "inventoryEntries": []}, "B creates A voucher -> 404"),
+    ("DELETE", f"/api/c/{r03A}/vouchers/999999", None, "B deletes A voucher -> 404"),
+    ("POST", f"/api/c/{r03A}/vouchers/999999/cancel", {}, "B cancels A voucher -> 404"),
+    ("POST", f"/api/c/{r03A}/vouchers/999999/uncancel", {}, "B uncancels A voucher -> 404"),
+    ("GET", f"/api/c/{r03A}/reports/trial-balance", None, "B reads A TB -> 404"),
+    ("GET", f"/api/c/{r03A}/reports/balance-sheet", None, "B reads A BS -> 404"),
+    ("GET", f"/api/c/{r03A}/reports/gstr1?from=2026-04-01&to=2026-06-30", None, "B reads A GSTR-1 -> 404"),
+    ("GET", f"/api/c/{r03A}/reports/gstr3b?from=2026-04-01&to=2026-06-30", None, "B reads A GSTR-3B -> 404"),
+    ("GET", f"/api/c/{r03A}/cheque-register?from=2026-04-01&to=2026-06-30", None, "B reads A cheque register -> 404"),
+    ("POST", f"/api/c/{r03A}/import/xml", {"xml": "<ENVELOPE></ENVELOPE>"}, "B imports into A -> 404"),
+]:
+    s, b = r03(sB, meth, path, body)
+    check(f"R03: {label}", s == 404, (s, str(b)[:80]))
+
+# --- member CAN work in his own company; accountant cannot manage members ---
+s, gb = r03(sB, "GET", f"/api/c/{r03B}/groups")
+s, ledB = r03(sB, "POST", f"/api/c/{r03B}/ledgers", {"name": "R03 Bob Cash", "groupId": next(x["id"] for x in gb if x["name"] == "Cash-in-Hand")})
+check("R03: member works in own company (ledger create)", s == 200, (s, str(ledB)[:80]))
+s, _ = r03(sB, "POST", f"/api/companies/{r03B}/members", {"username": "r03eve", "password": "x", "role": "accountant"})
+check("R03: accountant cannot add members -> 403", s == 403, s)
+s, _ = r03(sB, "DELETE", f"/api/companies/{r03B}/members/1")
+check("R03: accountant cannot remove owner -> 403", s == 403, s)
+
+# --- membership revocation is immediate (server-resolved per request) ---
+s, u3 = r03(sA, "POST", f"/api/companies/{r03A}/members", {"username": "r03carol", "password": "r03cp", "role": "accountant"})
+sC = _r03_session()
+r03(sC, "POST", "/api/auth/login", {"username": "r03carol", "password": "r03cp"})
+s, _ = r03(sC, "GET", f"/api/c/{r03A}/ledgers")
+check("R03: carol (member) reads A -> 200", s == 200, s)
+s, _ = r03(sA, "DELETE", f"/api/companies/{r03A}/members/{u3['userId']}")
+check("R03: owner revokes carol", s == 200, s)
+s, _ = r03(sC, "GET", f"/api/c/{r03A}/ledgers")
+check("R03: revoked member immediately 404 (no re-login)", s == 404, s)
+
+# --- last-owner guard + self-removal guard ---
+s, u4 = r03(sA, "POST", f"/api/companies/{r03A}/members", {"username": "r03own2", "password": "r03o2", "role": "owner"})
+sO = _r03_session()
+r03(sO, "POST", "/api/auth/login", {"username": "r03own2", "password": "r03o2"})
+s, _ = r03(sO, "DELETE", f"/api/companies/{r03A}/members/{u4['userId']}")
+check("R03: owner can leave when a co-owner exists -> 200", s == 200, s)
+s, _ = r03(sO, "GET", f"/api/c/{r03A}/ledgers")
+check("R03: departed member immediately 404", s == 404, s)
+# admin is now the sole owner: self-removal of the LAST owner -> 409 (would orphan the company)
+s, b = r03(sA, "DELETE", f"/api/companies/{r03A}/members/1")
+check("R03: removing the only remaining owner -> 409", s == 409, (s, str(b)[:60]))
+
+# --- cancelled_by carries the authenticated user's identity ---
+s, gsA = r03(sA, "GET", f"/api/c/{r03A}/groups")
+gA2 = {x["name"]: x["id"] for x in gsA}
+s, ledA = r03(sA, "POST", f"/api/c/{r03A}/ledgers", {"name": "R03 A Cash", "groupId": gA2["Cash-in-Hand"]})
+s, capA = r03(sA, "POST", f"/api/c/{r03A}/ledgers", {"name": "R03 A Cap", "groupId": gA2["Capital Account"]})
+s, vtA = r03(sA, "GET", f"/api/c/{r03A}/voucher-types")
+r03vt = next(t["id"] for t in vtA if t["name"] == "Journal")
+s, v = r03(sA, "POST", f"/api/c/{r03A}/vouchers", {"voucherTypeId": r03vt, "date": "2026-06-25",
+    "entries": [{"ledgerId": ledA["id"], "amount": 33}, {"ledgerId": capA["id"], "amount": -33}], "inventoryEntries": []})
+s, _ = r03(sA, "POST", f"/api/c/{r03A}/vouchers/{v['id']}/cancel", {"reason": "R03"})
+s, full = r03(sA, "GET", f"/api/c/{r03A}/vouchers/{v['id']}")
+check("R03: cancelled_by = cancelling user id", s == 200 and full.get("cancelledBy") == 1, full.get("cancelledBy"))
+r03(sA, "POST", f"/api/c/{r03A}/vouchers/{v['id']}/uncancel")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)
