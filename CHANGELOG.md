@@ -1,6 +1,32 @@
 # Changelog
 
-## Post-v1.2.0 — R-03 user→company authorization (unreleased)
+## Post-v1.3.0 — R-04 XML import integrity (unreleased)
+
+**686/686 automated checks passed (Python 686 = 39+88+65+48+417+29), 174/174 browser checks (153 baseline + 12 R-03 + 9 R-04), zero failures.**
+
+### R-04 — XML import integrity: B-03 + B-05 + B-13 + B-14 (CONFIRMED P0 → IMPLEMENTED)
+
+**Root cause (investigation):** `server/src/routes/import.ts` predated and never adopted the API's validation layer. Live-reproduced on v1.3.0: an unbalanced voucher imported without error left the Trial Balance permanently off (totalDebit 400 / totalCredit 600); the import used raw `db` calls with no transaction (partial imports persisted on mid-file failure); it bypassed `validateEntries`, bill-allocation validation, and reference checks; imported ledgers were hard-coded `taxability: "none"` so GSTR-1 reported `taxable: 0` while duty was still counted.
+
+**Fix (single authorization/validation boundary, one file):** the entire import now runs in **one `db.transaction`** — any rejection rolls back masters, vouchers, and allocations atomically. Every voucher is validated with the **same rules as the API path** (balanced double-entry via the shared `validateEntries`, exported from `vouchers.ts`; F-INV-01 inventory rules; bill-allocation validation mirroring `validateBillsTx` — name required, non-zero, direction must match the entry, allocations must total the entry). Failures return **400 with the offending voucher number** (`Voucher R04-UB-1 (Journal): Debits and credits do not balance …`). Imported-ledger `taxability` now mirrors zprime's own classification (Sales/Purchase family → `taxable`, duty ledgers → `none`), making GSTR-1 internally consistent for imported data.
+
+**B-14 (found during browser verification, approved into R-04):** the import page's **"Upload file" mode had never worked** — `client/src/lib/api.ts` forced `Content-Type: application/json` onto every body with data, including `FormData`, so the server rejected multipart uploads (`Body is not valid JSON`). All prior suites missed it because they POST JSON directly. Fix: the client helper no longer sets a Content-Type for FormData (the browser sets its own multipart boundary). Paste-XML mode was unaffected.
+
+**Accounting safety:** no accounting formula changed. The import is a write path; validation only rejects input that today corrupts books (previously-valid balanced imports behave identically — proven by the full regression suite, including the pre-existing import fixtures in smoke/adversarial/attack2).
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 48 | PASS |
+| Final regression (now incl. R-04) | 417 (+16 R-04 API checks, +2 B-14 multipart checks) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 R-03 + 9 R-04 scenario | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume | — | PASS |
+
+## Post-v1.2.0 — R-03 user→company authorization (released as v1.3.0)
 
 **680/680 checks passed — zero failures.**
 

@@ -8,6 +8,25 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { cid, bad, pgFriendly } from "../lib/routes.js";
 import { r2, num } from "../lib/util.js";
+import { validateEntries } from "./vouchers.js";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// R-04 (B-13): classify an imported ledger's GST taxability from its group's
+// nature + name, mirroring how the UI's own ledger model treats it. Imported
+// ledgers previously defaulted to "none" unconditionally, which made GSTR-1
+// show taxable value 0 while duty ledgers were still counted — an internally
+// inconsistent report. "none" remains the default for anything unclassifiable.
+function classifyTaxability(name: string, parentName: string | null): string {
+  const n = name.toLowerCase();
+  const p = (parentName ?? "").toLowerCase();
+  if (/(sales|income|other income)/.test(n) || /sales/.test(p)) return "taxable";
+  if (/(purchase|expense|salary|rent|freight|insurance|depreciation)/.test(n) || /purchase/.test(p)) return "taxable";
+  return "none";
+}
+
+/** Ledger names that are GST duty heads (or TDS) — never "taxable" supply. */
+const DUTY_NAME_RE = /(\bcgst\b|\bsgst\b|\butgst\b|\bigst\b|\bcess\b|\btds\b|duties & taxes|duties and taxes)/i;
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -60,13 +79,16 @@ const MSG_TAG = ["TALLY", "MESSAGE"].join("");
 export default async function importRoutes(app: FastifyInstance) {
   app.post("/xml", async (req, reply) => {
     try {
-      return await handleImport(req);
+      // R-04 (B-05): the WHOLE import — masters, vouchers, numbering sync — runs
+      // in ONE transaction. Any failure rolls back every inserted row, so a
+      // partial import can never corrupt the company's books.
+      return await db.transaction(async (tx) => runImport(tx, req));
     } catch (err: any) {
       throw pgFriendly(err);
     }
   });
 
-  async function handleImport(req: any) {
+  async function runImport(tx: Tx, req: any) {
     const c = await cid(req);
     let xml = "";
     if (req.isMultipart()) {
@@ -81,7 +103,7 @@ export default async function importRoutes(app: FastifyInstance) {
       throw bad("Unsupported XML export format — no importable records found");
     }
 
-    const [company] = await db.select().from(companies).where(eq(companies.id, c));
+    const [company] = await tx.select().from(companies).where(eq(companies.id, c));
     if (!company) throw bad("Company not found");
 
     const parsed = parser.parse(xml);
@@ -109,9 +131,12 @@ export default async function importRoutes(app: FastifyInstance) {
      *  numbering can never collide with an imported number. */
     async function syncCounters(touchedTypeIds: number[]) {
       for (const typeId of touchedTypeIds) {
-        const [t] = await db.select().from(voucherTypes).where(eq(voucherTypes.id, typeId));
+        const [t] = await tx.select().from(voucherTypes).where(eq(voucherTypes.id, typeId));
         if (!t) continue;
-        const rows = await db
+        // R-04 (B-05): read inside the SAME transaction — this must see the
+        // just-inserted (uncommitted) imported numbers, or the counter could
+        // lag and future auto-numbering would collide with an imported number.
+        const rows = await tx
           .select({ number: vouchers.number })
           .from(vouchers)
           .where(and(eq(vouchers.companyId, c), eq(vouchers.voucherTypeId, typeId)));
@@ -124,8 +149,8 @@ export default async function importRoutes(app: FastifyInstance) {
             if (n != null && Number.isFinite(n)) maxN = Math.max(maxN, n);
           }
         }
-        await db.insert(voucherCounters).values({ companyId: c, voucherTypeId: typeId, lastNumber: maxN }).onConflictDoNothing();
-        await db
+        await tx.insert(voucherCounters).values({ companyId: c, voucherTypeId: typeId, lastNumber: maxN }).onConflictDoNothing();
+        await tx
           .update(voucherCounters)
           .set({ lastNumber: sql`GREATEST(${voucherCounters.lastNumber}, ${maxN})` })
           .where(and(eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, typeId)));
@@ -134,19 +159,19 @@ export default async function importRoutes(app: FastifyInstance) {
 
     // --- caches ---
     const groupIdByName = new Map<string, number>();
-    const existingGroups = await db.select().from(groups).where(eq(groups.companyId, c));
+    const existingGroups = await tx.select().from(groups).where(eq(groups.companyId, c));
     for (const g of existingGroups) groupIdByName.set(g.name, g.id);
     const ledgerIdByName = new Map<string, number>();
-    const existingLedgers = await db.select().from(ledgers).where(eq(ledgers.companyId, c));
+    const existingLedgers = await tx.select().from(ledgers).where(eq(ledgers.companyId, c));
     for (const l of existingLedgers) ledgerIdByName.set(l.name.toLowerCase(), l.id);
     const unitIdBySymbol = new Map<string, number>();
-    for (const u of await db.select().from(units).where(eq(units.companyId, c))) unitIdBySymbol.set(u.symbol.toLowerCase(), u.id);
+    for (const u of await tx.select().from(units).where(eq(units.companyId, c))) unitIdBySymbol.set(u.symbol.toLowerCase(), u.id);
     const itemIdByName = new Map<string, number>();
-    for (const it of await db.select().from(stockItems).where(eq(stockItems.companyId, c))) itemIdByName.set(it.name.toLowerCase(), it.id);
+    for (const it of await tx.select().from(stockItems).where(eq(stockItems.companyId, c))) itemIdByName.set(it.name.toLowerCase(), it.id);
     const godownIdByName = new Map<string, number>();
-    for (const g of await db.select().from(godowns).where(eq(godowns.companyId, c))) godownIdByName.set(g.name.toLowerCase(), g.id);
+    for (const g of await tx.select().from(godowns).where(eq(godowns.companyId, c))) godownIdByName.set(g.name.toLowerCase(), g.id);
     const vtIdByName = new Map<string, number>();
-    for (const vt of await db.select().from(voucherTypes).where(eq(voucherTypes.companyId, c))) vtIdByName.set(vt.name.toLowerCase(), vt.id);
+    for (const vt of await tx.select().from(voucherTypes).where(eq(voucherTypes.companyId, c))) vtIdByName.set(vt.name.toLowerCase(), vt.id);
 
     const RESERVED_PRIMARY = new Set([
       "Capital Account", "Loans (Liability)", "Current Liabilities", "Fixed Assets", "Investments",
@@ -160,7 +185,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (parentName && groupIdByName.has(parentName)) parentId = groupIdByName.get(parentName)!;
       else if (parentName) parentId = await ensureGroup(parentName, RESERVED_PRIMARY.has(parentName) ? null : null);
       const nature = guessNature(name, parentName);
-      const [row] = await db.insert(groups).values({ companyId: c, name, parentId, nature }).returning({ id: groups.id });
+      const [row] = await tx.insert(groups).values({ companyId: c, name, parentId, nature }).returning({ id: groups.id });
       groupIdByName.set(name, row.id);
       stats.groups += 1;
       return row.id;
@@ -175,19 +200,25 @@ export default async function importRoutes(app: FastifyInstance) {
       return "Assets";
     }
 
-    async function ensureLedger(name: string, parentName: string | null, opening: number, gstin: string | null, regType: string | null): Promise<number> {
+    async function ensureLedger(name: string, parentName: string | null, opening: number, gstin: string | null, regType: string | null, billWise = false): Promise<number> {
       const key = name.toLowerCase();
       if (ledgerIdByName.has(key)) return ledgerIdByName.get(key)!;
       const gid = RESERVED_PRIMARY.has(parentName ?? "") || groupIdByName.has(parentName ?? "")
         ? await ensureGroup(parentName!, null)
         : await ensureGroup(parentName || "Suspense A/c", null);
-      const [row] = await db.insert(ledgers).values({
+      // R-04 (B-13): derive taxability from the ledger's identity instead of the
+      // blanket "none" that made GSTR-1 internally inconsistent for imports.
+      const taxability = DUTY_NAME_RE.test(name) ? "none" : classifyTaxability(name, parentName);
+      const [row] = await tx.insert(ledgers).values({
         companyId: c, name,
         groupId: gid,
         openingBalance: String(r2(opening)),
         gstin: gstin ?? null,
         gstRegistrationType: regType && regType !== "Undefined" ? regType.toLowerCase().replace(/\s+/g, "_") : "none",
-        taxability: "none",
+        taxability,
+        // Ledgers whose vouchers carry bill allocations are bill-wise (Tally
+        // implies the flag); needed so allocation validation matches the API.
+        billWise,
       }).returning({ id: ledgers.id });
       ledgerIdByName.set(key, row.id);
       stats.ledgers += 1;
@@ -198,7 +229,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (!symbol) return null;
       const key = symbol.toLowerCase();
       if (unitIdBySymbol.has(key)) return unitIdBySymbol.get(key)!;
-      const [row] = await db.insert(units).values({ companyId: c, name: symbol, symbol, decimalPlaces: 2 }).returning({ id: units.id });
+      const [row] = await tx.insert(units).values({ companyId: c, name: symbol, symbol, decimalPlaces: 2 }).returning({ id: units.id });
       unitIdBySymbol.set(key, row.id);
       stats.units += 1;
       return row.id;
@@ -208,7 +239,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (!name) return null;
       const key = name.toLowerCase();
       if (godownIdByName.has(key)) return godownIdByName.get(key)!;
-      const [row] = await db.insert(godowns).values({ companyId: c, name }).returning({ id: godowns.id });
+      const [row] = await tx.insert(godowns).values({ companyId: c, name }).returning({ id: godowns.id });
       godownIdByName.set(key, row.id);
       stats.godowns += 1;
       return row.id;
@@ -218,7 +249,7 @@ export default async function importRoutes(app: FastifyInstance) {
       const key = name.toLowerCase();
       if (itemIdByName.has(key)) return itemIdByName.get(key)!;
       const unitId = (await ensureUnit(unitSymbol || "Nos"))!;
-      const [row] = await db.insert(stockItems).values({
+      const [row] = await tx.insert(stockItems).values({
         companyId: c, name, unitId,
         hsnSac: hsn ?? null,
         gstRate: gstRate && Number.isFinite(parseFloat(gstRate)) ? String(parseFloat(gstRate)) : "18",
@@ -229,6 +260,22 @@ export default async function importRoutes(app: FastifyInstance) {
       itemIdByName.set(key, row.id);
       stats.items += 1;
       return row.id;
+    }
+
+    // R-04 (B-05): pre-scan every voucher for bill allocations BEFORE pass 3, so
+    // party ledgers created in pass 2 are born bill-wise — mirroring Tally, where
+    // a ledger with bill-wise allocations implies the bill-wise flag. Without
+    // this, validateBillsTx (same rule as the API) would reject valid imports.
+    const billWiseNames = new Set<string>();
+    for (const msg of messages) {
+      const vMsg = (msg as any).VOUCHER ?? (msg as any).Voucher;
+      if (!vMsg) continue;
+      for (const v of asList(vMsg)) {
+        const entriesRaw = [...asList(v["ALLLEDGERENTRIES.LIST"]), ...asList(v["LEDGERENTRIES.LIST"])];
+        for (const e of entriesRaw) {
+          if (asList(e?.["BILLALLOCATIONS.LIST"]).length > 0 && e.LEDGERNAME) billWiseNames.add(String(e.LEDGERNAME).toLowerCase());
+        }
+      }
     }
 
     // Pass 1: groups
@@ -257,7 +304,8 @@ export default async function importRoutes(app: FastifyInstance) {
           l.PARENT ?? "Suspense A/c",
           parseAmount(l.OPENINGBALANCE),
           l.GSTIN ?? null,
-          l.GSTREGISTRATIONTYPE ?? null
+          l.GSTREGISTRATIONTYPE ?? null,
+          billWiseNames.has(name.toLowerCase())
         );
       }
       const stockItemMsg = (msg as any).STOCKITEM ?? (msg as any).StockItem;
@@ -270,6 +318,13 @@ export default async function importRoutes(app: FastifyInstance) {
       for (const g of asList(godownMsg)) {
         const name = g["@NAME"];
         if (name) await ensureGodown(name);
+      }
+    }
+
+    // Pass 2b: upgrade bill-wise flags on ledgers about to be imported
+    for (const name of billWiseNames) {
+      if (ledgerIdByName.has(name)) {
+        await tx.update(ledgers).set({ billWise: true }).where(and(eq(ledgers.companyId, c), eq(ledgers.id, ledgerIdByName.get(name)!)));
       }
     }
 
@@ -287,7 +342,7 @@ export default async function importRoutes(app: FastifyInstance) {
           let typeId = vtIdByName.get(typeName.toLowerCase());
           if (!typeId) {
             const category = ["Delivery Note", "Receipt Note", "Stock Journal", "Physical Stock", "Manufacturing Journal"].includes(typeName) ? "Inventory" : "Accounting";
-            const [row] = await db.insert(voucherTypes).values({
+            const [row] = await tx.insert(voucherTypes).values({
               companyId: c, name: typeName, shortCode: typeName.slice(0, 5).toUpperCase(),
               category, affectsStock: category === "Inventory",
             }).returning({ id: voucherTypes.id });
@@ -306,7 +361,7 @@ export default async function importRoutes(app: FastifyInstance) {
           if (usedNumbers.get(typeId)!.has(number)) { stats.skipped += 1; continue; } // duplicate within the same file
 
           // Duplicate check — same (company, voucher type, number) already exists.
-          const dup = await db.select({ id: vouchers.id }).from(vouchers)
+          const dup = await tx.select({ id: vouchers.id }).from(vouchers)
             .where(and(eq(vouchers.companyId, c), eq(vouchers.voucherTypeId, typeId), eq(vouchers.number, number))).limit(1);
           if (dup.length > 0) { stats.skipped += 1; continue; }
           usedNumbers.get(typeId)!.add(number);
@@ -328,10 +383,23 @@ export default async function importRoutes(app: FastifyInstance) {
             if (e.ISDEEMEDPOSITIVE === "Yes") amount = Math.abs(amount);
             const ledgerId = ledgerIdByName.has(lname.toLowerCase())
               ? ledgerIdByName.get(lname.toLowerCase())!
-              : await ensureLedger(lname, e.PARENT ?? "Suspense A/c", 0, null, null);
-            entries.push({ ledgerId, amount: r2(amount), gstRate: e.GSTRATE != null ? parseFloat(String(e.GSTRATE)) || null : null, hsn: null });
+              : await ensureLedger(lname, e.PARENT ?? "Suspense A/c", 0, null, null, billWiseNames.has(String(lname).toLowerCase()));
+            entries.push({ ledgerId, amount: r2(amount), gstRate: e.GSTRATE != null ? parseFloat(String(e.GSTRATE)) || null : null, hsn: null, billsRaw: asList(e["BILLALLOCATIONS.LIST"]) });
           }
           if (entries.length === 0) { stats.skipped += 1; continue; }
+
+          // R-04 (B-03): the identical double-entry gate the API enforces —
+          // an unbalanced or empty accounting voucher NEVER reaches the books.
+          // Inventory-category vouchers follow F-INV-01 (entries: [] is valid
+          // only when ≥1 real stock movement exists).
+          const isInventoryType = ["Delivery Note", "Receipt Note", "Stock Journal", "Physical Stock", "Manufacturing Journal"].includes(String(typeName));
+          const invRawPre = asList(v["ALLINVENTORYENTRIES.LIST"]);
+          const validInvCount = invRawPre.filter((e: any) => e.STOCKITEMNAME && Math.abs(r2(parseQty(e.ACTUALQTY ?? e.QTY))) >= 1e-9).length;
+          try {
+            validateEntries(entries, validInvCount, isInventoryType);
+          } catch (verr: any) {
+            throw bad(`Voucher ${number} (${typeName}): ${verr?.message ?? "invalid entries"}`);
+          }
 
           const invRaw = asList(v["ALLINVENTORYENTRIES.LIST"]);
           const inv: { itemId: number; qty: number; rate: number; amount: number; godownId: number | null; hsn: string | null; gstRate: number | null }[] = [];
@@ -352,7 +420,28 @@ export default async function importRoutes(app: FastifyInstance) {
             });
           }
 
-          const [nv] = await db.insert(vouchers).values({
+          // R-04 (B-05): bill allocations are validated with the same rules as
+          // the API (direction, total = entry amount, open amount for
+          // against_ref) so imported settlements cannot corrupt outstanding.
+          const billEntries = entries.filter((e: any) => asList(e.billsRaw).length > 0);
+          for (const be of billEntries) {
+            const sign = Math.sign(r2(be.amount));
+            let sum = 0;
+            const allocations = asList(be.billsRaw);
+            for (const b of allocations) {
+              const billName = b.NAME;
+              if (!billName) { throw bad(`Voucher ${number} (${typeName}): bill allocation without a name`); }
+              const amt = r2(parseAmount(b.AMOUNT));
+              if (amt === 0) { throw bad(`Voucher ${number} (${typeName}): bill allocation amount cannot be zero`); }
+              if (Math.sign(amt) !== sign) { throw bad(`Voucher ${number} (${typeName}): bill allocation "${billName}" direction must match the entry`); }
+              sum = r2(sum + amt);
+            }
+            if (Math.abs(Math.abs(sum) - Math.abs(r2(be.amount))) > 0.004) {
+              throw bad(`Voucher ${number} (${typeName}): bill allocations must total the entry amount`);
+            }
+          }
+
+          const [nv] = await tx.insert(vouchers).values({
             companyId: c, voucherTypeId: typeId, date, number,
             reference: v.REFERENCE ?? null,
             refDate: parseDate(v.REFERENCEDATE),
@@ -365,16 +454,16 @@ export default async function importRoutes(app: FastifyInstance) {
 
           for (let i = 0; i < entries.length; i++) {
             const e = entries[i];
-            const [row] = await db.insert(voucherEntries).values({
+            const [row] = await tx.insert(voucherEntries).values({
               voucherId: nv.id, ledgerId: e.ledgerId, amount: String(e.amount),
               gstRate: e.gstRate != null ? String(e.gstRate) : null, hsnSac: e.hsn, order: i,
             }).returning({ id: voucherEntries.id });
-            for (const b of asList(e["BILLALLOCATIONS.LIST"])) {
+            for (const b of asList(e.billsRaw)) {
               const billName = b.NAME;
-              if (!billName) continue;
+              if (!billName) continue; // validation above already threw on nameless allocations
               const bt = String(b.TYPEOFBILL ?? "New Ref").toLowerCase();
               const billType = bt.includes("new") ? "new_ref" : bt.includes("advance") ? "advance" : bt.includes("on") ? "on_account" : "against_ref";
-              await db.insert(billAllocations).values({
+              await tx.insert(billAllocations).values({
                 entryId: row.id, billType, billName: String(billName),
                 amount: String(r2(parseAmount(b.AMOUNT))),
                 dueDate: parseDate(b.BILLDUEDATE),
@@ -383,7 +472,7 @@ export default async function importRoutes(app: FastifyInstance) {
           }
           for (let i = 0; i < inv.length; i++) {
             const e = inv[i];
-            await db.insert(inventoryEntries).values({
+            await tx.insert(inventoryEntries).values({
               voucherId: nv.id, itemId: e.itemId, godownId: e.godownId,
               qty: String(e.qty), rate: String(e.rate), amount: String(e.amount),
               kind: "stock", hsnSac: e.hsn, gstRate: e.gstRate != null ? String(e.gstRate) : null, order: i,
@@ -391,9 +480,10 @@ export default async function importRoutes(app: FastifyInstance) {
           }
           stats.vouchers += 1;
         } catch (err: any) {
-          stats.errors.push(`Voucher: ${err?.message ?? "unknown error"}`);
-          stats.skipped += 1;
-          if (stats.errors.length > 20) break;
+          // R-04 (B-05): rethrow inside the transaction — the whole import rolls
+          // back, nothing partial is persisted, and the client sees WHY.
+          if (err?.statusCode) throw err;
+          throw bad(`Voucher: ${err?.message ?? "unknown error"}`);
         }
       }
     }

@@ -1251,5 +1251,126 @@ s, full = r03(sA, "GET", f"/api/c/{r03A}/vouchers/{v['id']}")
 check("R03: cancelled_by = cancelling user id", s == 200 and full.get("cancelledBy") == 1, full.get("cancelledBy"))
 r03(sA, "POST", f"/api/c/{r03A}/vouchers/{v['id']}/uncancel")
 
+# ================= R-04: XML import integrity (B-03 + B-05 + B-13) =================
+# The import is the API's sibling write path: it must enforce the SAME double-
+# entry rules, validate bill allocations, and be atomic — a failure anywhere
+# rolls back the ENTIRE import (no partial masters/vouchers).
+print("-- R-04: XML import integrity --")
+
+s, cI = r03(sA, "POST", "/api/companies", {"name": "R04-Import", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R04IMP00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R04: import test company created", s == 200 and cI.get("id"), (s, str(cI)[:80]))
+CI = cI["id"]
+
+XML_HDR = "<ENVELOPE><BODY><IMPORTDATA><REQUESTDATA>"
+XML_FTR = "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"
+
+def imp_post(xml):
+    return r03(sA, "POST", f"/api/c/{CI}/import/xml", {"xml": xml})
+
+# --- B-03: an unbalanced voucher must be REJECTED, nothing persisted ---
+unbalanced = XML_HDR + """
+<TALLYMESSAGE><VOUCHER VCHTYPE="Journal" ACTION="Create"><DATE>20260701</DATE><VOUCHERNUMBER>R04-UB-1</VOUCHERNUMBER>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Suspense Dr</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>400.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Suspense Cr</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>600.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+</VOUCHER></TALLYMESSAGE>""" + XML_FTR
+s, b = imp_post(unbalanced)
+check("R04/B03: unbalanced import rejected with 400", s == 400, (s, str(b)[:80]))
+check("R04/B03: error names the offending voucher", "R04-UB-1" in str(b), str(b)[:120])
+s, day = r03(sA, "GET", f"/api/c/{CI}/vouchers")
+check("R04/B03: no voucher persisted from rejected import", not any(v.get("number") == "R04-UB-1" for v in (day or [])), None)
+s, led = r03(sA, "GET", f"/api/c/{CI}/ledgers")
+check("R04/B03: rollback removed masters created by failed import", not any(l["name"].startswith("R04 Suspense") for l in (led or [])), None)
+s, tb = r03(sA, "GET", f"/api/c/{CI}/reports/trial-balance?from=2026-04-01&to=2027-03-31")
+check("R04/B03: TB balanced after rejected import", tb.get("totalDebit") == tb.get("totalCredit"), (tb.get("totalDebit"), tb.get("totalCredit")))
+
+# --- B-03: mid-file failure is atomic (balanced voucher BEFORE a broken one must not survive) ---
+mixed = XML_HDR + """
+<TALLYMESSAGE><VOUCHER VCHTYPE="Receipt" ACTION="Create"><DATE>20260702</DATE><VOUCHERNUMBER>R04-OK-1</VOUCHERNUMBER>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>50.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Capital</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>50.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+</VOUCHER></TALLYMESSAGE>
+<TALLYMESSAGE><VOUCHER VCHTYPE="Journal" ACTION="Create"><DATE>20260703</DATE><VOUCHERNUMBER>R04-UB-2</VOUCHERNUMBER>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 X</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>10.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Y</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>99.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+</VOUCHER></TALLYMESSAGE>""" + XML_FTR
+s, b = imp_post(mixed)
+check("R04/B05: import containing an invalid voucher fails", s == 400, (s, str(b)[:80]))
+s, day = r03(sA, "GET", f"/api/c/{CI}/vouchers")
+check("R04/B05: earlier valid voucher in the same file was rolled back too (atomic)", not any(v.get("number") == "R04-OK-1" for v in (day or [])), [v.get("number") for v in (day or [])])
+
+# --- balanced import still works end-to-end; masters + TB intact ---
+# (no ledger OPENINGBALANCE here: opening balances have no accounting contra in
+# v1.3.0 by known defect B-02 — out of R-04 scope — so the TB equality check
+# below must isolate voucher movements)
+BAL_XML = XML_HDR + """
+<TALLYMESSAGE>
+ <LEDGER NAME="R04 Customer"><PARENT>Sundry Debtors</PARENT></LEDGER>
+ <STOCKITEM NAME="R04 Item"><BASEUNITS>Nos</BASEUNITS><GSTRATE>18</GSTRATE><OPENINGBALANCE> 5 Nos</OPENINGBALANCE><STANDARDCOST>200.00</STANDARDCOST></STOCKITEM>
+ <VOUCHER VCHTYPE="Sales" ACTION="Create"><DATE>20260710</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>R04-S-1</VOUCHERNUMBER>
+  <PARTYLEDGERNAME>R04 Customer</PARTYLEDGERNAME>
+  <ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>R04 Item</STOCKITEMNAME><ACTUALQTY> 2 Nos</ACTUALQTY><RATE>200.00/Nos</RATE><AMOUNT>400.00</AMOUNT></ALLINVENTORYENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Customer</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-472.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>GST Sales - Local</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-400.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>CGST</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-36.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>SGST/UTGST</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-36.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+ </VOUCHER>
+</TALLYMESSAGE>""" + XML_FTR
+s, imp = imp_post(BAL_XML)
+check("R04: balanced import succeeds", s == 200 and imp.get("vouchers") == 1, (s, str(imp)[:100]))
+s, day = r03(sA, "GET", f"/api/c/{CI}/vouchers")
+check("R04: imported voucher visible", any(v.get("number") == "R04-S-1" for v in (day or [])), None)
+s, tb = r03(sA, "GET", f"/api/c/{CI}/reports/trial-balance?from=2026-04-01&to=2027-03-31")
+check("R04: TB balanced after successful import", tb.get("totalDebit") == tb.get("totalCredit"), (tb.get("totalDebit"), tb.get("totalCredit")))
+
+# --- B-13: imported Sales ledger is taxable; duty ledgers stay non-taxable ---
+s, led = r03(sA, "GET", f"/api/c/{CI}/ledgers")
+ledmap = {l["name"]: l for l in (led or [])}
+check("R04/B13: imported sales ledger is taxable", ledmap.get("GST Sales - Local", {}).get("taxability") == "taxable", ledmap.get("GST Sales - Local", {}).get("taxability"))
+check("R04/B13: imported party (non-sales/purchase) ledger stays non-taxable", ledmap.get("R04 Customer", {}).get("taxability") == "none", ledmap.get("R04 Customer", {}).get("taxability"))
+s, g1 = r03(sA, "GET", f"/api/c/{CI}/reports/gstr1?from=2026-07-01&to=2026-07-31")
+b2c = g1.get("b2c") if isinstance(g1, dict) else None
+check("R04/B13: GSTR-1 taxable value matches imported sale", isinstance(b2c, list) and any(abs(r.get("taxable", 0) - 400) < 0.01 for r in b2c), str(g1)[:160])
+
+# --- bill allocation validation on the import path ---
+BADBILLS = XML_HDR + """
+<TALLYMESSAGE><VOUCHER VCHTYPE="Receipt" ACTION="Create"><DATE>20260715</DATE><VOUCHERNUMBER>R04-BILL-1</VOUCHERNUMBER>
+<PARTYLEDGERNAME>R04 Customer</PARTYLEDGERNAME>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Customer</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>100.00</AMOUNT>
+ <BILLALLOCATIONS.LIST><NAME>R04-BILL-X</NAME><TYPEOFBILL>New Ref</TYPEOFBILL><AMOUNT>60.00</AMOUNT></BILLALLOCATIONS.LIST>
+ <BILLALLOCATIONS.LIST><NAME>R04-BILL-Y</NAME><TYPEOFBILL>New Ref</TYPEOFBILL><AMOUNT>60.00</AMOUNT></BILLALLOCATIONS.LIST>
+</ALLLEDGERENTRIES.LIST>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>100.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+</VOUCHER></TALLYMESSAGE>""" + XML_FTR
+s, b = imp_post(BADBILLS)
+check("R04/B05: allocations not totalling the entry are rejected", s == 400 and "total the entry" in str(b), (s, str(b)[:90]))
+s, led = r03(sA, "GET", f"/api/c/{CI}/ledgers")
+check("R04/B05: rejected bill import left no partial rows", not any(l["name"] == "R04-BILL" for l in (led or [])) and all(l["name"] != "R04 Suspense Dr" for l in (led or [])), None)
+
+# --- B-14: multipart file-upload contract (the path the browser actually uses) ---
+# The client uploads FormData; the server must parse multipart and accept it.
+def imp_upload_multipart(xml, boundary="==r04b14=="):
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"r04.xml\"\r\n"
+            f"Content-Type: text/xml\r\n\r\n{xml}\r\n--{boundary}--\r\n").encode()
+    r = _ur.Request(BASE + f"/api/c/{CI}/import/xml", data=body, method="POST",
+                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        with sA.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+
+s, imp2 = imp_upload_multipart(XML_HDR + """
+<TALLYMESSAGE><VOUCHER VCHTYPE="Receipt" ACTION="Create"><DATE>20260720</DATE><VOUCHERNUMBER>R04-MP-1</VOUCHERNUMBER>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>75.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+<ALLLEDGERENTRIES.LIST><LEDGERNAME>R04 Capital</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>75.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+</VOUCHER></TALLYMESSAGE>""" + XML_FTR)
+check("R04/B14: multipart file-upload import accepted", s == 200 and imp2.get("vouchers") == 1, (s, str(imp2)[:90]))
+s, day = r03(sA, "GET", f"/api/c/{CI}/vouchers")
+check("R04/B14: multipart-imported voucher persisted", any(v.get("number") == "R04-MP-1" for v in (day or [])), None)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

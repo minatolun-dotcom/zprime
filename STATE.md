@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-13 (post-v1.2.0: R-03 user→company authorization implemented and verified, 821 checks green, unreleased)
+**Last updated:** 2026-09-15 (R-04 import integrity RELEASED as v1.4.0 — 686/686 automated + 174/174 browser verified. Current phase: IDLE — no active task. See CHANGELOG.md, RELEASES.md and CONTINUE.md; see also AGENTS.md, DEVELOPMENT_PROTOCOL.md, ROADMAP.md for the engineering process.)
 
 ## What zprime is
 
@@ -8,7 +8,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**v1.0.0 (483), v1.1.0 (622), v1.1.1 (711) and v1.2.0 (790) remain tagged and untouched. Post-v1.2.0 R-03 user→company authorization is implemented and fully verified (821/821) but NOT yet committed or tagged; the working tree carries the R-03 changes on top of v1.2.0.**
+**All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The only intentionally untracked file is `ZLEDGER_PRODUCTION_ACTION_PLAN.md` (historical audit input).**
 
 ### R-03 (P1 confirmed vulnerability → implemented 2026-09-13): user→company authorization
 

@@ -70,7 +70,9 @@ function assertPhysicalRows(input: VoucherInput, isPhysicalType: boolean) {
   }
 }
 
-function validateEntries(entries: { amount: number }[], inventoryCount: number, isInventoryType: boolean) {
+/** Exported so the XML import path (R-04) enforces the identical double-entry
+ *  rules as the API instead of a divergent copy. */
+export function validateEntries(entries: { amount: number }[], inventoryCount: number, isInventoryType: boolean) {
   const total = r2(entries.reduce((s, e) => s + e.amount, 0));
   if (Math.abs(total) > 0.004) throw bad(`Debits and credits do not balance (difference ${total.toFixed(2)})`);
   if (isInventoryType) {

@@ -1,7 +1,10 @@
 export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  // B-14 (R-04): never force a Content-Type onto FormData — the browser must set
+  // its own multipart boundary, or the server rejects the body as invalid JSON.
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const res = await fetch(path, {
     credentials: "include",
-    headers: options.body ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
+    headers: options.body && !isFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
     ...options,
   });
   if (res.status === 401) {
