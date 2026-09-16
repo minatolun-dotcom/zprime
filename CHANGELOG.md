@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — R-06 negative-stock guard (B-01)
+
+**763/763 automated checks passed (Python: 39+88+65+61+481+29), 186/186 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05), zero failures.**
+
+### R-06 — Negative-stock availability guard: B-01 (CONFIRMED P1 → IMPLEMENTED, Model 1 approved)
+
+**Root cause (investigation, live-reproduced on v1.5.0):** nothing in the posting path checked availability — an oversell was accepted silently (sale of 15 against stock of 10 posted HTTP 200, charging WAVG cost for 5 phantom units); with stock already negative, further sales posted **zero** COGS (goods out for free); the next purchase then averaged positive value onto a negative quantity (qty −2, value +1,000), overstating P&L gross profit by exactly the phantom margin. `stock.ts` compounded it: WAVG cost went to 0 at `runningQty ≤ 0` and a hardcoded clamp (`> -1000`) zeroed negative `runningValue` — reports consumed the result as truth. No persisted corruption (valuation recomputes per call; cancel/uncancel self-heals; double-entry stayed balanced), which is why P1, not P0.
+
+**Fix (Model 1 — reject oversell, approved product policy):**
+- **Chain-comparison availability guard (`server/src/routes/vouchers.ts`):** for non-opted-in companies, every movement is replayed chronologically (date, then voucher id — grandfathered negative states from the permissive era are tolerated *as found*, never blocked retroactively). A mutation is rejected with **400** only when it makes some step invalid that was previously valid — a new oversell, or an edit/cancel/uncancel/delete that strands a previously-fine downstream sale. No side doors: the guard covers create, edit, cancel, uncancel, delete, and both XML import paths. Physical Stock rows are absolute counts (opening folded once, PS replaces the running quantity, diff posted at running avg).
+- **Company opt-out (`allowNegativeStock`, default false):** migration `0004_r06_negative_stock_guard.sql` (additive, idempotent column add + backfill `false`), Drizzle schema/snapshot/journal per the project's hand-crafted convention. Opted-in companies keep the permissive model but now get **honest valuation** — `stock.ts` no longer clamps negative value to 0 and caps WAVG unit cost at the item's latest purchase rate instead of charging 0 for phantom units (opt-in semantics documented in code).
+- **UI (`client/src/pages/CompanySettings.tsx`):** "Allow Negative Stock" toggle with explanatory copy.
+
+**Fixture policy (disclosed):** pre-R-06 fixture companies in the baseline browser suite and final-regression seeds legitimately oversell (they test voucher/report UI written under the permissive model) and opt in explicitly via `D.allowNegativeStock(...)` — a seeding helper, never a bypass of asserted guard behaviour; all guard coverage lives in the dedicated R-06 company checks (+21 in final_regression).
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 61 | PASS |
+| Final regression (incl. 21 R-06 checks) | 481 (+21) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 + 9 + 12 | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume | — | PASS |
+
 ## v1.5.0 — R-05 CN/DN GST reporting + Apply-GST party balance
 
 **742/742 automated checks passed (Python: 39+88+65+61+460+29), 186/186 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05), zero failures.**

@@ -12,11 +12,12 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.2.0 | **R-02** | Voucher cancellation (Model A mark + exclude; cancel/uncancel; settled-bill + payroll guards; Day Book/VoucherScreen UI) |
 | v1.3.0 | **R-03** | Company authorization and memberships (`user_companies` junction, centralized `cid()` membership authorization, immediate revocation, 404 no-leak semantics, owner-only member management) |
 | v1.4.0 | **R-04** | XML import integrity (B-03 + B-05 + B-13 + B-14: single-transaction import, API-equivalent double-entry/bill validation, per-voucher error attribution, imported-ledger taxability classification, client multipart fix) |
+| v1.6.0 | **R-06** | Negative-stock availability guard (B-01: Model 1 reject-oversell with `allowNegativeStock` opt-out; chain-comparison chronological guard across create/edit/cancel/uncancel/delete/import; honest negative-stock valuation) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
 
-**R-05 is RELEASED as v1.5.0** (investigated → reviewed → approved → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
+**R-06 is RELEASED as v1.6.0** (investigated → reviewed → approved [Model 1] → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
 Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-01 (negative stock acceptance), B-02 (opening-balance accounting model), B-07 (cross-company master-reference validation).
 

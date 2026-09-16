@@ -427,6 +427,9 @@ async function checkMonthEnd(tag) {
 
   // ---------------- Company A ----------------
   await D.createCompany({ name: "Meridian Traders", gstin: "27MERID12TR3", stateCode: "27", fyStart: FY, booksBegin: FY });
+  // R-06: baseline fixtures pre-date the availability guard and exercise voucher/report
+  // UI, not stock availability — opt the fixture company into the permissive model.
+  await D.allowNegativeStock("Meridian Traders");
   await createMasters();
   await writeState();
 
@@ -853,6 +856,7 @@ async function checkMonthEnd(tag) {
 // =====================================================================
 async function createCompanyB() {
   await D.createCompany({ name: "Vasan & Co", gstin: "29VASAN45CO6", stateCode: "29", fyStart: FY, booksBegin: FY });
+  await D.allowNegativeStock("Vasan & Co"); // R-06: legacy-model fixture (see Company A note)
   // minimal masters in Vasan & Co: only a customer ledger (seed gives Cash/Bank)
   await D.createMaster("ledgers", [["Name *", "Vasan Customer"], ["Under Group *", { label: "Sundry Debtors" }], ["Bill-wise Details", true]]);
 }

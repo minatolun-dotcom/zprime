@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
-  stockItems, godowns, tdsSections, voucherCounters, payslips,
+  stockItems, godowns, tdsSections, voucherCounters, payslips, companies,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
@@ -67,6 +67,115 @@ function assertPhysicalRows(input: VoucherInput, isPhysicalType: boolean) {
   if (!isPhysicalType) return;
   for (const ie of input.inventoryEntries ?? []) {
     if (ie.qty < -1e-9) throw bad("Physical Stock counted quantity cannot be negative");
+  }
+}
+
+// ---------- R-06 (B-01): negative-stock guard ----------
+/**
+ * Chronological stock-availability gate, shared by the voucher create/edit path
+ * and the XML import (R-04 pattern: one guard, two callers, identical rules).
+ *
+ * Availability is judged CHRONOLOGICALLY, not as-of-latest: a voucher dated D
+ * is checked against the running quantity produced by every non-cancelled
+ * movement dated <= D (id, then entry order within a day — the same order
+ * `stockSummary` replays). This means a backdated purchase legitimizes an
+ * earlier oversell, and a backdated oversell is judged against what actually
+ * existed on its date.
+ *
+ * Only fires when the company has NOT opted in via `allow_negative_stock`
+ * (R-06 Model 1: reject oversell, company-level opt-out).
+ *
+ * CHAIN COMPARISON (grandfathering + edit/cancel safety): the guard replays
+ * the company's movements per item in strict chronological order (date,
+ * voucher id, entry order — `stockSummary`'s order; a Physical Stock row is
+ * an absolute count, everything else a delta) and counts INVALID steps —
+ * outward deltas that leave the running quantity negative. The mutation is
+ * rejected only when the AFTER-chain has MORE invalid steps than the BEFORE-
+ * chain. The voucher's own rows interleave at their TRUE (date, voucher id)
+ * position — an edited/cancelled voucher keeps its id, so a same-date
+ * neighbour created after it is replayed after it. Databases grandfathered
+ * from the pre-R-06 permissive era keep their already-invalid steps in both
+ * chains and are never blocked retroactively; a new oversell (create), an
+ * edit that strands a previously-fine sale, a cancel that removes a purchase
+ * a later sale relied on, or an uncancel that reintroduces an oversell each
+ * strictly increase the count and are blocked.
+ */
+export async function assertStockAvailabilityTx(
+  tx: Tx,
+  companyId: number,
+  input: { date: string; inventoryEntries?: { itemId: number; qty: number; kind?: string }[] },
+  opts: { excludeVoucherId?: number; voucherId?: number; prev?: { date: string; inventoryEntries: { itemId: number; qty: number; kind?: string }[] } } = {},
+) {
+  const clean = (list?: { itemId: number; qty: number; kind?: string }[]) =>
+    (list ?? []).filter((ie) => ie.itemId > 0 && Math.abs(r2(ie.qty)) >= 1e-9);
+  const rows = clean(input.inventoryEntries);
+  const prevRows = clean(opts.prev?.inventoryEntries);
+  if (rows.length === 0 && prevRows.length === 0) return;
+
+  const [company] = await tx.select({ allow: companies.allowNegativeStock }).from(companies).where(eq(companies.id, companyId));
+  if (company?.allow) return;
+
+  const itemIds = [...new Set([...rows, ...prevRows].map((r) => r.itemId))];
+  const items = await tx
+    .select({ id: stockItems.id, name: stockItems.name, openingQty: stockItems.openingQty })
+    .from(stockItems)
+    .where(and(eq(stockItems.companyId, companyId), inArray(stockItems.id, itemIds)));
+  if (items.length === 0) return;
+  const names = new Map(items.map((it) => [it.id, it.name]));
+  const openings = new Map(items.map((it) => [it.id, num(it.openingQty)]));
+
+  const conds = [eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), inArray(inventoryEntries.itemId, itemIds)];
+  if (opts.excludeVoucherId != null) conds.push(ne(vouchers.id, opts.excludeVoucherId));
+  const history = await tx
+    .select({ id: vouchers.id, itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind, date: vouchers.date })
+    .from(inventoryEntries)
+    .innerJoin(vouchers, eq(vouchers.id, inventoryEntries.voucherId))
+    .where(and(...conds))
+    .orderBy(asc(vouchers.date), asc(vouchers.id), asc(inventoryEntries.order));
+
+  /** Count invalid steps of a chain = history + the given own segments. A
+   *  segment with `id` interleaves at its true (date, voucher id) position —
+   *  a segment without one (create/import: a brand-new voucher always gets
+   *  the highest id on its date) applies after all same-date history. */
+  const segKey = (d: string, id?: number) => `${d}#${String(id ?? Number.MAX_SAFE_INTEGER).padStart(15, "0")}`;
+  const countInvalid = (segments: { date: string; id?: number; rows: { itemId: number; qty: number; kind?: string }[] }[]) => {
+    const running = new Map<number, number>(openings);
+    let invalid = 0;
+    let offender: string | null = null;
+    const apply = (itemId: number, qty: number, kind?: string) => {
+      if (kind === "physical") { running.set(itemId, r2(qty)); return; } // absolute count, always non-negative
+      const after = r2((running.get(itemId) ?? 0) + qty);
+      running.set(itemId, after);
+      if (qty < -1e-9 && after < -1e-9) {
+        invalid++;
+        offender = names.get(itemId) ?? String(itemId);
+      }
+    };
+    const sorted = [...segments].sort((a, b) => {
+      const ka = segKey(a.date, a.id), kb = segKey(b.date, b.id);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    let seg = 0;
+    for (const h of history) {
+      while (seg < sorted.length && segKey(sorted[seg].date, sorted[seg].id) <= segKey(h.date, h.id)) {
+        for (const r of sorted[seg].rows) apply(r.itemId, r2(r.qty), r.kind);
+        seg++;
+      }
+      apply(h.itemId, num(h.qty), h.kind ?? undefined);
+    }
+    for (; seg < sorted.length; seg++) for (const r of sorted[seg].rows) apply(r.itemId, r2(r.qty), r.kind);
+    return { invalid, offender };
+  };
+
+  const beforeSegs: { date: string; id?: number; rows: { itemId: number; qty: number; kind?: string }[] }[] = [];
+  if (opts.prev) beforeSegs.push({ date: opts.prev.date, id: opts.voucherId, rows: prevRows });
+  const before = countInvalid(beforeSegs);
+  const after = countInvalid([{ date: input.date, id: opts.voucherId, rows }]);
+  if (after.invalid > before.invalid) {
+    throw bad(
+      `Insufficient stock: "${after.offender ?? "item"}" would go negative. Enable "Allow Negative Stock" in Company Settings to permit overselling.`,
+      400,
+    );
   }
 }
 
@@ -319,6 +428,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
   await assertRefsTx(tx, companyId, input);
   assertPhysicalRows(input, type.name === "Physical Stock");
   validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
+  await assertStockAvailabilityTx(tx, companyId, input);
   const number = input.number?.trim() || (await nextNumber(tx, companyId, input.voucherTypeId));
   await validateBillsTx(tx, companyId, input.entries);
 
@@ -464,6 +574,21 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await assertRefsTx(tx, c, input);
         assertPhysicalRows(input, type.name === "Physical Stock");
         validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
+        // R-06 chain comparison: the AFTER-chain uses the rewritten body; the
+        // BEFORE-chain replays the voucher's CURRENT body (its rows are still in
+        // the DB until the rewrite, so history excludes this voucher and they
+        // arrive via `prev`). An edit is rejected only when it turns a
+        // previously-valid step invalid (e.g. shrinking a purchase a later sale
+        // relied on) — never when grandfathered pre-R-06 negatives merely persist.
+        const oldInv = await tx
+          .select({ itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind })
+          .from(inventoryEntries)
+          .where(eq(inventoryEntries.voucherId, id));
+        await assertStockAvailabilityTx(tx, c, input, {
+          excludeVoucherId: id,
+          voucherId: id,
+          prev: { date: existing.date, inventoryEntries: oldInv.map((r) => ({ itemId: r.itemId, qty: num(r.qty), kind: r.kind })) },
+        });
         const number = input.number?.trim() || existing.number;
         await validateBillsTx(tx, c, input.entries, id);
 
@@ -518,6 +643,22 @@ export default async function voucherRoutes(app: FastifyInstance) {
         // against other vouchers' bills. Settled bills ON this voucher are fine
         // — the bill rows survive cancellation (Model A).
         await assertNoOutgoingSettlementsTx(tx, c, id);
+        // R-06: removing this voucher's movements must not drive any item's
+        // stock negative (e.g. cancelling a purchase that a later sale relied
+        // on). Chronological replay EXCLUDING this voucher.
+        const invRows = await tx.select({ itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind }).from(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
+        if (invRows.length > 0) {
+          // BEFORE-chain = the current chain including this voucher (its rows are
+          // active, so history excludes the voucher and supplies them via `prev`);
+          // AFTER-chain = history without it (empty own segment). Cancelling an
+          // offending/oversell voucher lowers the invalid count and is allowed;
+          // cancelling a purchase a later sale relied on raises it and is blocked.
+          await assertStockAvailabilityTx(tx, c, { date: v.date, inventoryEntries: [] }, {
+            excludeVoucherId: id,
+            voucherId: id,
+            prev: { date: v.date, inventoryEntries: invRows.map((r) => ({ itemId: r.itemId, qty: num(r.qty), kind: r.kind })) },
+          });
+        }
         await tx
           .update(vouchers)
           .set({
@@ -559,6 +700,18 @@ export default async function voucherRoutes(app: FastifyInstance) {
             eq(vouchers.number, v.number), eq(vouchers.isCancelled, false), ne(vouchers.id, id),
           ));
         if (clash) throw bad(`Cannot uncancel: voucher number ${v.number} has been reissued to another voucher. Delete or cancel the other voucher first.`, 409);
+        // R-06: restoring this voucher's movements must not drive any item's
+        // stock negative (e.g. a newer purchase it relied on was cancelled in
+        // the meantime). Chronological replay EXCLUDING this voucher, then its
+        // own rows are judged by the guard.
+        const uinv = await tx.select({ itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind }).from(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
+        if (uinv.length > 0) {
+          // BEFORE-chain = active history (this voucher is cancelled, so it is
+          // not part of it); AFTER-chain = history + the restored rows. An
+          // uncancel is rejected only when restoring would create a NEW invalid
+          // step (e.g. the purchase it relied on was cancelled meanwhile).
+          await assertStockAvailabilityTx(tx, c, { date: v.date, inventoryEntries: uinv.map((r) => ({ itemId: r.itemId, qty: num(r.qty), kind: r.kind })) }, { excludeVoucherId: id, voucherId: id });
+        }
         // A payroll voucher being restored must not collide with a payroll run
         // processed for the same month while it was cancelled (payslip unique
         // index). Reuse the same detection as the payroll route.
@@ -636,6 +789,20 @@ export default async function voucherRoutes(app: FastifyInstance) {
           // the payslips and silently make the month reprocessable — double salary
           // is one keystroke away. Cancellation is the correct removal path.
           throw bad("Payroll vouchers cannot be deleted. Cancel the payroll voucher instead — payslips and the processed-month guard are preserved.", 409);
+        }
+        // R-06 chain comparison: removing this voucher's movements must not turn
+        // any previously-valid step invalid (e.g. deleting a purchase a later
+        // sale relied on). Same before/after semantics as cancel.
+        const delInv = await tx
+          .select({ itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind })
+          .from(inventoryEntries)
+          .where(eq(inventoryEntries.voucherId, id));
+        if (delInv.length > 0) {
+          await assertStockAvailabilityTx(tx, c, { date: existing.date, inventoryEntries: [] }, {
+            excludeVoucherId: id,
+            voucherId: id,
+            prev: { date: existing.date, inventoryEntries: delInv.map((r) => ({ itemId: r.itemId, qty: num(r.qty), kind: r.kind })) },
+          });
         }
 
         await tx.delete(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id)));

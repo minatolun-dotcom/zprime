@@ -79,16 +79,24 @@ export async function stockSummary(companyId: number, asOf: string, itemId?: num
           if (lot.qty <= 1e-9) st.fifoLots.shift();
         }
       } else {
-        cost = st.runningQty > 1e-9 ? (st.runningValue / st.runningQty) * out : 0;
+        // R-06 (B-01): cap outward cost at the value actually held. Charging
+        // WAVG on more units than exist invents cost for units that never
+        // existed (drives runningValue deeply negative, later "recovered" by
+        // the old clamp as phantom profit). When qty <= 0 the marginal units
+        // genuinely carry no recorded cost, so the charge is the held value.
+        const heldQty = Math.max(st.runningQty, 0);
+        const heldValue = Math.max(st.runningValue, 0);
+        cost = heldQty > 1e-9 ? r2(Math.min(out, heldQty) * (heldValue / heldQty)) : 0;
       }
       st.outQty = r2(st.outQty + out);
       st.outValue = r2(st.outValue + cost);
       st.runningQty = r2(st.runningQty - out);
       st.runningValue = r2(st.runningValue - cost);
-      if (st.runningQty < 1e-9 && st.runningQty > -1000) {
-        // avoid negative inventory value: clamp to zero (negative stock shown by qty)
-        if (st.runningValue < 0) st.runningValue = 0;
-      }
+      // R-06: the silent negative-value clamp is GONE. With the posting-time
+      // guard (default) running value can no longer go negative; with the
+      // company opt-in the negative value is the HONEST representation of
+      // stock sold beyond held value and is shown as such (negative closing
+      // value, negative COGS contribution) instead of being laundered to 0.
     }
   };
 
@@ -113,7 +121,10 @@ export async function stockSummary(companyId: number, asOf: string, itemId?: num
     .map((it) => {
       const st = state.get(it.id)!;
       const closingQty = st.runningQty;
-      const closingValue = Math.max(st.runningValue, 0);
+      // R-06: report the engine's true running value. Under the default guard
+      // it cannot be negative; under the explicit opt-in a negative value is
+      // honest information, not an artifact to hide.
+      const closingValue = st.runningValue;
       return {
         itemId: it.id, name: it.name, unit: it.unit, decimals: it.decimals,
         openingQty: st.openingQty, openingValue: st.openingValue,

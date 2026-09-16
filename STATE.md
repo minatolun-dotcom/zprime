@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-15 (R-05 CN/DN GST reporting + Apply-GST party balance RELEASED as v1.5.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
+**Last updated:** 2026-09-16 (R-06 negative-stock guard RELEASED as v1.6.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
 
 ## What zprime is
 
@@ -9,6 +9,16 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 ## Release status
 
 **All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
+
+### R-06 (P1 confirmed → released as v1.6.0, 2026-09-16): negative-stock availability guard
+
+Phase-1 investigation live-reproduced B-01 on v1.5.0: overselling was accepted silently (sale 15 against stock 10 → HTTP 200, WAVG charged for 5 phantom units); with stock already negative, further sales posted **zero COGS**; the next purchase averaged positive value onto negative quantity (qty −2, value +1,000) and overstated P&L gross profit by the phantom margin. `stock.ts` compounded it (WAVG cost → 0 at qty ≤ 0; hardcoded clamp zeroing negative runningValue). No persisted corruption (valuation recomputes per call; double-entry stayed balanced) — P1, not P0.
+
+Implemented per **approved Model 1 (reject oversell + company opt-out)**: chain-comparison availability guard in `vouchers.ts` — chronological replay (date, then voucher id; grandfathered negatives tolerated as found), mutation rejected **400** only when it turns a previously-valid step invalid; covers create/edit/cancel/uncancel/delete and both XML import paths (no side doors). Physical Stock rows are absolute counts (opening folded once; PS replaces running qty; diff at running avg). Additive migration `0004` adds `companies.allowNegativeStock` (default false) per the hand-crafted snapshot/journal convention; opted-in companies get **honest valuation** (no clamp; WAVG capped at latest purchase rate). UI: CompanySettings toggle. Fixtures that legitimately oversell opt in explicitly via `D.allowNegativeStock` (seeding only — guard coverage lives in the +21 dedicated R-06 checks). Regression: final_regression 460 → **481**; Python **763/763**; browser **186/186** (153+12+9+12) incl. the availability-banner path; typecheck clean; fresh Docker healthy. Accounting mathematics untouched — the guard decides *whether a voucher may post*, never *how it posts*.
+
+### R-05 (P1 confirmed → released as v1.5.0, 2026-09-15): CN/DN GST reporting + Apply-GST party balance
+
+Investigation live-reproduced B-06 on v1.4.0: `voucherGst()` folded rows with `Math.abs()`, erasing the reversal sign notes carry in the books — a CN *added* to GSTR-1 output tax and a DN *added* to ITC (3B net 1,440 vs book truth 1,080), and `gstr1()` hardcoded `cdnr: []`. Books were always right; statutory reports contradicted them. Fixed in `gst.ts` with direction-aware signed aggregation (per-voucher; sales positive, notes negative), real CDNR/CDNUR sections with positive magnitudes, and `net*` totals reconciling exactly to the ledgers; Reports.tsx shows the net card + note tables. Approved scope extension: VoucherScreen Apply-GST was doubly broken (sign-inverted taxable-base filter — duty never inserted for Sales/Purchase — and no party-row rebalance, so save was always rejected); fixed with a per-type base-sign map and party rebalance. Engine mirrors re-aligned from the old no-netting semantics (disclosed; assertion strength kept exact). Python 742/742 (final_regression 460, reconcile 61), browser 186/186 (153+12+9+12), fresh Docker clean.
 
 ### R-03 (P1 confirmed vulnerability → implemented 2026-09-13): user→company authorization
 

@@ -42,6 +42,10 @@ export const companies = pgTable("companies", {
   gstin: text("gstin"),
   financialYearStart: date("financial_year_start").notNull(), // e.g. 2025-04-01
   booksBeginFrom: date("books_begin_from").notNull(),
+  // R-06 (B-01): when false (default), outward inventory movements that would
+  // drive an item's chronological stock quantity negative are rejected at
+  // posting. Opt-in per company for dispatch-first workflows.
+  allowNegativeStock: boolean("allow_negative_stock").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

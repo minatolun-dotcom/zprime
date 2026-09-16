@@ -483,9 +483,21 @@ async function getJson(path) {
   return res.json();
 }
 
+/** R-06: opt a fixture company into negative stock (permissive legacy model).
+ *  Seeding helper only — the availability guard itself is asserted in r06 checks,
+ *  never bypassed through here. Rides the page's auth cookie. */
+async function allowNegativeStock(name) {
+  const dir = await getJson("/api/companies");
+  const c = dir.find((x) => x.name === name)?.id;
+  if (!c) throw new Error(`company not found for opt-in: ${name}`);
+  const res = await page.request.put(`${BASE}/api/companies/${c}`, { data: { allowNegativeStock: true } });
+  if (!res.ok()) throw new Error(`negative-stock opt-in failed for ${name}: ${res.status()}`);
+  return c;
+}
+
 const api = {
   launch, close, login, createCompany, openCompany, cid,
-  createMaster, listMaster, setSalaryStructureApi, readGrid, getJson,
+  createMaster, listMaster, setSalaryStructureApi, readGrid, getJson, allowNegativeStock,
   openVoucher, enterVoucher, alterVoucher, deleteVoucher, daybookRows, processPayroll,
   reportRows, reportTables, cardBlocks,
   voucherNumber, voucherNumberBy, openReport, reportText, record, summary, shot, sleep,

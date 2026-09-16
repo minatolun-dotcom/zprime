@@ -58,6 +58,14 @@ export default function CompanySettings() {
           {F("email", "Email")}
           {F("financialYearStart", "Financial Year Begins", { type: "date" })}
           {F("booksBeginFrom", "Books Begin From", { type: "date" })}
+          <label className="col-span-2 flex items-center gap-2 text-[13px] text-slate-700 select-none">
+            <input
+              type="checkbox"
+              checked={!!form["allowNegativeStock"]}
+              onChange={(e) => setForm({ ...form, allowNegativeStock: e.target.checked })}
+            />
+            Allow Negative Stock (permit overselling; stock value may go negative)
+          </label>
           <div className="col-span-2">
             <button className="btn-primary">Save</button>
           </div>

@@ -4,6 +4,23 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.6.0
+
+- **Commit:** `v1.6.0^{}` — resolve with `git rev-parse v1.6.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.6.0` (annotated; `v1.6.0^{}` = the release commit, verified at release)
+- **Major purpose:** Negative-stock availability guard (R-06, B-01 P1) — **Model 1 approved: reject oversell, company-level opt-out.** Chain-comparison availability gate in `vouchers.ts`: movements replay chronologically (date, then voucher id; grandfathered negative states from the permissive era are tolerated as found), and a mutation is rejected **400** only when it turns a previously-valid step invalid — covering create, edit, cancel, uncancel, delete, and both XML import paths (no side doors). Physical Stock rows are absolute counts (opening folded once; PS replaces the running quantity; diff posted at running average). Additive migration `0004` adds `companies.allowNegativeStock` (default **false**); opted-in companies keep the permissive model but get **honest valuation** (`stock.ts` no longer clamps negative value to zero and caps WAVG unit cost at the item's latest purchase rate instead of charging 0 for phantom units). CompanySettings gains the Allow-Negative-Stock toggle.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 763/763 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 481 (+21 dedicated R-06 checks: oversell 400, backdated legitimization, edit/cancel/uncancel/delete strand-rejection, import gate, opt-in honest valuation, chronological semantics), attack-the-fixes 29)
+  - 186/186 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12) on the rebuilt bundle; pre-R-06 fixture companies opt in explicitly via `D.allowNegativeStock` (seeding helper, never a bypass of asserted guard behaviour)
+  - typecheck (server + client) clean
+  - fresh Docker verified (fresh volume, healthchecks, 0 error patterns in logs)
+  - independent accounting reconciliation green — zero accounting-engine changes; the guard decides *whether a voucher may post*, never *how it posts*
+  - migration is additive-only (one column, safe default, no destructive SQL); existing books without negative stock are unaffected, existing books with negative stock keep working via the opt-in flag
+- **Important fixes:** P1 closed — overselling was accepted silently (phantom-unit WAVG cost), further sales posted zero COGS once stock went negative, and the next purchase averaged positive value onto a negative quantity, overstating P&L gross profit by the phantom margin (live-reproduced on v1.5.0). The posting path now refuses the first oversell instead of hiding it in the valuation.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.6.0` is the current production baseline.
+
+---
+
 ## v1.5.0
 
 - **Commit:** `v1.5.0^{}` — resolve with `git rev-parse v1.5.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

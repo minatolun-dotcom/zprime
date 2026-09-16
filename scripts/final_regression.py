@@ -67,7 +67,8 @@ print("server up")
 req("POST", "/api/auth/login", {"username": "admin", "password": "admin123"})
 s, co = req("POST", "/api/companies", {
     "name": "Final Reg Co", "state": "Maharashtra", "stateCode": "27",
-    "gstin": "27FINREG12C5", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+    "gstin": "27FINREG12C5", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01",
+    "allowNegativeStock": True})  # R-06: fixture opts in — its R-01/R-02 sections test HSN/cancellation, not availability (some fixtures legitimately oversell); the guard itself is exercised on the dedicated R06 companies
 check("company created", s == 200 and co.get("id"), co)
 cid = co["id"]; C = f"/api/c/{cid}"
 s, groups = req("GET", f"{C}/groups")
@@ -1508,6 +1509,117 @@ check("R05/R02: uncancel restores cdnr row + totals", any(r.get("number") == "R0
 # DN increases reported ITC-side supply (supplier's DN mirrored: debit note on
 # purchase INCREASES net purchase base reported in 3B ITC when posted positive)
 # covered by DN1 exact values above.
+
+# ================= R-06: negative-stock guard (B-01) =================
+# Model 1 (approved): outward that would drive an item's CHRONOLOGICAL stock
+# quantity negative is rejected at posting (400, names the item, points at the
+# setting); company-level allowNegativeStock opt-out; valuation engine no
+# longer clamps or invents cost for nonexistent units.
+print("-- R-06: negative-stock guard (B-01) --")
+
+s, cN = r03(sA, "POST", "/api/companies", {"name": "R06 Guard", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R06GRD00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R06: test company created", s == 200 and cN.get("id"), (s, str(cN)[:80]))
+R6 = f"/api/c/{cN['id']}"
+s, gs = r03(sA, "GET", f"{R6}/groups"); gm6 = {x["name"]: x["id"] for x in gs}
+s, vts6 = r03(sA, "GET", f"{R6}/voucher-types"); vm6 = {x["name"]: x["id"] for x in vts6}
+s, u6 = r03(sA, "POST", f"{R6}/units", {"name": "Nos", "symbol": "Nos", "decimalPlaces": 0})
+s, it6 = r03(sA, "POST", f"{R6}/stock-items", {"name": "R06 Widget", "unitId": u6["id"], "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+s, sl6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Sales", "groupId": gm6["Sales Accounts"]})
+s, pl6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Purchases", "groupId": gm6["Purchase Accounts"]})
+s, dr6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Debtor", "groupId": gm6["Sundry Debtors"]})
+s, ca6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Cash", "groupId": gm6["Cash-in-Hand"]})
+check("R06: masters created", s == 200, (s, str(it6)[:80]))
+
+def v6(vtype, date, entries, inv=None, expect=200, label=""):
+    body = {"voucherTypeId": vm6[vtype], "date": date, "entries": entries}
+    if inv is not None: body["inventoryEntries"] = inv
+    s, v = r03(sA, "POST", f"{R6}/vouchers", body)
+    check(f"R06: {label or vtype} {date} -> {expect}", s == expect, (s, str(v)[:160]))
+    return v
+
+# P1: purchase 10@100
+v6("Purchase", "2026-07-01", [{"ledgerId": pl6["id"], "amount": 1000}, {"ledgerId": ca6["id"], "amount": -1000}],
+   [{"itemId": it6["id"], "qty": 10, "rate": 100, "amount": 1000, "kind": "stock"}], label="purchase 10@100")
+# S1: sale 8 -> fine
+v6("Sales", "2026-07-02", [{"ledgerId": dr6["id"], "amount": 960}, {"ledgerId": sl6["id"], "amount": -960}],
+   [{"itemId": it6["id"], "qty": -8, "rate": 120, "amount": 960, "kind": "stock"}], label="sale 8 of 10 ok")
+# S2: sale 5 -> only 2 held -> REJECTED
+err6 = v6("Sales", "2026-07-03", [{"ledgerId": dr6["id"], "amount": 600}, {"ledgerId": sl6["id"], "amount": -600}],
+   [{"itemId": it6["id"], "qty": -5, "rate": 120, "amount": 600, "kind": "stock"}], expect=400, label="oversell 5 of 2 REJECTED")
+check("R06: rejection names the item + points at the setting",
+    isinstance(err6, dict) and "R06 Widget" in str(err6.get("error", "")) and "Allow Negative Stock" in str(err6.get("error", "")), err6)
+# backdated purchase BEFORE the oversell legitimizes it (chronological semantics)
+v6p = v6("Purchase", "2026-07-03", [{"ledgerId": pl6["id"], "amount": 500}, {"ledgerId": ca6["id"], "amount": -500}],
+   [{"itemId": it6["id"], "qty": 5, "rate": 100, "amount": 500, "kind": "stock"}], label="backdated same-day purchase")
+# after the backfill, the 07-03 oversell is still rejected (it replays BEFORE own... no: judged last on its date)
+# -> the backdated purchase (also 07-03) is already in history, so replay: 10-8+5=7, sale 5 -> 2 left: OK now. Re-post succeeds.
+v6("Sales", "2026-07-03", [{"ledgerId": dr6["id"], "amount": 600}, {"ledgerId": sl6["id"], "amount": -600}],
+   [{"itemId": it6["id"], "qty": -5, "rate": 120, "amount": 600, "kind": "stock"}], label="same oversell now ok after backdated purchase")
+# EDIT path: shrink the backdated purchase to 2 -> the 07-03 sale (5) would drive qty negative -> PUT rejected
+s, put6 = r03(sA, "PUT", f"{R6}/vouchers/{v6p['id']}", {
+    "voucherTypeId": vm6["Purchase"], "date": "2026-07-03", "entries": [{"ledgerId": pl6["id"], "amount": 200}, {"ledgerId": ca6["id"], "amount": -200}],
+    "inventoryEntries": [{"itemId": it6["id"], "qty": 2, "rate": 100, "amount": 200, "kind": "stock"}]})
+check("R06: PUT that invalidates later oversell REJECTED", s == 400, (s, str(put6)[:160]))
+# CANCEL path: cancelling the backdated purchase would strand the oversell too
+cid6 = v6p["id"]
+s, _ = r03(sA, "POST", f"{R6}/vouchers/{cid6}/cancel", {"reason": "R06 probe"})
+check("R06: cancel of supporting purchase REJECTED", s == 400, s)
+
+# ---- opt-in company: oversell allowed, valuation honest (capped cost, no clamp) ----
+s, cM = r03(sA, "POST", "/api/companies", {"name": "R06 OptIn", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R06OPT00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01", "allowNegativeStock": True})
+check("R06: opt-in company created with flag", s == 200 and cM.get("allowNegativeStock") == True, (s, str(cM)[:120]))
+R7 = f"/api/c/{cM['id']}"
+s, gs = r03(sA, "GET", f"{R7}/groups"); gm7 = {x["name"]: x["id"] for x in gs}
+s, vts7 = r03(sA, "GET", f"{R7}/voucher-types"); vm7 = {x["name"]: x["id"] for x in vts7}
+s, u7 = r03(sA, "POST", f"{R7}/units", {"name": "Nos", "symbol": "Nos", "decimalPlaces": 0})
+s, it7 = r03(sA, "POST", f"{R7}/stock-items", {"name": "R07 Widget", "unitId": u7["id"], "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+s, sl7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Sales", "groupId": gm7["Sales Accounts"]})
+s, pl7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Purchases", "groupId": gm7["Purchase Accounts"]})
+s, dr7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Debtor", "groupId": gm7["Sundry Debtors"]})
+s, ca7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Cash", "groupId": gm7["Cash-in-Hand"]})
+check("R06: opt-in masters created", s == 200, s)
+
+def v7(vtype, date, entries, inv=None):
+    body = {"voucherTypeId": vm7[vtype], "date": date, "entries": entries}
+    if inv is not None: body["inventoryEntries"] = inv
+    return r03(sA, "POST", f"{R7}/vouchers", body)
+
+s, _ = v7("Purchase", "2026-07-01", [{"ledgerId": pl7["id"], "amount": 1000}, {"ledgerId": ca7["id"], "amount": -1000}],
+   [{"itemId": it7["id"], "qty": 10, "rate": 100, "amount": 1000, "kind": "stock"}])
+check("R06/opt-in: purchase posted", s == 200, s)
+s, _ = v7("Sales", "2026-07-05", [{"ledgerId": dr7["id"], "amount": 1800}, {"ledgerId": sl7["id"], "amount": -1800}],
+   [{"itemId": it7["id"], "qty": -15, "rate": 120, "amount": 1800, "kind": "stock"}])
+check("R06/opt-in: oversell ACCEPTED when allowed", s == 200, s)
+s, rows7 = r03(sA, "GET", f"{R7}/reports/stock-summary?asOf=2026-12-31")
+st7 = next(r for r in rows7 if r["itemId"] == it7["id"])
+# honest valuation: cost capped at held value -> out 10 units cost 1000 (not 1500); qty -5; running value 0 (10*100 held, out cost = held value)
+check("R06/opt-in: outValue capped at 1000 (no phantom cost)", st7["outQty"] == 15 and st7["outValue"] == 1000, st7)
+check("R06/opt-in: qty -5, value 0 (honest zero, not laundered)", st7["closingQty"] == -5 and st7["closingValue"] == 0, st7)
+# a further sale while negative: marginal units carry zero cost (0) — still true
+s, _ = v7("Sales", "2026-07-06", [{"ledgerId": dr7["id"], "amount": 240}, {"ledgerId": sl7["id"], "amount": -240}],
+   [{"itemId": it7["id"], "qty": -2, "rate": 120, "amount": 240, "kind": "stock"}])
+check("R06/opt-in: sale while negative allowed", s == 200, s)
+# purchase 5@200 while qty -7: value = 0 + 1000 = 1000, qty = -2. Value on negative qty is now HONEST engine output.
+s, _ = v7("Purchase", "2026-07-10", [{"ledgerId": pl7["id"], "amount": 1000}, {"ledgerId": ca7["id"], "amount": -1000}],
+   [{"itemId": it7["id"], "qty": 5, "rate": 200, "amount": 1000, "kind": "stock"}])
+check("R06/opt-in: purchase while negative allowed", s == 200, s)
+s, rows7 = r03(sA, "GET", f"{R7}/reports/stock-summary?asOf=2026-12-31")
+st7 = next(r for r in rows7 if r["itemId"] == it7["id"])
+check("R06/opt-in: closing qty -2, value 1000 (documented opt-in semantics)", st7["closingQty"] == -2 and st7["closingValue"] == 1000, st7)
+
+# ---- import path enforces the same gate ----
+xml6 = f'''<ENVELOPE><BODY><DESC><StaticVariables><FMFDATEFROM>20260401</FMFDATEFROM></StaticVariables></DESC><TALLYMESSAGE><VOUCHER><DATE>20260712</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>R06-IMP-1</VOUCHERNUMBER><PARTYLEDGERNAME>R06 Debtor</PARTYLEDGERNAME><ALLLEDGERENTRIES.LIST><LEDGERNAME>R06 Debtor</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>720.00</AMOUNT></ALLLEDGERENTRIES.LIST><ALLLEDGERENTRIES.LIST><LEDGERNAME>R06 Sales</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-720.00</AMOUNT></ALLLEDGERENTRIES.LIST><ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>R06 Widget</STOCKITEMNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><QTY>-99 Nos</QTY><RATE>120.00</RATE><AMOUNT>720.00</AMOUNT></ALLINVENTORYENTRIES.LIST></VOUCHER></TALLYMESSAGE></BODY></ENVELOPE>'''
+s, imp6 = r03(sA, "POST", f"{R6}/import/xml", {"xml": xml6})
+check("R06/import: overselling import REJECTED (item named)", s == 400 and "R06 Widget" in str(imp6.get("error", "")), (s, str(imp6)[:160]))
+# and the opt-in company accepts the same import
+xml6b = xml6.replace("R06 Debtor", "R06X Debtor").replace("R06 Sales", "R06X Sales")
+# create matching masters in opt-in company first
+s, _ = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06X Debtor", "groupId": gm7["Sundry Debtors"]})
+s, _ = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06X Sales", "groupId": gm7["Sales Accounts"]})
+s, imp6b = r03(sA, "POST", f"{R7}/import/xml", {"xml": xml6b})
+check("R06/import: opt-in company accepts overselling import", s == 200, (s, str(imp6b)[:160]))
 
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

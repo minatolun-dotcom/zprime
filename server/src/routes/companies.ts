@@ -41,6 +41,9 @@ const companySchema = z.object({
   gstin: optText(20),
   financialYearStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   booksBeginFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // R-06 (B-01): permit outward movements that drive stock negative. Default
+  // false — overselling is rejected at posting with an explanatory message.
+  allowNegativeStock: z.boolean().optional(),
 });
 
 /** Seed reserved groups, default voucher types and starter ledgers for a new company.

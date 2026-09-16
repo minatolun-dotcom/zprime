@@ -1,17 +1,17 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-15 — R-05 released as v1.5.0 (CN/DN GST reporting + Apply-GST party balance). Process state: IDLE.
+**Last updated:** 2026-09-16 — R-06 released as v1.6.0 (negative-stock availability guard + honest negative-stock valuation). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.5.0
-- **Current HEAD:** resolve with `git rev-parse v1.5.0^{}` (= tag `v1.5.0`; see RELEASES.md)
-- **Current phase:** `IDLE` — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. The next R-item (R-06 candidate: negative-stock guard B-01) requires its own investigation → review → approval cycle before any implementation.
-- **Next permitted action:** on human instruction, begin the R-06 investigation (investigation-only; no code changes).
-- **Blocked decisions (waiting on human):** R-06 topic selection.
+- **Current release:** v1.6.0
+- **Current HEAD:** resolve with `git rev-parse v1.6.0^{}` (= tag `v1.6.0`; see RELEASES.md)
+- **Current phase:** `IDLE` — no active R-item — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. R-06 (B-01, Model 1 reject-oversell) is complete and released.
+- **Next permitted action:** next investigation only (B-02 opening balances / B-07 master-reference validation are the leading candidates from the action plan) — never implementation without its own investigation → review → approval cycle.
+- **Blocked decisions (waiting on human):** none.
 
 ## Baseline verification (must re-confirm every session)
 
@@ -21,7 +21,7 @@ git describe --tags    # expect v1.5.0
 git status --short     # expect clean
 ```
 
-- Test baseline at v1.5.0: **742/742 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 460, attack-the-fixes 29) + **186/186 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12). Exact commands in `STATE.md` ("Verification record").
+- Test baseline at v1.6.0: **763/763 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 481 incl. 21 R-06 checks, attack-the-fixes 29) + **186/186 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12). Exact commands in `STATE.md` ("Verification record").
 - Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s).
 
 ## Known intentional untracked files (do not delete; do not stage casually)
@@ -46,6 +46,23 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-16 — R-06 RELEASED as v1.6.0
+
+- **Release review:** passed (diff audited hunk-by-hunk; scope contains exactly the approved Model-1 guard + honest valuation + migration 0004 + settings toggle; zero accounting-engine changes; no tests weakened).
+- **Release commit:** "Release v1.6.0: negative-stock availability guard and honest negative-stock valuation" (15 files: R-06 code/tests, migration 0004 + snapshot + journal, docs, `R-06_INVESTIGATION.md`). **Tag:** annotated `v1.6.0` — "zprime v1.6.0 — negative-stock availability guard and honest negative-stock valuation". `v1.6.0^{}` == HEAD verified; tree clean; all prior tags immutable.
+- **Release-gate results (final build):** Python 763/763 · browser 186/186 · typecheck clean · fresh Docker healthy · `git diff --check` clean.
+- **Current state:** RELEASED → IDLE. No active R-item.
+- **Next permitted action:** next investigation only (B-02 / B-07 candidates) — never implementation without its own approval cycle.
+
+### 2026-09-16 — R-06 investigated, approved (Model 1), implemented, verified (RELEASE_REVIEW pending)
+
+- **Investigation:** `R-06_INVESTIGATION.md` — B-01 live-reproduced on v1.5.0 (oversell accepted → phantom-unit WAVG; zero-COGS once negative; purchase averaged over qty −2 → value +1,000; P&L overstated by phantom margin; `stock.ts` clamp + WAVG→0 compounding). Human chose **Model 1 (reject oversell + `allowNegativeStock` opt-out)**.
+- **Implementation:** chain-comparison availability guard in `vouchers.ts` (chronological replay by date then voucher id; grandfathered negatives tolerated as found; reject 400 only when a previously-valid step turns invalid; create/edit/cancel/uncancel/delete + both import paths covered — no side doors). Physical Stock rows treated as absolute counts (opening folded once; PS replaces running qty; diff at running avg). Migration `0004_r06_negative_stock_guard.sql` + hand-crafted snapshot/journal (project convention): `companies.allowNegativeStock` default false. `stock.ts`: clamp removed; WAVG capped at latest purchase rate under opt-in (honest valuation). `CompanySettings.tsx`: Allow-Negative-Stock toggle. Guard evolution (important): per-voucher check → silent-replay rule (grandfathered books false-blocked innocent purchases) → chain-comparison (edit/cancel of *inward* vouchers can strand downstream sales) → id-interleaved same-date merge (edited purchase chronologically precedes later sale; `excludeVoucherId` positional bug fixed by `opts`).
+- **Fixture policy:** pre-R-06 fixture companies that legitimately oversell (browser baseline "Meridian Traders"/"Vasan & Co", Python main seeds) opt in explicitly via `D.allowNegativeStock(...)` — seeding helper, never a bypass; all guard assertions live in the dedicated R-06 checks (+21). Browser stack reset to a fresh volume mid-verification after duplicate companies from a failed run leaked through (old DB had no opt-in → "Switch 6A" oversell correctly rejected).
+- **Tests:** Python 763/763 (smoke 39, adversarial 88, bug-fix 65, reconcile 61, final_regression **481** incl. 21 R-06 checks, attack-the-fixes 29). Browser 186/186 (153 + 12 + 9 + 12) on the rebuilt bundle — suites' own summary lines are authoritative (grep "  ok  " double-counts padded lines in r03/r04 logs). Typecheck clean. Fresh Docker volume healthy, 0 error patterns.
+- **Files changed (implementation):** `server/src/db/schema.ts`, `server/drizzle/0004_r06_negative_stock_guard.sql` + meta snapshot + journal, `server/src/routes/vouchers.ts`, `server/src/routes/import.ts`, `server/src/routes/companies.ts`, `server/src/services/stock.ts`, `client/src/pages/CompanySettings.tsx`, `scripts/final_regression.py`, `scripts/acceptance/driver.js`, `scripts/acceptance/run.js` (+ docs: CHANGELOG, STATE, CONTINUE; `R-06_INVESTIGATION.md` new). Disposable override yaml to delete at release: `docker-compose.override.r06.yaml`.
+- **Next permitted action:** release review of the full diff → on pass + explicit instruction, commit + tag v1.6.0 (proposed message above).
 
 ### 2026-09-15 — R-05 investigated, approved, implemented, verified (RELEASE_REVIEW pending)
 

@@ -8,7 +8,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { cid, bad, pgFriendly } from "../lib/routes.js";
 import { r2, num } from "../lib/util.js";
-import { validateEntries } from "./vouchers.js";
+import { validateEntries, assertStockAvailabilityTx } from "./vouchers.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -469,6 +469,15 @@ export default async function importRoutes(app: FastifyInstance) {
                 dueDate: parseDate(b.BILLDUEDATE),
               });
             }
+          }
+          // R-06 (B-01): the identical chronological availability gate the API
+          // enforces — an imported oversell cannot drive stock negative unless
+          // the company opted in. Vouchers are processed in file/date order, so
+          // the same-day nuance matches the API path.
+          try {
+            await assertStockAvailabilityTx(tx, c, { date, inventoryEntries: inv });
+          } catch (verr: any) {
+            throw bad(`Voucher ${number} (${typeName}): ${verr?.message ?? "insufficient stock"}`);
           }
           for (let i = 0; i < inv.length; i++) {
             const e = inv[i];
