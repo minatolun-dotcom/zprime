@@ -111,13 +111,19 @@ export default function VoucherScreen() {
   const partyLedger = party.id ? ledgerById.get(party.id) : null;
   const partyStateCode = (partyLedger?.gstin ? String(partyLedger.gstin).slice(0, 2) : "") || "";
 
+  // Sign of the taxable (non-duty) income/expense rows per voucher type.
+  // Sales income is Cr (negative); Credit Note income is Dr (positive);
+  // Purchase expense is Dr; Debit Note expense is Cr. Duty rows carry the
+  // same sign as the taxable rows of their voucher.
+  const GST_BASE_SIGN: Record<string, 1 | -1> = { Sales: -1, "Credit Note": 1, Purchase: 1, "Debit Note": -1 };
+
   const applyGst = () => {
     if (!vType || !["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name)) return;
-    const isSalesSide = ["Sales", "Credit Note"].includes(vType.name);
+    const baseSign = GST_BASE_SIGN[vType.name];
     const rateLedgers = entries.filter((e) => {
       const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
       if (!l || l.dutyHead) return false;
-      return isSalesSide ? e.amount > 0 : e.amount < 0;
+      return e.amount !== 0 && Math.sign(e.amount) === baseSign;
     });
     const taxable = r2(rateLedgers.reduce((s, e) => s + Math.abs(e.amount), 0));
     if (taxable <= 0) { setError("Add taxable income/expense lines before applying GST"); return; }
@@ -146,12 +152,21 @@ export default function VoucherScreen() {
     const inter = partyStateCode && companyStateCode && partyStateCode !== companyStateCode;
     if (inter) {
       const ig = dutyOf("IGST");
-      if (ig) rows.push({ ledgerId: ig.id, ledgerName: ig.name, amount: vType.name === "Sales" || vType.name === "Credit Note" ? -gst : gst });
+      if (ig) rows.push({ ledgerId: ig.id, ledgerName: ig.name, amount: baseSign * gst });
     } else {
       const cg = dutyOf("CGST"); const sg = dutyOf("SGST/UTGST");
       const half = r2(gst / 2);
-      if (cg) rows.push({ ledgerId: cg.id, ledgerName: cg.name, amount: vType.name === "Sales" || vType.name === "Credit Note" ? -half : half });
-      if (sg) rows.push({ ledgerId: sg.id, ledgerName: sg.name, amount: vType.name === "Sales" || vType.name === "Credit Note" ? -(gst - half) : gst - half });
+      if (cg) rows.push({ ledgerId: cg.id, ledgerName: cg.name, amount: baseSign * half });
+      if (sg) rows.push({ ledgerId: sg.id, ledgerName: sg.name, amount: baseSign * (gst - half) });
+    }
+    // Re-balance the party row after duty rows are (re)inserted, so the voucher
+    // can be saved immediately after Apply GST (Tally behaviour).
+    if (party.id) {
+      const partyRows = rows.filter((e) => e.ledgerId === party.id);
+      if (partyRows.length === 1) {
+        const otherNet = r2(rows.reduce((s, e) => (e === partyRows[0] ? s : s + e.amount), 0));
+        rows[rows.findIndex((e) => e === partyRows[0])] = { ...partyRows[0], amount: -otherNet };
+      }
     }
     setEntries(rows);
     setError("");

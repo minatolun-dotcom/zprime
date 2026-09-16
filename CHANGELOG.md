@@ -1,6 +1,38 @@
 # Changelog
 
-## Post-v1.3.0 — R-04 XML import integrity (unreleased)
+## v1.5.0 — R-05 CN/DN GST reporting + Apply-GST party balance
+
+**742/742 automated checks passed (Python: 39+88+65+61+460+29), 186/186 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05), zero failures.**
+
+### R-05 — Credit/Debit-note GST reporting: B-06 (CONFIRMED P1 → IMPLEMENTED)
+
+**Root cause (investigation, live-reproduced on v1.4.0):** `voucherGst()` folded every row with `Math.abs()`, erasing the reversal sign that credit/debit notes carry in the books — so a CN *added* to GSTR-1 output tax and a DN *added* to ITC (probe: GSTR-3B net 1,440 vs book truth 1,080; GSTR-1 taxable 17,000 vs 13,000). `gstr1()` also hardcoded `cdnr: []` — no Table 9B anywhere. The books were always right; the statutory reports contradicted them.
+
+**Fix (`server/src/services/gst.ts`, one service file):** direction-aware aggregation — raw signed entry amounts are summed and the voucher side applied once, so sales stay positive and notes become negative (the `sign` variable that v1.4.0 computed and never used now does its job). `gstr1()` gains real **CDNR** (registered) and **CDNUR** (unregistered) sections with positive magnitudes, plus `net*` totals (Table 9 net of 9B) that reconcile exactly with the ledgers. Rate buckets and `deriveRate` follow the signed model. A-07 duty-heads-win rule and R-01 Table-12 Sales-only rule unchanged. GSTR-3B outward/ITC become net of notes; net payable now equals the ledger truth.
+
+**UI (`client/src/pages/Reports.tsx`):** GSTR-1 shows a Net outward supplies card (when notes exist) and CDNR/CDNUR tables alongside B2B/B2C/HSN.
+
+### Apply-GST party balance (approved scope extension)
+
+**Defect (live-reproduced in browser on the interim build):** the voucher-entry Apply-GST helper never worked end-to-end — its taxable-base filter was sign-inverted (`isSalesSide ? amount > 0 : amount < 0`, but sales income lines are credits), so duty rows were never inserted for Sales/Purchase (error "Add taxable income/expense lines…"), CN/DN duty was pushed on the wrong side, and the party row was never re-balanced after duty insertion, so Ctrl+A right after Apply GST was rejected ("Voucher does not balance — difference …"). A real-user flow (open Sales → party → income line → Apply GST → Ctrl+A) could never save.
+
+**Fix (`client/src/pages/VoucherScreen.tsx`):** explicit per-type base sign map (`Sales −1, Credit Note +1, Purchase +1, Debit Note −1`) — duty is computed on the correct rows and pushed on the correct side for all four types — and the party row is re-balanced to the net of all other rows after duty (re)insertion, so the voucher saves immediately (Tally behaviour). UI-only; no API, schema, or accounting-engine change.
+
+**Verification notes:** the acceptance engine's `gstr3b_app`/`gstr1_app` mirrors previously encoded the OLD semantics ("no netting of notes") and were re-aligned to the correct model; the R-02 cancel/uncancel assertions keep exact-magnitude strength with corrected direction (cancelling a CN raises net outward by exactly the CN amount). The independent reconcile.py scenario proves the cross-period case (note in May against an April invoice → negative month net, cumulative identity holds).
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation (incl. R-05 CN/DN scenario) | 61 (+13) | PASS |
+| Final regression (incl. R-05) | 460 (+43) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 + 9 + 12 R-05 scenario (incl. Apply-GST real save) | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume | — | PASS |
+
+## Post-v1.3.0 — R-04 XML import integrity
 
 **686/686 automated checks passed (Python 686 = 39+88+65+48+417+29), 174/174 browser checks (153 baseline + 12 R-03 + 9 R-04), zero failures.**
 

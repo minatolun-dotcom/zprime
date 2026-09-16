@@ -539,11 +539,12 @@ class Engine:
         return out
 
     def gstr1_app(self, frm, to):
-        """Mirror of the APP's GSTR-1 (no CDNR netting): outward rows positive,
-        B2B = party has GSTIN, else B2C. Used to compare against the screen.
-        The proper expected variant (returns netted) is gstr1()."""
+        """Mirror of the APP's GSTR-1 (R-05 semantics): Table 9 holds SUPPLIES
+        only (Sales), notes are reported separately in `cdnr` with positive
+        magnitudes. The proper netted variant remains gstr1()."""
         out = {"b2b": {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0, "count": 0},
                "b2c": {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0, "count": 0}}
+        cn = {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0}
         # R-01: independent HSN expectation — OUTWARD SALES ONLY (voucher-type
         # semantics, never inventory direction; CN stays out of Table 12).
         hsn = {}
@@ -551,23 +552,29 @@ class Engine:
             if not (frm <= v["date"] <= to) or v["type"] not in ("Sales", "Credit Note"):
                 continue
             g = self.gst_of(v)
+            if v["type"] == "Credit Note":
+                for k in ("taxable", "igst", "cgst", "sgst"):
+                    cn[k] = R(cn[k] + g[k])
+                continue
             b = out["b2b"] if g["b2b"] else out["b2c"]
             for k in ("taxable", "igst", "cgst", "sgst"):
                 b[k] = R(b[k] + g[k])
-            if v["type"] == "Sales":
-                b["count"] += 1
-                for ie in v.get("items", []):
-                    it = self.items[ie["item"]]
-                    k = (it.get("hsn", "-"), float(it.get("gstRate", 0)))
-                    h = hsn.setdefault(k, {"hsn": k[0], "rate": k[1], "qty": 0.0, "taxable": 0})
-                    h["qty"] = R(h["qty"] + abs(float(ie["qty"])))
-                    h["taxable"] = R(h["taxable"] + abs(float(ie.get("amount", 0))))
+            b["count"] += 1
+            for ie in v.get("items", []):
+                it = self.items[ie["item"]]
+                k = (it.get("hsn", "-"), float(it.get("gstRate", 0)))
+                h = hsn.setdefault(k, {"hsn": k[0], "rate": k[1], "qty": 0.0, "taxable": 0})
+                h["qty"] = R(h["qty"] + abs(float(ie["qty"])))
+                h["taxable"] = R(h["taxable"] + abs(float(ie.get("amount", 0))))
         self._hsn_last = list(hsn.values())
+        out["cdnr"] = cn
         return out
 
     def gstr3b_app(self, frm, to):
-        """Mirror of the APP's GSTR-3B: outward/inward buckets include CN/DN as
-        positive amounts (no netting of notes)."""
+        """Mirror of the APP's GSTR-3B (R-05 semantics): notes REVERSE — credit
+        notes subtract from outward, debit notes subtract from ITC — so the
+        net position matches the ledgers. (Pre-R-05 the app counted notes as
+        positive supplies; that mirror is gone.)"""
         out = {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0}
         itc = {"taxable": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0}
         for v in self.vouchers:
@@ -577,8 +584,9 @@ class Engine:
                 continue
             g = self.gst_of(v)
             bucket = out if g["direction"] == "outward" else itc
+            sgn = -1 if v["type"] in CN_DN else 1
             for k in ("taxable", "igst", "cgst", "sgst"):
-                bucket[k] = R(bucket[k] + g[k])
+                bucket[k] = R(bucket[k] + sgn * g[k])
         net = {k: R(out[k] - itc[k]) for k in ("igst", "cgst", "sgst")}
         net["total"] = R(sum(net.values()))
         return {"outward": out, "itc": itc, "net": net}

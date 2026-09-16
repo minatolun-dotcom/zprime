@@ -1,27 +1,27 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-15 — R-04 released as v1.4.0 (import integrity). Process state: IDLE.
+**Last updated:** 2026-09-15 — R-05 released as v1.5.0 (CN/DN GST reporting + Apply-GST party balance). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.4.0
-- **Current HEAD:** resolve with `git rev-parse v1.4.0^{}` (= tag `v1.4.0`; see RELEASES.md)
-- **Current phase:** `IDLE` — no active task — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. R-04 (XML import integrity: B-03 + B-05 + B-13 + B-14) is released.
-- **Next permitted action:** on "Continue zprime": verify baseline, then propose the next R-item investigation (candidates: B-06 CN/DN GST sign, B-01 negative stock, B-02 opening balances — each needs its own investigation → review → approval cycle).
-- **Blocked decisions (waiting on human):** none.
+- **Current release:** v1.5.0
+- **Current HEAD:** resolve with `git rev-parse v1.5.0^{}` (= tag `v1.5.0`; see RELEASES.md)
+- **Current phase:** `IDLE` — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. The next R-item (R-06 candidate: negative-stock guard B-01) requires its own investigation → review → approval cycle before any implementation.
+- **Next permitted action:** on human instruction, begin the R-06 investigation (investigation-only; no code changes).
+- **Blocked decisions (waiting on human):** R-06 topic selection.
 
 ## Baseline verification (must re-confirm every session)
 
 ```bash
-git rev-parse HEAD     # expect the v1.4.0 release commit (see RELEASES.md)
-git describe --tags    # expect v1.4.0
+git rev-parse HEAD     # expect the v1.5.0 release commit (see RELEASES.md)
+git describe --tags    # expect v1.5.0
 git status --short     # expect clean
 ```
 
-- Test baseline at v1.4.0: **686/686 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 48, final regression 417, attack-the-fixes 29) + **174/174 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9). Exact commands in `STATE.md` ("Verification record").
+- Test baseline at v1.5.0: **742/742 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 460, attack-the-fixes 29) + **186/186 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12). Exact commands in `STATE.md` ("Verification record").
 - Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s).
 
 ## Known intentional untracked files (do not delete; do not stage casually)
@@ -46,6 +46,16 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-15 — R-05 investigated, approved, implemented, verified (RELEASE_REVIEW pending)
+
+- **Investigation:** `R-05_INVESTIGATION.md` — B-06 live-reproduced (CN adds to GSTR-1 output, DN adds to ITC; 3B net 1440 vs book truth 1080; `cdnr: []` hardcoded). Human approved as investigated.
+- **Implementation:** `gst.ts` direction-aware aggregation (notes negative), real CDNR/CDNUR + `net*` totals in `gstr1()`, `isNote` marker, signed rate buckets, sign-agnostic `deriveRate`; `Reports.tsx` Net-supplies card + CDNR/CDNUR tables. Dead `sign` variable now does its intended job. A-07 and R-01 rules untouched.
+- **Scope extension (human-approved mid-review):** Apply-GST party balance. Live probe found the helper was doubly broken: base-selection sign-inverted (duty never inserted for Sales/Purchase; wrong side for CN/DN) and party row never re-balanced (Ctrl+A after Apply GST always rejected). Fixed in `VoucherScreen.tsx` (per-type base sign map + party rebalance). Covered by a real-save check in `r05_ui.js` (12 checks now).
+- **Test-engine alignment (important):** acceptance `engine.py`'s `gstr3b_app`/`gstr1_app` mirrors encoded the OLD no-netting semantics; re-aligned to correct model; `run.js` r02/gstr1-excluded direction corrected (magnitude unchanged). reconcile.py gained an independent CN/DN scenario incl. cross-period (negative month net) and the cumulative ledger identity.
+- **Tests:** Python 742/742 (final_regression 460 incl. 43 new R-05 checks; reconcile 61 incl. 13 new); browser 186/186 (baseline 153 + R-03 12 + R-04 9 + `r05_ui.js` 12 — sale + CN through the real UI, CDNR + net 8,000 + Apply-GST real save asserted). Typecheck clean; fresh Docker healthy, 0 log errors.
+- **Files changed:** `server/src/services/gst.ts`, `client/src/pages/Reports.tsx`, `client/src/pages/VoucherScreen.tsx`, `scripts/final_regression.py`, `scripts/reconcile.py`, `scripts/acceptance/engine.py`, `scripts/acceptance/run.js`, `scripts/acceptance/r05_ui.js` (new), `CHANGELOG.md`, `STATE.md`, `CONTINUE.md`; `R-05_INVESTIGATION.md` (untracked, to be staged at release). Disposable `docker-compose.override.r05.yaml` (untracked, delete at release).
+- **Next permitted action:** on human instruction: commit + tag v1.5.0 (proposed message: "Release v1.5.0: credit/debit-note GST reporting and Apply-GST party balance").
 
 ### 2026-09-15 — R-04 RELEASED as v1.4.0
 

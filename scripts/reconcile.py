@@ -212,6 +212,8 @@ try:
     print("== GST REPORTS ==")
     s, g1 = req("GET", f"{C}/reports/gstr1?from=2025-04-01&to=2025-04-30")
     # GSTR-1: B2B taxable 1,80,000; igst 18,000; cgst 7,200; sgst 7,200
+    # (no credit/debit notes in the base scenario — the dedicated R-05 note
+    # scenario below derives every expectation independently from the postings)
     eq("GSTR-1 b2b taxable", g1["totals"]["b2bTaxable"], 180000)
     eq("GSTR-1 b2b igst", g1["totals"]["b2bIgst"], 18000)
     eq("GSTR-1 b2b cgst", g1["totals"]["b2bCgst"], 7200)
@@ -244,6 +246,62 @@ try:
     eq("Stock: Alpha closing value", alpha.get("closingValue", alpha.get("value")), 20000)
     eq("Stock: Beta closing qty", beta.get("closingQty", beta.get("qty")), 50)
     eq("Stock: Beta closing value", beta.get("closingValue", beta.get("value")), 20000)
+
+    print("== R-05: CREDIT/DEBIT NOTES IN GST (independent expectations) ==")
+    # Independent scenario (May 2025, same company):
+    #   CN-1: credit note against Omega for 10,000 + CGST 900 / SGST 900
+    #         (party Cr 11,800; duty Dr 900/900)
+    #   DN-1: debit note against Sigma for 5,000 + CGST 450 / SGST 450
+    #         (party Dr 5,900; duty Cr 450/450)
+    # Independently derived GST positions for May:
+    #   output:  taxable 180,000−10,000 = 170,000 (igst 18,000; cgst 7,200−900; sgst 7,200−900)
+    #   itc:     cgst 4,500−450 = 4,050; sgst 4,050
+    #   net:     igst 18,000; cgst 2,700; sgst 2,700 → total 23,400 (unchanged:
+    #            the CN and DN duty reversals exactly offset in the net position)
+    s, custs = req("GET", f"{C}/ledgers")
+    ledmap = {l["name"]: l["id"] for l in custs}
+    s, vts = req("GET", f"{C}/voucher-types")
+    vt5 = {v["name"]: v["id"] for v in vts}
+    # duty ledgers "CGST" and "SGST/UTGST" are seeded for every company
+    s, _ = req("POST", f"{C}/vouchers", {"voucherTypeId": vt5["Credit Note"], "date": "2025-05-10", "partyLedgerId": ledmap["Omega Traders"],
+        "entries": [{"ledgerId": ledmap["Omega Traders"], "amount": -11800, "bills": [{"billType": "against_ref", "billName": "INV-2", "amount": -11800}]},
+                    {"ledgerId": ledmap["Sales Local"], "amount": 10000},
+                    {"ledgerId": ledmap["CGST"], "amount": 900},
+                    {"ledgerId": ledmap["SGST/UTGST"], "amount": 900}]})
+    check("CN-1 posted against Omega", s == 200, s)
+    s, _ = req("POST", f"{C}/vouchers", {"voucherTypeId": vt5["Debit Note"], "date": "2025-05-12", "partyLedgerId": ledmap["Sigma Suppliers"],
+        "entries": [{"ledgerId": ledmap["Sigma Suppliers"], "amount": 5900},
+                    {"ledgerId": ledmap["Purchases Local"], "amount": -5000},
+                    {"ledgerId": ledmap["CGST"], "amount": -450},
+                    {"ledgerId": ledmap["SGST/UTGST"], "amount": -450}]})
+    check("DN-1 posted against Sigma", s == 200, s)
+    # Period locality: the supplies live in April; May contains ONLY the note
+    # reversals. A May-only window therefore reports zero supplies, the note in
+    # Table 9B, and a NEGATIVE net — exactly how real GSTR-1 behaves when a
+    # credit note amends a prior month's invoice.
+    s, g1m = req("GET", f"{C}/reports/gstr1?from=2025-05-01&to=2025-05-31")
+    t5 = g1m["totals"]
+    eq("CN: May b2b supplies = 0 (supplies were April)", t5["b2bTaxable"], 0)
+    eq("CN: May cdnr taxable = 10,000 (positive magnitude)", t5["cdnrTaxable"], 10000)
+    eq("CN: May cdnr cgst = 900", t5["cdnrCgst"], 900)
+    eq("CN: May net taxable = −10,000 (note reverses prior month)", t5["netTaxable"], -10000)
+    eq("CN: May net cgst = −900", t5["netCgst"], -900)
+    s, g3m = req("GET", f"{C}/reports/gstr3b?from=2025-05-01&to=2025-05-31")
+    eq("CN: May 3B outward taxable = −10,000", g3m["outward"]["taxable"], -10000)
+    eq("CN: May 3B ITC cgst = −450 (DN reverses April ITC)", g3m["itc"]["cgst"], -450)
+    eq("CN: May 3B net = −900 (CN/DN duty reversals net)", g3m["net"]["total"], -900)
+    # Full-period identity (Apr+May): net output − ITC == cumulative CGST ledger
+    # net credit. Independently: netCgst 7,200−900 = 6,300; ITC 4,500−450 = 4,050;
+    # difference 2,250 must equal the CGST ledger's cumulative net credit.
+    s, g1f = req("GET", f"{C}/reports/gstr1?from=2025-04-01&to=2025-05-31")
+    s, g3f = req("GET", f"{C}/reports/gstr3b?from=2025-04-01&to=2025-05-31")
+    s, tb5 = req("GET", f"{C}/reports/trial-balance")
+    rr = {x["name"]: (float(x["debit"]), float(x["credit"])) for x in tb5["rows"]}
+    cgst_net = round(rr["CGST"][0] - rr["CGST"][1], 2)
+    eq("CN: full-period netCgst = 6,300", g1f["totals"]["netCgst"], 6300)
+    eq("CN: full-period ITC cgst = 4,050", g3f["itc"]["cgst"], 4050)
+    eq("CN: identity netCgst − ITC == CGST ledger net credit",
+       round(g1f["totals"]["netCgst"] - g3f["itc"]["cgst"], 2), round(-cgst_net, 2))
 
     print(f"\n== RECONCILIATION RESULTS: {PASS} passed, {FAIL} failed ==")
     sys.exit(1 if FAIL else 0)

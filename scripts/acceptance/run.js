@@ -783,8 +783,10 @@ async function checkMonthEnd(tag) {
     const g1_1 = jun1.gstr3bAppCum;
     const cnAmount = 2360;
     const outTotal = (g) => g.outward.taxable + g.outward.igst + g.outward.cgst + g.outward.sgst;
-    D.record(close(outTotal(g1_0) - outTotal(g1_1), cnAmount, 0.02),
-      "r02/gstr1-excluded", "FY outward total drops by exactly the cancelled CN (engine-expected)",
+    // R-05 net semantics: the active CN SUBTRACTS 2360 from the FY net outward
+    // total; cancelling it therefore RAISES the total by exactly the CN amount.
+    D.record(close(outTotal(g1_1) - outTotal(g1_0), cnAmount, 0.02),
+      "r02/gstr1-excluded", "FY net outward total rises by exactly the cancelled CN (engine-expected)",
       `before=${outTotal(g1_0)} after=${outTotal(g1_1)}`);
     // receivables: Sharma's CN credit removed → Sharma outstanding increases by 2360
     const sharma0 = rec0["Sharma Electricals"];

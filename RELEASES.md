@@ -4,6 +4,23 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.5.0
+
+- **Commit:** `v1.5.0^{}` — resolve with `git rev-parse v1.5.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.5.0` (annotated; `v1.5.0^{}` = the release commit, verified at release)
+- **Major purpose:** Credit/debit-note GST reporting (R-05, B-06 P1) — `voucherGst()` aggregates with the books' natural signs instead of `Math.abs()` folding, so credit notes *subtract* from GSTR-1/3B output and debit notes *subtract* from ITC (previously both were counted as additional supplies, overstating tax); `gstr1()` returns real Table 9B **CDNR** (registered) and **CDNUR** (unregistered) sections with positive magnitudes plus `net*` totals (Table 9 net of 9B) that reconcile exactly with the ledgers; GSTR-1 UI gains the Net-supplies card and CDNR/CDNUR tables. Approved scope extension: **Apply-GST party balance** — the voucher-entry helper was doubly broken (sign-inverted duty-base selection meant duty rows were never inserted for Sales/Purchase and landed on the wrong side for CN/DN; the party row was never re-balanced, so Ctrl+A after Apply GST was always rejected); duty is now computed on the correct rows and pushed on the correct side for all four types, and the party row re-balances so the voucher saves immediately.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 742/742 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61 (+13 independent CN/DN scenario incl. cross-period negative-month net), final regression 460 (+43 R-05), attack-the-fixes 29)
+  - 186/186 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 incl. real Apply-GST save through the UI)
+  - typecheck (server + client) clean
+  - fresh Docker verified (fresh volume, healthchecks, 0 error patterns in logs)
+  - independent accounting reconciliation green — zero accounting-engine changes; reports only; ledger identities asserted (GSTR-1 net − ITC == duty-ledger net credit)
+  - no migration; no schema change; JWT untouched
+- **Important fixes:** P1 closed — statutory reports no longer contradict the ledger by construction (live-reproduced on v1.4.0: 3B net 1,440 vs book truth 1,080). A real-user Sales → Apply GST → Ctrl+A flow saves for the first time.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.5.0` is the current production baseline.
+
+---
+
 ## v1.4.0
 
 - **Commit:** `v1.4.0^{}` — resolve with `git rev-parse v1.4.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

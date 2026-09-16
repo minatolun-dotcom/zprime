@@ -1372,5 +1372,142 @@ check("R04/B14: multipart file-upload import accepted", s == 200 and imp2.get("v
 s, day = r03(sA, "GET", f"/api/c/{CI}/vouchers")
 check("R04/B14: multipart-imported voucher persisted", any(v.get("number") == "R04-MP-1" for v in (day or [])), None)
 
+# ================= R-05: CN/DN GST reporting (B-06) =================
+# Credit/Debit Notes REVERSE the supply they amend. GSTR-1 Table 9 must hold
+# supplies only; notes go to Table 9B (CDNR registered / CDNUR unregistered)
+# as positive-magnitude reporting documents; Table 9 totals are NET of notes
+# and must reconcile with the ledgers. GSTR-3B outward/ITC likewise net.
+# Bug being locked out: notes were folded with Math.abs() and counted as
+# ADDITIONAL supplies (live-proven on v1.4.0: 3B net 1440 vs true 1080).
+print("-- R-05: credit/debit-note GST reporting (B-06) --")
+
+s, cN = r03(sA, "POST", "/api/companies", {"name": "R05-GST", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R05GST00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R05: test company created", s == 200 and cN.get("id"), (s, str(cN)[:80]))
+CN_C = f"/api/c/{cN['id']}"
+s, gs = r03(sA, "GET", f"{CN_C}/groups"); gm = {x["name"]: x["id"] for x in gs}
+s, vts = r03(sA, "GET", f"{CN_C}/voucher-types"); vm = {x["name"]: x["id"] for x in vts}
+s, l5 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Sales", "groupId": gm["Sales Accounts"], "taxability": "taxable", "gstRate": "18"})
+s, l6 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Sales Inter", "groupId": gm["Sales Accounts"], "taxability": "taxable", "gstRate": "18"})
+s, l7 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Purchases", "groupId": gm["Purchase Accounts"], "taxability": "taxable", "gstRate": "18"})
+s, cust27 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Cust 27", "groupId": gm["Sundry Debtors"], "gstin": "27R05CA1111A1Z5", "gstRegistrationType": "regular"})
+s, cust29 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Cust 29", "groupId": gm["Sundry Debtors"], "gstin": "29R05CB2222B1Z3", "gstRegistrationType": "regular"})
+s, b2cparty = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Cash Party", "groupId": gm["Sundry Debtors"]})
+s, supp27 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 Supp 27", "groupId": gm["Sundry Creditors"], "gstin": "27R05SA3333C1Z5", "gstRegistrationType": "regular"})
+s, cg5 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 CGST", "groupId": gm["Duties & Taxes"], "dutyHead": "CGST"})
+s, sg5 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 SGST", "groupId": gm["Duties & Taxes"], "dutyHead": "SGST"})
+s, ig5 = r03(sA, "POST", f"{CN_C}/ledgers", {"name": "R05 IGST", "groupId": gm["Duties & Taxes"], "dutyHead": "IGST"})
+check("R05: masters created", s == 200, (s, str(l5)[:80]))
+
+def v5(vtype, date, entries, party=None, number=None):
+    body = {"voucherTypeId": vm[vtype], "date": date, "entries": entries}
+    if party: body["partyLedgerId"] = party
+    if number: body["number"] = number
+    s, v = r03(sA, "POST", f"{CN_C}/vouchers", body)
+    check(f"R05: {vtype} {number} posted", s == 200, (s, str(v)[:130]))
+    return v
+
+# S1: intrastate B2B sale 10,000 -> CGST 900 / SGST 900
+v5("Sales", "2026-07-05", [{"ledgerId": cust27["id"], "amount": 11800},
+    {"ledgerId": l5["id"], "amount": -10000},
+    {"ledgerId": cg5["id"], "amount": -900}, {"ledgerId": sg5["id"], "amount": -900}], party=cust27["id"], number="R05-S1")
+# S2: interstate B2B sale 5,000 -> IGST 900
+v5("Sales", "2026-07-08", [{"ledgerId": cust29["id"], "amount": 5900},
+    {"ledgerId": l6["id"], "amount": -5000},
+    {"ledgerId": ig5["id"], "amount": -900}], party=cust29["id"], number="R05-S2")
+# S3: unregistered B2C sale 1,000 -> CGST 90 / SGST 90
+v5("Sales", "2026-07-09", [{"ledgerId": b2cparty["id"], "amount": 1180},
+    {"ledgerId": l5["id"], "amount": -1000},
+    {"ledgerId": cg5["id"], "amount": -90}, {"ledgerId": sg5["id"], "amount": -90}], party=b2cparty["id"], number="R05-S3")
+# CN1 (registered party): reverses 2,000 of S1 -> party Cr 2360, duty Dr 180/180
+v5("Credit Note", "2026-07-20", [{"ledgerId": cust27["id"], "amount": -2360},
+    {"ledgerId": l5["id"], "amount": 2000},
+    {"ledgerId": cg5["id"], "amount": 180}, {"ledgerId": sg5["id"], "amount": 180}], party=cust27["id"], number="R05-CN1")
+# CN2 (unregistered party): reverses 300 of S3 -> CDNUR
+v5("Credit Note", "2026-07-21", [{"ledgerId": b2cparty["id"], "amount": -354},
+    {"ledgerId": l5["id"], "amount": 300},
+    {"ledgerId": cg5["id"], "amount": 27}, {"ledgerId": sg5["id"], "amount": 27}], party=b2cparty["id"], number="R05-CN2")
+# CN3: interstate credit note 1,000 + IGST 180 -> proves IGST direction too
+v5("Credit Note", "2026-07-22", [{"ledgerId": cust29["id"], "amount": -1180},
+    {"ledgerId": l6["id"], "amount": 1000},
+    {"ledgerId": ig5["id"], "amount": 180}], party=cust29["id"], number="R05-CN3")
+# P1: intrastate purchase 8,000 -> ITC CGST 720 / SGST 720
+v5("Purchase", "2026-07-10", [{"ledgerId": supp27["id"], "amount": -9440},
+    {"ledgerId": l7["id"], "amount": 8000},
+    {"ledgerId": cg5["id"], "amount": 720}, {"ledgerId": sg5["id"], "amount": 720}], party=supp27["id"], number="R05-P1")
+# DN1: debit note reverses 1,000 of P1 -> ITC reduced by CGST 90 / SGST 90
+v5("Debit Note", "2026-07-22", [{"ledgerId": supp27["id"], "amount": 1180},
+    {"ledgerId": l7["id"], "amount": -1000},
+    {"ledgerId": cg5["id"], "amount": -90}, {"ledgerId": sg5["id"], "amount": -90}], party=supp27["id"], number="R05-DN1")
+
+s, g1 = r03(sA, "GET", f"{CN_C}/reports/gstr1?from=2026-07-01&to=2026-07-31")
+check("R05: GSTR-1 fetch", s == 200, (s, str(g1)[:80]))
+t1 = g1.get("totals", {})
+# Table 9 (supplies only): b2b = S1+S2 = 15000, b2c = S3 = 1000
+check("R05/T9: b2b taxable = 15000 (supplies only, notes excluded)", t1.get("b2bTaxable") == 15000, t1)
+check("R05/T9: b2c taxable = 1000", t1.get("b2cTaxable") == 1000, t1)
+check("R05/T9: b2b IGST = 900", t1.get("b2bIgst") == 900, t1)
+check("R05/T9: b2b CGST = 900", t1.get("b2bCgst") == 900, t1)
+# Table 9B: CDNR = CN1+CN3 = 3000 taxable, IGST 180 (CN3), CGST 180 (CN1); CDNUR = CN2 = 300
+check("R05/T9B: cdnr taxable = 3000 (CN1+CN3)", t1.get("cdnrTaxable") == 3000, t1)
+check("R05/T9B: cdnr IGST = 180", t1.get("cdnrIgst") == 180, t1)
+check("R05/T9B: cdnr CGST = 180", t1.get("cdnrCgst") == 180, t1)
+check("R05/T9B: cdnur taxable = 300", t1.get("cdnurTaxable") == 300, t1)
+check("R05/T9B: cdnr rows positive-magnitude, named", any(r.get("number") == "R05-CN1" and r.get("taxable") == 2000 for r in g1.get("cdnr", [])) and any(r.get("number") == "R05-CN3" and r.get("taxable") == 1000 for r in g1.get("cdnr", [])), g1.get("cdnr"))
+check("R05/T9B: cdnur row present (CN2)", any(r.get("number") == "R05-CN2" and r.get("taxable") == 300 for r in g1.get("cdnur", [])), g1.get("cdnur"))
+# Net = supplies − notes: taxable 16000−3300=12700; IGST 900−180=720; CGST 990−207=783; SGST 783
+check("R05/net: taxable 12700", t1.get("netTaxable") == 12700, t1.get("netTaxable"))
+check("R05/net: IGST 720", t1.get("netIgst") == 720, t1.get("netIgst"))
+check("R05/net: CGST 783", t1.get("netCgst") == 783, t1.get("netCgst"))
+check("R05/net: SGST 783", t1.get("netSgst") == 783, t1.get("netSgst"))
+check("R05: HSN Table 12 still excludes notes (R-01 rule intact)", all(x["hsn"] != "CRN" for x in g1.get("hsn", [])), g1.get("hsn"))
+
+s, g3 = r03(sA, "GET", f"{CN_C}/reports/gstr3b?from=2026-07-01&to=2026-07-31")
+check("R05: GSTR-3B fetch", s == 200, (s, str(g3)[:80]))
+o3, i3, n3 = g3.get("outward", {}), g3.get("itc", {}), g3.get("net", {})
+# outward = sales − CNs = 16000−3300 = 12700; wait: b2c sale also counted → outward taxable = 16000-3300 = 12700
+check("R05/3B: outward taxable = 12700 (net of CNs)", o3.get("taxable") == 12700, o3)
+check("R05/3B: outward IGST = 720", o3.get("igst") == 720, o3)
+check("R05/3B: outward CGST = 783", o3.get("cgst") == 783, o3)
+# ITC = purchase 720/720 − DN 90/90 = 630/630
+check("R05/3B: ITC CGST = 630 (net of DN)", i3.get("cgst") == 630, i3)
+check("R05/3B: ITC SGST = 630", i3.get("sgst") == 630, i3)
+# net = 720 IGST + (783-630) + (783-630) = 720+153+153 = 1026
+check("R05/3B: net IGST = 720", n3.get("igst") == 720, n3)
+check("R05/3B: net CGST = 153", n3.get("cgst") == 153, n3)
+check("R05/3B: net total = 1026 (was overstated before R-05)", n3.get("total") == 1026, n3)
+
+# Ledger reconciliation invariants (same pattern as the A-section GST check):
+# the duty-head ledger carries BOTH output and ITC, so the exact identity is
+#   GSTR-1 net output − GSTR-3B ITC == duty-ledger net credit
+# and the sales ledgers (local + inter) net to exactly GSTR-1 netTaxable.
+s, tb = r03(sA, "GET", f"{CN_C}/reports/trial-balance?from=2026-07-01&to=2026-07-31")
+rows5 = {r["name"]: (float(r["debit"]), float(r["credit"])) for r in tb.get("rows", [])}
+def net5(name):
+    d, c = rows5.get(name, (0, 0)); return round(d - c, 2)
+check("R05/invariant: GSTR-1 net CGST − ITC CGST == CGST ledger net credit",
+    round(-net5("R05 CGST")) == t1.get("netCgst", 0) - i3.get("cgst", 0), (net5("R05 CGST"), t1.get("netCgst"), i3.get("cgst")))
+check("R05/invariant: sales ledgers net == GSTR-1 net taxable",
+    net5("R05 Sales") + net5("R05 Sales Inter") == -t1.get("netTaxable", 0), (net5("R05 Sales"), net5("R05 Sales Inter"), t1.get("netTaxable")))
+
+# R-02 interaction: cancelling CN1 removes it from GSTR-1/3B; uncancel restores
+s, vs5 = r03(sA, "GET", f"{CN_C}/vouchers")
+cn1 = next(v for v in vs5 if v.get("number") == "R05-CN1")
+s, _ = r03(sA, "POST", f"{CN_C}/vouchers/{cn1['id']}/cancel", {"reason": "R05 regression"})
+check("R05/R02: cancel CN ok", s == 200, s)
+s, g1c = r03(sA, "GET", f"{CN_C}/reports/gstr1?from=2026-07-01&to=2026-07-31")
+check("R05/R02: cancelled CN removed from cdnr", not any(r.get("number") == "R05-CN1" for r in g1c.get("cdnr", [])), g1c.get("cdnr"))
+check("R05/R02: totals re-net after cancel (cdnrTaxable 1000)", g1c["totals"].get("cdnrTaxable") == 1000, g1c["totals"].get("cdnrTaxable"))
+s, g3c = r03(sA, "GET", f"{CN_C}/reports/gstr3b?from=2026-07-01&to=2026-07-31")
+check("R05/R02: 3B outward re-nets after cancel (13000+2000=15000... exact 14700)", g3c["outward"].get("taxable") == 14700, g3c["outward"].get("taxable"))
+s, _ = r03(sA, "POST", f"{CN_C}/vouchers/{cn1['id']}/uncancel", {})
+check("R05/R02: uncancel ok", s == 200, s)
+s, g1u = r03(sA, "GET", f"{CN_C}/reports/gstr1?from=2026-07-01&to=2026-07-31")
+check("R05/R02: uncancel restores cdnr row + totals", any(r.get("number") == "R05-CN1" for r in g1u.get("cdnr", [])) and g1u["totals"].get("cdnrTaxable") == 3000, g1u["totals"].get("cdnrTaxable"))
+
+# DN increases reported ITC-side supply (supplier's DN mirrored: debit note on
+# purchase INCREASES net purchase base reported in 3B ITC when posted positive)
+# covered by DN1 exact values above.
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

@@ -11,6 +11,9 @@ export interface VoucherGst {
   supplyType: "interstate" | "intrastate";
   /** True when duty heads contradict the resolved supply type (A-07 guard). */
   supplyMismatch: boolean;
+  /** R-05 (B-06): true for Credit/Debit Notes — these rows REVERSE the supply
+   *  they amend, so their values are signed opposites of ordinary supplies. */
+  isNote: boolean;
   rateBuckets: { rate: number; taxable: number; igst: number; cgst: number; sgst: number; cess: number }[];
 }
 
@@ -75,15 +78,23 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
   for (const v of rows) {
     if (!typeNames.includes(v.typeName)) continue;
     const entries = byVoucher.get(v.voucherId) ?? [];
+    // R-05 (B-06): direction-aware aggregation. `sign` maps the books' natural
+    // entry signs onto report magnitudes: outward supplies post taxable/duty
+    // as CREDITS (negative), inward as DEBITS (positive). Credit/Debit Notes
+    // post the OPPOSITE signs of the supply they amend — so summing the raw
+    // signed amounts and applying `sign` once yields: sales positive, notes
+    // NEGATIVE. The previous Math.abs() folding erased the note's reversal and
+    // counted it as an additional supply, overstating GSTR-1/3B.
+    const isNote = v.typeName === "Credit Note" || v.typeName === "Debit Note";
     const sign = kind === "outward" ? -1 : 1; // outward duty is credit (negative), inward duty is debit (positive)
 
     const taxableRows = entries.filter((e) => !e.dutyHead && e.taxability === "taxable");
     const dutyRows = entries.filter((e) => e.dutyHead && e.dutyHead !== "TDS");
 
-    const taxable = r2(taxableRows.reduce((s, e) => s + Math.abs(num(e.amount)), 0));
+    const taxable = r2(sign * taxableRows.reduce((s, e) => s + num(e.amount), 0));
     const heads = new Map<string, number>();
     for (const d of dutyRows) {
-      const amt = Math.abs(num(d.amount));
+      const amt = sign * num(d.amount);
       heads.set(d.dutyHead!, r2((heads.get(d.dutyHead!) ?? 0) + amt));
     }
     const igst = heads.get("IGST") ?? 0;
@@ -101,6 +112,9 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     // Place-of-supply classification is advisory: when it contradicts the duty
     // heads (or cannot be resolved), the duty heads still win and the voucher
     // is flagged `supplyMismatch` so the contradiction is visible, never silent.
+    // R-05: note rows carry NEGATIVE duty by design (they reverse duty), so the
+    // magnitude thresholds below simply do not fire on well-formed notes — a
+    // reversal is not a contradiction.
     const intraDuty = cgst + sgst;
     const interDuty = igst;
     const supplyMismatch =
@@ -108,12 +122,14 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
       (!interState && interDuty > 0.004) ||     // IGST posted on intra-state/unknown supply
       (posCode == null && interDuty + intraDuty > 0.004); // supply type unresolvable
 
-    // Rate buckets: derive rate from duty amount / taxable, or entry snapshot
+    // Rate buckets: derive rate from duty amount / taxable, or entry snapshot.
+    // R-05: contributions are SIGNED like the voucher totals (sale rows add,
+    // note rows subtract), so bucket duty shares keep the correct direction.
     const buckets = new Map<number, { rate: number; taxable: number; igst: number; cgst: number; sgst: number; cess: number }>();
     for (const e of taxableRows) {
       const rate = e.gstRate != null ? num(e.gstRate) : deriveRate(Math.abs(num(e.amount)), igst, cgst, sgst, cess, taxable);
       const b = buckets.get(rate) ?? { rate, taxable: 0, igst: 0, cgst: 0, sgst: 0, cess: 0 };
-      b.taxable = r2(b.taxable + Math.abs(num(e.amount)));
+      b.taxable = r2(b.taxable + sign * num(e.amount));
       buckets.set(rate, b);
     }
     const dutyTotal = igst + cgst + sgst + cess;
@@ -128,6 +144,7 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
       taxable, igst, cgst, sgst, cess, total,
       supplyType: interState ? "interstate" : "intrastate",
       supplyMismatch,
+      isNote,
       rateBuckets: [...buckets.values()].sort((a, b) => a.rate - b.rate),
     });
   }
@@ -135,25 +152,46 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
 }
 
 function deriveRate(taxable: number, igst: number, cgst: number, sgst: number, cess: number, totalTaxable: number): number {
-  if (totalTaxable <= 0) return 0;
-  const duty = igst + cgst + sgst + cess;
-  const rate = taxable > 0 ? (duty / totalTaxable) * 100 : 0;
+  // Sign-agnostic: works for supplies and note reversals alike (R-05).
+  const duty = Math.abs(igst + cgst + sgst + cess);
+  const base = Math.abs(totalTaxable);
+  if (base <= 0) return 0;
+  const rate = (duty / base) * 100;
   const known = [0, 0.25, 3, 5, 12, 18, 28];
   return known.reduce((best, k) => (Math.abs(k - rate) < Math.abs(best - rate) ? k : best), rate);
 }
 
 export async function gstr1(companyId: number, from: string, to: string) {
   const outward = await voucherGst(companyId, from, to, "outward");
-  const b2b = outward.filter((v) => v.partyGstin);
-  const b2c = outward.filter((v) => !v.partyGstin);
+  // R-05 (B-06): proper GSTR-1 structure. Table 9 (B2B/B2C) holds the supplies;
+  // Table 9B (CDNR for registered parties, CDNUR for unregistered) holds the
+  // credit notes as their own reporting documents with POSITIVE magnitudes.
+  // Notes are NOT counted as additional supplies (the v1.4.0 bug inflated both
+  // tables); `totals.net*` is the true net outward position and reconciles
+  // exactly with the ledgers (sales − credit notes, duty-wise).
+  const supplies = outward.filter((v) => !v.isNote);
+  const notes = outward.filter((v) => v.isNote);
+  const b2b = supplies.filter((v) => v.partyGstin);
+  const b2c = supplies.filter((v) => !v.partyGstin);
+  const magnitude = (v: VoucherGst): VoucherGst => ({
+    ...v,
+    taxable: Math.abs(v.taxable), igst: Math.abs(v.igst), cgst: Math.abs(v.cgst),
+    sgst: Math.abs(v.sgst), cess: Math.abs(v.cess), total: Math.abs(v.total),
+    rateBuckets: v.rateBuckets.map((b) => ({
+      ...b, taxable: Math.abs(b.taxable), igst: Math.abs(b.igst),
+      cgst: Math.abs(b.cgst), sgst: Math.abs(b.sgst), cess: Math.abs(b.cess),
+    })),
+  });
+  const cdnr = notes.filter((v) => v.partyGstin).map(magnitude);
+  const cdnur = notes.filter((v) => !v.partyGstin).map(magnitude);
 
   // R-01: HSN summary (Table 12) represents OUTWARD SUPPLIES ONLY. The
   // population is defined by voucher-type semantics — the same rule used by
   // voucherGst(..., "outward") — never by inventory quantity direction:
   // stored qty is signed (+ = stock in, - = stock out), so a direction test
   // silently includes purchases/receipt notes and excludes sales.
-  // Credit/Debit Notes are separate reporting documents and stay out of
-  // Table 12 (CDNR remains a known gap, see the cdnr field below).
+  // Credit/Debit Notes are separate reporting documents (Table 9B CDNR/CDNUR,
+  // now implemented above) and stay out of Table 12.
   const hsnRows = await db
     .select({
       hsn: inventoryEntries.hsnSac, qty: inventoryEntries.qty, rate: inventoryEntries.rate,
@@ -188,17 +226,30 @@ export async function gstr1(companyId: number, from: string, to: string) {
   }
 
   const sum = (vs: VoucherGst[], f: (v: VoucherGst) => number) => r2(vs.reduce((s, v) => s + f(v), 0));
+  const mag = (vs: VoucherGst[], f: (v: VoucherGst) => number) => r2(vs.reduce((s, v) => s + Math.abs(f(v)), 0));
+  const totals = {
+    b2bTaxable: sum(b2b, (v) => v.taxable), b2bIgst: sum(b2b, (v) => v.igst),
+    b2bCgst: sum(b2b, (v) => v.cgst), b2bSgst: sum(b2b, (v) => v.sgst),
+    b2cTaxable: sum(b2c, (v) => v.taxable), b2cIgst: sum(b2c, (v) => v.igst),
+    b2cCgst: sum(b2c, (v) => v.cgst), b2cSgst: sum(b2c, (v) => v.sgst),
+    cdnrTaxable: mag(cdnr, (v) => v.taxable), cdnrIgst: mag(cdnr, (v) => v.igst),
+    cdnrCgst: mag(cdnr, (v) => v.cgst), cdnrSgst: mag(cdnr, (v) => v.sgst),
+    cdnurTaxable: mag(cdnur, (v) => v.taxable), cdnurIgst: mag(cdnur, (v) => v.igst),
+    cdnurCgst: mag(cdnur, (v) => v.cgst), cdnurSgst: mag(cdnur, (v) => v.sgst),
+    // Net outward position (Table 9 net of Table 9B) — reconciles with the
+    // ledgers: sales − credit notes, duty-wise.
+    netTaxable: r2(sum(b2b, (v) => v.taxable) + sum(b2c, (v) => v.taxable) - mag(cdnr, (v) => v.taxable) - mag(cdnur, (v) => v.taxable)),
+    netIgst: r2(sum(b2b, (v) => v.igst) + sum(b2c, (v) => v.igst) - mag(cdnr, (v) => v.igst) - mag(cdnur, (v) => v.igst)),
+    netCgst: r2(sum(b2b, (v) => v.cgst) + sum(b2c, (v) => v.cgst) - mag(cdnr, (v) => v.cgst) - mag(cdnur, (v) => v.cgst)),
+    netSgst: r2(sum(b2b, (v) => v.sgst) + sum(b2c, (v) => v.sgst) - mag(cdnr, (v) => v.sgst) - mag(cdnur, (v) => v.sgst)),
+  };
   return {
     b2b,
     b2c,
-    cdnr: [], // credit notes appear via typeName; kept in b2b/b2c with negative impact future work
+    cdnr,
+    cdnur,
     hsn: [...hsnMap.values()].sort((a, b) => a.hsn.localeCompare(b.hsn)),
-    totals: {
-      b2bTaxable: sum(b2b, (v) => v.taxable), b2bIgst: sum(b2b, (v) => v.igst),
-      b2bCgst: sum(b2b, (v) => v.cgst), b2bSgst: sum(b2b, (v) => v.sgst),
-      b2cTaxable: sum(b2c, (v) => v.taxable), b2cIgst: sum(b2c, (v) => v.igst),
-      b2cCgst: sum(b2c, (v) => v.cgst), b2cSgst: sum(b2c, (v) => v.sgst),
-    },
+    totals,
   };
 }
 

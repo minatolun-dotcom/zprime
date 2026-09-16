@@ -12,12 +12,13 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.2.0 | **R-02** | Voucher cancellation (Model A mark + exclude; cancel/uncancel; settled-bill + payroll guards; Day Book/VoucherScreen UI) |
 | v1.3.0 | **R-03** | Company authorization and memberships (`user_companies` junction, centralized `cid()` membership authorization, immediate revocation, 404 no-leak semantics, owner-only member management) |
 | v1.4.0 | **R-04** | XML import integrity (B-03 + B-05 + B-13 + B-14: single-transaction import, API-equivalent double-entry/bill validation, per-voucher error attribution, imported-ledger taxability classification, client multipart fix) |
+| v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
 
-**R-04 is RELEASED as v1.4.0** (investigated → reviewed → approved → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
+**R-05 is RELEASED as v1.5.0** (investigated → reviewed → approved → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
-Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-06 (credit/debit-note GSTR-1 sign, live-reproduced 99/99 vs 81/81), B-01 (negative stock acceptance), B-02 (opening-balance accounting model).
+Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-01 (negative stock acceptance), B-02 (opening-balance accounting model), B-07 (cross-company master-reference validation).
 
 ## Upcoming candidates (derived from ZLEDGER_PRODUCTION_ACTION_PLAN.md — NOT yet tasks)
 
@@ -25,8 +26,6 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 
 | Order | Candidate | Source | Class | Notes |
 |---|---|---|---|---|
-| R-04 | Import integrity (B-03 P0 + B-05 P1 + B-13 P2) | action plan, investigated | bug | investigation complete; pending approval |
-| R-05 | Credit/Debit Note GST sign + CDNR/CDNUR (B-06 P1) | action plan, live-reproduced | bug | CN currently increases output tax in GSTR-1 |
 | R-06 | Negative-stock guard (B-01 P0) | action plan, reproduced | bug | valuation/COGS distortion propagates |
 | R-07 | Opening-stock accounting model (B-02 P0) | action plan, reproduced | bug | opening stock breaks A = L + C without an opening journal |
 | later | Cross-company master-reference validation (B-07 P1) | action plan | bug | master CRUD gap; voucher path already validates |

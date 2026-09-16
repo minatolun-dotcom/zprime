@@ -541,8 +541,37 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
 // ---------- GSTR-1 ----------
 function Gstr1View({ data }: { data: any }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  const t = data.totals ?? {};
+  const hasNotes = (data.cdnr?.length ?? 0) + (data.cdnur?.length ?? 0) > 0;
+  const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (
+    <table className="report-table">
+      <thead>
+        <tr><th className="w-24">Date</th><th className="w-24">Note</th><th>Party</th>{gstin && <th className="w-32">GSTIN</th>}
+          <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th></tr>
+      </thead>
+      <tbody>
+        {rows.map((v: any) => (
+          <tr key={v.voucherId}>
+            <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName ?? "—"}</td>{gstin && <td className="text-slate-500">{v.partyGstin}</td>}
+            <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
   return (
     <div className="space-y-4">
+      {hasNotes && (
+        <Card>
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Net outward supplies (Table 9 net of notes)</div>
+          <table className="report-table">
+            <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th></tr></thead>
+            <tbody>
+              <tr><td>Net</td><td className="num font-semibold">{money(t.netTaxable)}</td><td className="num">{money(t.netIgst)}</td><td className="num">{money(t.netCgst)}</td><td className="num">{money(t.netSgst)}</td></tr>
+            </tbody>
+          </table>
+        </Card>
+      )}
       <Card>
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">B2B Invoices (registered purchasers)</div>
         <table className="report-table">
@@ -575,6 +604,18 @@ function Gstr1View({ data }: { data: any }) {
           </tbody>
         </table>
       </Card>
+      {hasNotes && (
+        <Card>
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">CDNR — Credit Notes, registered parties (Table 9B)</div>
+          <NoteTable rows={data.cdnr} gstin={true} />
+        </Card>
+      )}
+      {hasNotes && (
+        <Card>
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">CDNUR — Credit Notes, unregistered (Table 9B)</div>
+          <NoteTable rows={data.cdnur} gstin={false} />
+        </Card>
+      )}
       <Card>
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">HSN Summary</div>
         <table className="report-table">
