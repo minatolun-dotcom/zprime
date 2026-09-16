@@ -26,6 +26,7 @@ The permanent technical/product description of zprime. Every claim here is verif
 - Atomic voucher writes in a transaction with party-ledger `FOR UPDATE` locking where bills are involved; numbering via a DB counter row + per-company unique index (numbers are never reused or rewound).
 - **Voucher cancellation (R-02):** Model A — mark + exclude. Cancel preserves the row, number, entries, inventory and bills; no reversal entries are ever created; active reports exclude the voucher; uncancel restores exactly. `cancelled_at/cancel_reason/cancelled_by` metadata (FK → users since R-03). Cancelled vouchers cannot be edited or deleted (409).
 - **Bill-wise:** New Ref / Against Ref / Advance / On Account, validated by `validateBillsTx`; settled bills protect their vouchers from cancellation (R-02 settled-bill guard).
+- **Opening balances (R-07):** ledger openings (Dr +/Cr −) flow into TB/BS/closings via the books-begin carry; item openings value the BS stock line from the inventory engine. Party openings surface in Bills Receivable/Payable as a display-only "Opening Balance" bill (never settleable via Against Ref — settle via On Account). Balance Sheet stock is taken from the inventory engine and Stock-in-Hand *sub-group* ledgers are zeroed structurally (no double-count). Unfunded item openings surface honestly as the BS "Difference in books" banner — the Tally-faithful remedy is a manual opening journal (Dr stock/asset ledgers, Cr Capital), documented as the supported workflow (F-07-2, Model A, decision in `R-07_INVESTIGATION.md` §8).
 
 ## Inventory
 
@@ -73,7 +74,7 @@ All with period picker, Alt+F1 detailed/condensed, CSV export, drill-down: Balan
 ## v1 scope boundaries (deliberate)
 
 - **IMPLEMENTED:** everything above as marked.
-- **PLANNED (roadmap input, not committed):** import integrity (R-04 candidate), CN/DN GST sign + CDNR, negative-stock guard, opening-stock accounting model — see `ROADMAP.md` and `ZLEDGER_PRODUCTION_ACTION_PLAN.md`.
+- **Formerly PLANNED audit candidates, now resolved:** import integrity (v1.4.0), CN/DN GST sign + CDNR and Apply-GST party balance (v1.5.0), negative-stock guard (v1.6.0), opening balances in reports (R-07). Current candidates live in `ROADMAP.md`.
 - **OUT OF SCOPE for v1:** multi-organization/workspaces, invitations/email workflows, SSO/2FA, granular RBAC matrix, full audit trail, period locking, e-invoice/e-way/GSTR-9/RCM, batch/serial tracking, BOM/production orders, multi-currency, subscription billing.
 
 ## Verification capability (what proves it works)

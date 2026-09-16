@@ -1,16 +1,16 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-16 — R-06 released as v1.6.0 (negative-stock availability guard + honest negative-stock valuation). Process state: IDLE.
+**Last updated:** 2026-09-16 — R-07 released as v1.7.0 (opening balances in reports: F-07-1 AR/AP opening bill + F-07-3 BS structural SIH zeroing; F-07-2 Model A documented). Process state: IDLE.
 
 ---
 
 ## Current state
 
 - **Current release:** v1.6.0
-- **Current HEAD:** resolve with `git rev-parse v1.6.0^{}` (= tag `v1.6.0`; see RELEASES.md)
+- **Current HEAD:** `caadf983aba600ffc5abd976f2e5281df890cf97` (= tag `v1.6.0`; see RELEASES.md)
 - **Current phase:** `IDLE` — no active R-item — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. R-06 (B-01, Model 1 reject-oversell) is complete and released.
-- **Next permitted action:** next investigation only (B-02 opening balances / B-07 master-reference validation are the leading candidates from the action plan) — never implementation without its own investigation → review → approval cycle.
+- **Current task:** none. R-07 (B-02: F-07-1 + F-07-3; F-07-2 Model A) is complete and released as v1.7.0.
+- **Next permitted action:** next investigation only (B-07 cross-company master-reference validation is the leading remaining candidate from the action plan) — never implementation without its own investigation → review → approval cycle.
 - **Blocked decisions (waiting on human):** none.
 
 ## Baseline verification (must re-confirm every session)
@@ -46,6 +46,30 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-16 — R-07 RELEASED as v1.7.0
+
+- **Release review:** passed (diff audited hunk-by-hunk; scope contains exactly the approved F-07-1 + F-07-3 + Model-A docs; zero accounting-engine mathematics changes; no tests weakened; no fixture regressions — verified no existing party carries a master opening before running).
+- **Release commit:** "Release v1.7.0: opening balances in Outstanding reports and Balance Sheet stock scope". **Tag:** annotated `v1.7.0` — "zprime v1.7.0 — opening balances in reports". `v1.7.0^{}` == HEAD verified; tree clean; all prior tags immutable.
+- **Release-gate results (final build):** Python 779/779 · browser 198/198 · typecheck clean · fresh Docker healthy · `git diff --check` clean.
+- **Current state:** RELEASED → IDLE. No active R-item.
+- **Next permitted action:** next investigation only (B-07 candidate) — never implementation without its own approval cycle.
+
+### 2026-09-16 — R-07 implemented and verified (RELEASE_REVIEW pending)
+
+- **Approved scope:** F-07-1 (P1) + F-07-3 (P2); F-07-2 = Model A (document-only). Human approved via structured questions.
+- **Implementation (`server/src/services/accounting.ts` only — no API surface, schema, migration, or client changes):** (1) `billWiseOutstanding()` merges party master openings as a synthetic "Opening Balance" bill (billType `opening`, dated books-begin, allocation sign convention Dr +/Cr −), inserted after `result` construction and before the A-05 on-account merge; display-only by construction (`validateBillsTx` only sees real allocations → Against Ref = 400; verified in tests). (2) `balanceSheet()` zeroing switched from name-equality to structural: new `descendantGroupIds()` helper resolves SIH + descendants. Client needed **zero** changes (OutstandingView renders bills generically). Independent engine `bills()` mirror aligned (opening-bill rule). PROJECT.md: Model-A documentation (opening-balance architecture + manual opening-journal workflow).
+- **Tests:** final_regression +16 R-07 checks (AR/AP openings incl. Cr-signed creditor, synthetic-bill shape, AR total, no-settlement 400, on-account netting 50k→40k, sub-group no-double-count, books-balance difference-0) → **497**; Python **779/779**; browser **198/198** (153+12+9+12+**12** new `r07_ui.js`: AR opening row visible/expandable in the real UI, AP −20,000, BS banner absent before/after unfunded sub-group ledger, zero page errors). Typecheck server+client clean. Fresh Docker volume healthy. fix_regression startup race → clean rerun green (known transient).
+- **Guardrails honored:** no existing fixture carries party master openings (verified — zero baseline regressions); no migration; R-06 guard untouched (availability replay starts from item openings; report-side only).
+- **Files changed:** `server/src/services/accounting.ts`, `scripts/final_regression.py`, `scripts/acceptance/engine.py`, `scripts/acceptance/r07_ui.js` (new), `PROJECT.md`, `CHANGELOG.md`, `STATE.md`, `CONTINUE.md` (this entry). `R-07_INVESTIGATION.md` untracked → stage at release.
+- **Next permitted action:** release review of the full diff → on pass + explicit instruction, commit + tag v1.7.0.
+
+### 2026-09-16 — R-07 investigated (B-02 opening balances) — HUMAN_REVIEW pending
+
+- **Investigation:** `R-07_INVESTIGATION.md` — live probe on v1.6.0 (:3000 disposable stack, company "R07 Probe"). B-02 re-graded: not one P0 but three findings + one verified non-bug. F-07-1 **P1**: `billWiseOutstanding()` never reads `ledgers.opening_balance` → migrated party balances invisible in Receivables/Payables (probe: debtor opening 50,000 Dr visible in TB, AR total 0). F-07-3 **P2**: BS zeroes Stock-in-Hand ledgers by exact group *name*, so SIH sub-group ledgers (Finished Goods etc.) double-count stock in assets (probe: +1000 assets on 1000 stock, silent). F-07-2 **P2** (re-graded from P0): unfunded item openings → BS `difference = −openingStock` with honest banner (importer creates this state for every migrated book). F-07-4: openings do NOT contaminate P&L movement — NOT A BUG — VERIFIED.
+- **Files changed:** only `R-07_INVESTIGATION.md` created; `CONTINUE.md` (this entry). No source/test/migration/doc changes. Probe scripts in /tmp only.
+- **Current state:** INVESTIGATION complete → HUMAN_REVIEW pending.
+- **Next permitted action:** human approval of R-07 scope (F-07-1 + F-07-3 bundle per report §8 Option B) and F-07-2 model choice.
 
 ### 2026-09-16 — R-06 RELEASED as v1.6.0
 

@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.7.0
+
+- **Commit:** `v1.7.0^{}` — resolve with `git rev-parse v1.7.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.7.0` (annotated; `v1.7.0^{}` = the release commit, verified at release)
+- **Major purpose:** Opening balances in reports (R-07, B-02 re-verified: F-07-1 P1 + F-07-3 P2 fixed; F-07-2 documented per approved Model A). Party master openings now surface in Bills Receivable/Payable as a display-only synthetic "Opening Balance" bill dated books-begin (allocation sign convention: Debtors Dr +, Creditors Cr −; Against Ref settlement is a clean 400; on-account receipts net into the party total). Balance Sheet zeroing of Stock-in-Hand is structural — the group **and all descendants** (`descendantGroupIds()`), so SIH sub-group ledgers (Finished Goods, Raw Materials, …) can no longer double-count stock in assets. Independent engine `bills()` mirror aligned; PROJECT.md documents the opening-balance architecture and the manual opening-journal workflow for unfunded item openings (the honest "Difference in books" banner is designed behaviour).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 779/779 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 497 (+16 dedicated R-07 checks: AR/AP openings incl. Cr-signed creditor, synthetic-bill shape, AR total, no-settlement 400, on-account netting 50k→40k, sub-group no-double-count, books-balance difference-0), attack-the-fixes 29)
+  - 198/198 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12) on the rebuilt bundle and a fresh volume; new `r07_ui.js` covers the AR opening row visible/expandable in the real UI, AP −20,000 signed, BS banner absent before/after an unfunded sub-group ledger, zero page errors
+  - typecheck (server + client) clean
+  - fresh Docker verified (fresh volume, healthchecks)
+  - independent accounting reconciliation green — no accounting-mathematics change: openings were already in TB/BS/closings; the reports now *show* the money they already carried. R-06 availability guard untouched (report-side only).
+  - no migration, no schema change, no API surface change; client needed zero changes (OutstandingView renders bills generically)
+- **Important fixes:** P1 closed — a migrated book's party balances were silently missing from the Outstanding reports whose purpose is collecting/paying that money (debtor opening 50,000 visible in TB, AR total 0). P2 closed — silent BS stock double-count through Stock-in-Hand sub-groups.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.7.0` is the current production baseline.
+
 ## v1.6.0
 
 - **Commit:** `v1.6.0^{}` — resolve with `git rev-parse v1.6.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

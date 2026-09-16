@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased — R-06 negative-stock guard (B-01)
+## Unreleased — R-07 opening balances in reports (B-02)
+
+**779/779 automated checks passed (Python: 39+88+65+61+497+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
+
+### R-07 — Opening balances in reports: B-02 re-verified (1×P1 + 1×P2 fixed; 1×P2 documented per approved Model A)
+
+**Investigation (`R-07_INVESTIGATION.md`, live-reproduced on v1.6.0):** the action plan's B-02 "P0" was actually three findings + one non-bug. **F-07-1 (P1):** `billWiseOutstanding()` never read `ledgers.opening_balance` — a migrated book's party balances were silently missing from Bills Receivable/Payable (debtor opening 50,000 visible in TB, AR total 0). **F-07-3 (P2):** the BS zeroed Stock-in-Hand ledgers by exact group *name*, so ledgers under SIH sub-groups (Finished Goods, Raw Materials, …) double-counted stock in assets, silently. **F-07-2 (P2, re-graded from the plan's P0):** unfunded item openings leave BS `difference = −openingStock` — surfaced honestly by the "Difference in books" banner. **F-07-4:** openings never contaminate P&L movement — NOT A BUG — VERIFIED.
+
+**Fixes (scope approved: F-07-1 + F-07-3; F-07-2 = Model A document-only):**
+- **F-07-1 (`server/src/services/accounting.ts`):** party master openings merge into Outstanding reports as a synthetic **"Opening Balance"** bill dated books-begin — the A-05 on-account merge precedent, allocation sign convention (Debtors Dr +, Creditors Cr −). Display-only by construction: `validateBillsTx` settles only real allocations, so Against Ref against it is a clean 400; on-account receipts net into the party total. No fixture regressions: no pre-existing test party carries a master opening.
+- **F-07-3 (`balanceSheet()`):** structural zeroing — `descendantGroupIds()` resolves the Stock-in-Hand group and every descendant, replacing the name-equality rule. Sub-group stock ledgers are excluded from the asset fold exactly like the top node.
+- **Independent engine aligned (`scripts/acceptance/engine.py`):** `bills()` now mirrors the opening-bill rule (semantic fidelity; no existing fixture exposes it — the new R-07 checks do).
+- **Model A documentation (PROJECT.md):** opening-balance architecture + the documented opening-journal workflow (Dr stock/asset, Cr Capital) for unfunded item openings; the honest banner is the designed behavior.
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 61 | PASS |
+| Final regression (incl. 16 R-07 checks) | 497 (+16) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 + 9 + 12 + 12 (new r07_ui.js) | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume | — | PASS |
+
+## v1.6.0 — R-06 negative-stock guard (B-01)
 
 **763/763 automated checks passed (Python: 39+88+65+61+481+29), 186/186 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05), zero failures.**
 

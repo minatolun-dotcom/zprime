@@ -119,6 +119,28 @@ export async function getGroupRows(companyId: number) {
   return db.select().from(groups).where(eq(groups.companyId, companyId)).orderBy(asc(groups.id));
 }
 
+/** R-07 (F-07-3): ids of `rootName` and every group below it (for structural BS zeroing). */
+async function descendantGroupIds(companyId: number, rootName: string): Promise<Set<number>> {
+  const rows = await db.select({ id: groups.id, name: groups.name, parentId: groups.parentId })
+    .from(groups).where(eq(groups.companyId, companyId));
+  const root = rows.find((r) => r.name === rootName);
+  if (!root) return new Set();
+  const byParent = new Map<number | null, number[]>();
+  for (const r of rows) {
+    const list = byParent.get(r.parentId) ?? [];
+    list.push(r.id);
+    byParent.set(r.parentId, list);
+  }
+  const out = new Set<number>([root.id]);
+  const stack = [root.id];
+  while (stack.length) {
+    for (const child of byParent.get(stack.pop()!) ?? []) {
+      if (!out.has(child)) { out.add(child); stack.push(child); }
+    }
+  }
+  return out;
+}
+
 /** Trial balance rows. */
 export async function trialBalance(companyId: number, period: Period) {
   const balances = await ledgerBalances(companyId, period.from, period.to);
@@ -201,9 +223,13 @@ export async function balanceSheet(companyId: number, asOf: string) {
   const balances = await ledgerBalances(companyId, asOf, asOf);
   const groupRows = await getGroupRows(companyId);
 
-  // Stock-in-Hand value comes from the inventory engine, not ledger balances
+  // Stock-in-Hand value comes from the inventory engine, not ledger balances.
+  // R-07 (F-07-3): zero the Stock-in-Hand group AND all its descendants —
+  // name-equality missed ledgers under SIH sub-groups (Finished Goods, Raw
+  // Materials, …), which then double-counted stock in the asset fold.
   const closingStock = r2(await stockClosingValue(companyId, asOf));
-  for (const b of balances) b.closing = b.groupName === "Stock-in-Hand" ? 0 : b.closing;
+  const sihIds = await descendantGroupIds(companyId, "Stock-in-Hand");
+  for (const b of balances) if (sihIds.has(b.groupId)) b.closing = 0;
 
   const tree = buildGroupTree(groupRows, balances, { includeZero: true });
 
@@ -415,6 +441,34 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     total: r2(g.total),
     bills: g.bills.sort((a, b) => cmpDate(a.date, b.date)),
   })).sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+
+  // R-07 (F-07-1): a party ledger's opening balance is real outstanding money —
+  // a migrated book's receivable/payable carried in from before books-begin.
+  // Tally surfaces it in Outstanding reports as an "Opening Balance" bill.
+  // Merge it here (A-05 on-account precedent) with the allocation sign
+  // convention (Dr + / Cr −): Debtors openings are Dr (+), Creditors Cr (−).
+  const [company] = await db.select({ booksBeginFrom: companies.booksBeginFrom })
+    .from(companies).where(eq(companies.id, companyId));
+  const openRows = await db
+    .select({ id: ledgers.id, name: ledgers.name, opening: ledgers.openingBalance })
+    .from(ledgers)
+    .innerJoin(groups, eq(groups.id, ledgers.groupId))
+    .where(and(eq(ledgers.companyId, companyId), eq(groups.name, partyGroup)));
+  for (const o of openRows) {
+    const amt = r2(num(o.opening));
+    if (Math.abs(amt) <= 0.004) continue;
+    let grp = result.find((g) => g.ledgerId === o.id);
+    if (!grp) {
+      grp = { ledgerId: o.id, ledgerName: o.name, total: 0, bills: [] };
+      result.push(grp);
+      result.sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+    }
+    const merged = grp.bills.find((b) => b.billType === "opening");
+    if (merged) merged.amount = r2(merged.amount + amt);
+    else grp.bills.push({ ledgerId: o.id, ledgerName: o.name, billName: "Opening Balance", billType: "opening", amount: amt, dueDate: null, date: String(company?.booksBeginFrom ?? "") });
+    grp.bills.sort((a, b) => cmpDate(a.date, b.date));
+    grp.total = r2(grp.total + amt);
+  }
 
   // A-05 fix: on-account allocations were computed but never merged, so an
   // advance against a party was invisible in outstanding reports. Merge each

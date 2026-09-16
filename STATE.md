@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-16 (R-06 negative-stock guard RELEASED as v1.6.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
+**Last updated:** 2026-09-16 (R-07 opening balances in reports RELEASED as v1.7.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
 
 ## What zprime is
 
@@ -9,6 +9,12 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 ## Release status
 
 **All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
+
+### R-07 (P1 + P2 confirmed → released as v1.7.0, 2026-09-16): opening balances in reports
+
+Investigation (`R-07_INVESTIGATION.md`) live-reproduced B-02 on v1.6.0 and re-graded it: **F-07-1 (P1)** — party master openings never reached Bills Receivable/Payable (`billWiseOutstanding()` reads only bill allocations; debtor opening 50,000 in TB, AR total 0); **F-07-3 (P2)** — BS zeroed Stock-in-Hand ledgers by exact group *name*, so SIH sub-group ledgers (Finished Goods…) double-counted stock in assets; **F-07-2 (P2, re-graded from the plan's P0)** — unfunded item openings surface as the honest BS "Difference in books" banner (design limitation, not silent corruption); **F-07-4** — openings never contaminate P&L movement (NOT A BUG — VERIFIED).
+
+Implemented per approved scope (**F-07-1 + F-07-3; F-07-2 = Model A document-only**): party openings merge into Outstanding reports as a display-only synthetic "Opening Balance" bill dated books-begin (A-05 on-account precedent; Against Ref settlement is a clean 400; on-account receipts net into the party total); `balanceSheet()` zeroes the Stock-in-Hand group **and all descendants** structurally (`descendantGroupIds()`); independent engine `bills()` mirror aligned; PROJECT.md documents the opening-balance architecture and the manual opening-journal workflow. Regression: final_regression 481 → **497** (+16 R-07 checks incl. sign-mirrored AP case and no-settlement guard); Python **779/779**; browser **198/198** (153+12+9+12+12, new `r07_ui.js`); typecheck clean; fresh Docker healthy. No accounting-mathematics change: openings were already in TB/BS/closings; reports now *show* the money they already carried.
 
 ### R-06 (P1 confirmed → released as v1.6.0, 2026-09-16): negative-stock availability guard
 

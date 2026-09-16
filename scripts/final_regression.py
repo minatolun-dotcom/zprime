@@ -1621,5 +1621,62 @@ s, _ = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06X Sales", "groupId": gm7["S
 s, imp6b = r03(sA, "POST", f"{R7}/import/xml", {"xml": xml6b})
 check("R06/import: opt-in company accepts overselling import", s == 200, (s, str(imp6b)[:160]))
 
+# ================= R-07: opening balances in reports (F-07-1, F-07-3) =================
+print("-- R-07: opening balances in reports --")
+s, coR7 = req("POST", "/api/companies", {
+    "name": "R07 Openings Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R07REG00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R07 company created", s == 200 and coR7.get("id"), coR7)
+R7C = f"/api/c/{coR7['id']}"
+s, gr7 = req("GET", f"{R7C}/groups"); g7 = {x["name"]: x["id"] for x in gr7}
+s, vt7 = req("GET", f"{R7C}/voucher-types"); v7t = {x["name"]: x["id"] for x in vt7}
+
+# F-07-1: party opening balance must surface in Outstanding (migrated books)
+s, deb7 = req("POST", f"{R7C}/ledgers", {"name": "R07 Debtor", "groupId": g7["Sundry Debtors"], "billWise": True, "openingBalance": "50000"})
+s, cred7 = req("POST", f"{R7C}/ledgers", {"name": "R07 Creditor", "groupId": g7["Sundry Creditors"], "billWise": True, "openingBalance": "-20000"})
+s, cash7 = req("POST", f"{R7C}/ledgers", {"name": "R07 Cash", "groupId": g7["Cash-in-Hand"], "isBankCash": True, "openingBalance": "100000"})
+s, cap7 = req("POST", f"{R7C}/ledgers", {"name": "R07 Capital", "groupId": g7["Capital Account"], "openingBalance": "-130000"})
+check("R07: masters with openings created", s == 200, s)
+
+s, ar7 = req("GET", f"{R7C}/reports/receivables?to=2026-12-31")
+p7 = next((p for p in ar7["parties"] if p["ledgerId"] == deb7["id"]), None)
+check("F-07-1: debtor opening appears in Receivables", p7 is not None and p7["total"] == 50000, p7)
+ob7 = next((b for b in (p7 or {}).get("bills", []) if b["billType"] == "opening"), None)
+check("F-07-1: opening bill is the synthetic 'Opening Balance' row", ob7 is not None and ob7["billName"] == "Opening Balance" and ob7["amount"] == 50000, ob7)
+check("F-07-1: AR total includes opening", ar7["total"] == 50000, ar7["total"])
+s, ap7 = req("GET", f"{R7C}/reports/payables?to=2026-12-31")
+pc7 = next((p for p in ap7["parties"] if p["ledgerId"] == cred7["id"]), None)
+check("F-07-1: creditor opening (Cr) appears in Payables as -20000", pc7 is not None and pc7["total"] == -20000, pc7)
+check("F-07-1: AP total includes opening", ap7["total"] == -20000, ap7["total"])
+
+# opening bill must NOT be settleable via against_ref (documented display-only)
+s, sl7 = req("POST", f"{R7C}/ledgers", {"name": "R07 Sales", "groupId": g7["Sales Accounts"], "taxability": "taxable", "gstRate": "18"})
+check("R07: sales ledger created", s == 200 and sl7.get("id"), sl7)
+s, sale7 = req("POST", f"{R7C}/vouchers", {"voucherTypeId": v7t["Sales"], "date": "2026-04-10",
+    "entries": [{"ledgerId": deb7["id"], "amount": 11800, "bills": [{"billType": "against_ref", "billName": "Opening Balance", "amount": 11800}]},
+               {"ledgerId": sl7["id"], "amount": -11800}]})
+check("F-07-1: against_ref cannot settle the synthetic opening bill", s == 400, (s, str(sale7)[:120]))
+s, _ = req("POST", f"{R7C}/vouchers", {"voucherTypeId": v7t["Receipt"], "date": "2026-04-11",
+    "entries": [{"ledgerId": deb7["id"], "amount": -10000, "bills": [{"billType": "on_account", "billName": "On Account", "amount": -10000}]},
+               {"ledgerId": cash7["id"], "amount": 10000}]})
+check("F-07-1: on-account receipt against opening party posted", s == 200, s)
+s, ar7b = req("GET", f"{R7C}/reports/receivables?to=2026-12-31")
+p7b = next((p for p in ar7b["parties"] if p["ledgerId"] == deb7["id"]), None)
+check("F-07-1: party total nets opening + on-account (50000-10000)", p7b is not None and p7b["total"] == 40000, p7b)
+check("F-07-1: AR total follows (40000)", ar7b["total"] == 40000, ar7b["total"])
+
+# F-07-3: BS must zero SIH *sub-group* ledgers too (no double-count)
+s, fg7 = req("POST", f"{R7C}/groups", {"name": "Finished Goods", "parentId": g7["Stock-in-Hand"]})
+check("R07: SIH sub-group created", s == 200 and fg7.get("id"), fg7)
+s, fgl7 = req("POST", f"{R7C}/ledgers", {"name": "R07 FG Ledger", "groupId": fg7["id"], "openingBalance": "1000"})
+check("R07: sub-group ledger with opening created", s == 200, s)
+s, bs7 = req("GET", f"{R7C}/reports/balance-sheet?asOf=2026-04-30")
+fg_in_assets = sum(a["closing"] for a in bs7["assets"] if a["name"] == "Finished Goods")
+check("F-07-3: sub-group ledger closing zeroed (no double-count)", fg_in_assets == 0, fg_in_assets)
+# Books: non-stock openings are balanced (100000+50000-20000-130000 = 0) and the
+# unfunded FG opening (1000 Dr) is zeroed by design (stock value comes from the
+# inventory engine, which has no items here) -> difference must be exactly 0.
+check("F-07-3: books balance with sub-group ledger present (difference 0)", abs(bs7["difference"]) < 0.005, bs7["difference"])
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

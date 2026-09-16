@@ -365,6 +365,16 @@ class Engine:
                     else:
                         cur = L["bills"].get(b["name"], 0.0)
                         L["bills"][b["name"]] = R(cur + b["amount"])
+        # R-07 (F-07-1): party master openings surface as a synthetic
+        # "Opening Balance" bill (display-only; never settleable via against_ref).
+        for name, l in self.ledgers.items():
+            if l.get("group") != group_name:
+                continue
+            op = R(float(l.get("opening", 0)))
+            if abs(op) <= 0.004:
+                continue
+            L = per.setdefault(name, {"bills": {}, "onAccount": 0.0})
+            L["bills"]["Opening Balance"] = R(L["bills"].get("Opening Balance", 0.0) + op)
         out = {}
         for name, L in per.items():
             oa = L["onAccount"]
