@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-16 (R-07 opening balances in reports RELEASED as v1.7.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
+**Last updated:** 2026-09-16 (R-08 cross-company master-reference validation RELEASED as v1.8.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
 
 ## What zprime is
 
@@ -9,6 +9,12 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 ## Release status
 
 **All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
+
+### R-08 (P1 confirmed → released as v1.8.0, 2026-09-16): cross-company master-reference validation
+
+Investigation (`R-08_INVESTIGATION.md`) live-reproduced B-07 on v1.7.0 with a proven corruption chain: crud.ts validated row ownership but never body FK refs (schema FKs global) — a pay-head in A referencing B's ledger was accepted, payroll posted a Dr against B's ledger invisible to BOTH companies' reports (ledgerBalances company-join-scoped) → A's TB **Dr=0/Cr=10,000 unbalanced silently**, BS difference 10,000. Also accepted: ledgers with B's group, items with B's unit/stock-group. Voucher-path validation trio verified correct (NOT A BUG — VERIFIED).
+
+Implemented per approved **route-level scope (no migration)**: central `assertCompanyRefs` hook in crud.ts (`opts.refs` spec — wired ledgers.groupId, stock-items.unitId/groupId/categoryId, pay-heads.ledgerId); salary-structure headId in-company check; payroll belt-and-braces asserts every used head's ledgerId at posting (legacy foreign row fails loudly with named-head 400, TB asserted balanced). Regression: final_regression 497 → **514** (+17 R-08 checks incl. psql-inserted legacy row → payroll 400); Python **796/796**; browser **198/198**; typecheck clean; fresh Docker healthy. No accounting-mathematics change, no client change, no migration.
 
 ### R-07 (P1 + P2 confirmed → released as v1.7.0, 2026-09-16): opening balances in reports
 

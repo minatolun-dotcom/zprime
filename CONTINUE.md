@@ -1,6 +1,6 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-16 — R-07 released as v1.7.0 (opening balances in reports: F-07-1 AR/AP opening bill + F-07-3 BS structural SIH zeroing; F-07-2 Model A documented). Process state: IDLE.
+**Last updated:** 2026-09-16 — R-08 released as v1.8.0 (cross-company master-reference validation: central `assertCompanyRefs` CRUD boundary, salary-structure headId check, payroll belt-and-braces; route-level, no migration). Process state: IDLE.
 
 ---
 
@@ -9,8 +9,8 @@
 - **Current release:** v1.6.0
 - **Current HEAD:** `caadf983aba600ffc5abd976f2e5281df890cf97` (= tag `v1.6.0`; see RELEASES.md)
 - **Current phase:** `IDLE` — no active R-item — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. R-07 (B-02: F-07-1 + F-07-3; F-07-2 Model A) is complete and released as v1.7.0.
-- **Next permitted action:** next investigation only (B-07 cross-company master-reference validation is the leading remaining candidate from the action plan) — never implementation without its own investigation → review → approval cycle.
+- **Current task:** none. R-08 (B-07, route-level fix) is complete and released as v1.8.0.
+- **Next permitted action:** next investigation only (B-08 deployment secrets hardening / B-10 duplicate-submission protection are the leading remaining candidates) — never implementation without its own investigation → review → approval cycle.
 - **Blocked decisions (waiting on human):** none.
 
 ## Baseline verification (must re-confirm every session)
@@ -46,6 +46,30 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-16 — R-08 RELEASED as v1.8.0
+
+- **Release review:** passed (diff audited hunk-by-hunk; scope contains exactly the approved route-level fix; zero client/migration/schema changes; no accounting-mathematics change; no tests weakened).
+- **Release commit:** "Release v1.8.0: cross-company master-reference validation". **Tag:** annotated `v1.8.0` — "zprime v1.8.0 — master-reference company scoping". `v1.8.0^{}` == HEAD verified; tree clean; all prior tags immutable.
+- **Release-gate results (final build):** Python 796/796 · browser 198/198 · typecheck clean · fresh Docker healthy · `git diff --check` clean.
+- **Current state:** RELEASED → IDLE. No active R-item.
+- **Next permitted action:** next investigation only (B-08/B-10 candidates) — never implementation without its own approval cycle.
+
+### 2026-09-16 — R-08 implemented and verified (RELEASE_REVIEW pending)
+
+- **Approved scope:** route-level fix, no migration (human approved via structured question; composite-FK migration deferred).
+- **Implementation:** `crud.ts` — new `assertCompanyRefs(c, opts.refs, data)` called on POST and PUT after beforeSave; `RefSpec = Record<field, {table, label}>`; null/unset refs skipped, non-numeric junk left to the schema; error "<Label> does not exist in this company" (400). Wired in `masters.ts` (ledgers.groupId; stock-items unitId/groupId/categoryId) and `payroll.ts` (pay-heads.ledgerId). `salary-structure` PUT: headId in-company loop. `payroll/process`: belt-and-braces `inArray` assert over all pay-head ledgerIds before entries are built — legacy foreign row → named-head 400. Client: zero changes.
+- **Tests:** final_regression +17 R-08 checks → **514** (foreign refs → 400 incl. PUT path and stock-group; in-company still 200; salary-structure unknown/legacy head semantics — legacy head accepted (head is in-company) but posting fails; psql-inserted legacy foreign-ledger row → payroll 400 "outside this company"; TB balanced after rejection). Python **796/796**; browser **198/198** on rebuilt bundle + fresh volume (no new UI suite — no client change). Typecheck server+client clean.
+- **Guardrails honored:** no migration, no schema change, no client change, no accounting-mathematics change; voucher-path trio untouched; R-03/R-06/R-07 behavior unchanged (all suites green).
+- **Files changed:** `server/src/routes/crud.ts`, `server/src/routes/masters.ts`, `server/src/routes/payroll.ts`, `scripts/final_regression.py`, `CHANGELOG.md`, `STATE.md`, `CONTINUE.md` (this entry). `R-08_INVESTIGATION.md` untracked → stage at release.
+- **Next permitted action:** release review of the full diff → on pass + explicit instruction, commit + tag v1.8.0.
+
+### 2026-09-16 — R-08 investigated (B-07 cross-company master references) — HUMAN_REVIEW pending
+
+- **Investigation:** `R-08_INVESTIGATION.md` — live probe on v1.7.0 (:3000 disposable stack, companies "R08 Co A/B"). B-07 confirmed **P1 with a proven corruption chain**: cross-company refs accepted on ledgers.groupId, stock-items.unitId, pay-heads.ledgerId, salary-structure.headId (all 200); payroll then posted a Payroll voucher in A with a Dr against B's ledger → the debit is invisible to BOTH companies' reports (ledgerBalances is company-join-scoped) → **A's TB Dr=0/Cr=10,000 unbalanced, silently**; BS difference 10,000. F-08-2 (P2): foreign-group ledger renders in TB with the foreign group's name but is dropped from BS/Group-Summary tree folds — report paths disagree. F-08-3 (P3): NO ACTION FK couples B's group deletion to A's ledger. F-08-4: voucher-path validation trio + groups beforeSave + crud row-scoping verified correct (NOT A BUG — VERIFIED). Root cause: crud.ts validates row ownership but never body FK refs; schema FKs global. Zero test coverage (XGRP probe never graduated).
+- **Files changed:** only `R-08_INVESTIGATION.md` created; `CONTINUE.md` (this entry). No source/test/migration/doc changes. Probe scripts in /tmp only.
+- **Current state:** INVESTIGATION complete → HUMAN_REVIEW pending.
+- **Next permitted action:** human approval of R-08 scope (report §7) + decision on the optional composite-FK migration.
 
 ### 2026-09-16 — R-07 RELEASED as v1.7.0
 

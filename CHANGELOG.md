@@ -1,6 +1,33 @@
 # Changelog
 
-## Unreleased — R-07 opening balances in reports (B-02)
+## Unreleased — R-08 cross-company master-reference validation (B-07)
+
+**796/796 automated checks passed (Python: 39+88+65+61+514+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
+
+### R-08 — Cross-company master references: B-07 (CONFIRMED P1 → IMPLEMENTED, route-level fix approved)
+
+**Root cause (investigation, live-reproduced on v1.7.0):** crud.ts validated company ownership of the *row* but never the *FK ids in the request body*, and the schema FKs (ledgers.group_id, stock_items.unit_id, pay_heads.ledger_id, …) are global. Proven corruption chain: a pay-head in company A referencing company B's ledger was accepted (200), payroll then posted a Dr against B's ledger — an entry invisible to BOTH companies' reports (ledgerBalances is company-join-scoped) — leaving A's Trial Balance **Dr=0 / Cr=10,000, unbalanced silently** (BS difference 10,000). Also accepted: ledgers with B's group, items with B's unit/stock-group. Voucher-path validation (assertLedgersTx/assertRefsTx/assertTypeTx) was already company-scoped — the master-CRUD and payroll boundaries never received the same treatment.
+
+**Fix (route-level; approved scope, no migration):**
+- **Central `refs` hook in crud.ts (`assertCompanyRefs`):** an `opts.refs` spec per master — before insert/update, every provided FK id is verified `companyId = c`, else 400 ("… does not exist in this company"). Wired: ledgers.`groupId`, stock-items.`unitId`/`groupId`/`categoryId`, pay-heads.`ledgerId`.
+- **salary-structure PUT:** every `headId` verified in-company (employee check already existed).
+- **Payroll belt-and-braces:** processing asserts every used pay-head's `ledgerId` belongs to the company — a legacy foreign-ledger row (inserted via psql in tests) now fails **loudly at posting** with a named-head 400 instead of silently unbalancing the books; TB asserted balanced after the rejection.
+- **Division of labor (documented in tests):** a legacy head whose *ledger* is foreign passes the headId check (the head row exists in-company) and is caught at posting — exactly the belt-and-braces path.
+- Existing books keep working (read paths unchanged; only new writes validated); a legacy row only surfaces when payroll actually uses it, with a precise, actionable error.
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 61 | PASS |
+| Final regression (incl. 17 R-08 checks) | 514 (+17) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 + 9 + 12 + 12 | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume | — | PASS |
+
+## v1.7.0 — R-07 opening balances in reports (B-02)
 
 **779/779 automated checks passed (Python: 39+88+65+61+497+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
 

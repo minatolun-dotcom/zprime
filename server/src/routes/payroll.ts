@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import { employees, payHeads, salaryStructures, payslips, vouchers, voucherTypes, ledgers, voucherEntries } from "../db/schema.js";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { cid, bad, pgFriendly, pgCode, salaryStructureSchema } from "../lib/routes.js";
 import { r2, num, today, monthLabel } from "../lib/util.js";
 import { crud } from "./crud.js";
@@ -9,7 +9,10 @@ import { nextNumber } from "./vouchers.js";
 
 export default async function payrollRoutes(app: FastifyInstance) {
   crud(app, "employees", employees, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "") });
-  crud(app, "pay-heads", payHeads, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "") });
+  // R-08 (F-08-1): a pay-head's posting ledger must belong to the same company —
+  // a foreign-ledger pay-head silently unbalanced the TB when payroll posted.
+  crud(app, "pay-heads", payHeads, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? ""),
+    refs: { ledgerId: { table: ledgers, label: "Ledger" } } });
 
   app.get("/salary-structure/:employeeId", async (req) => {
     const c = await cid(req);
@@ -35,6 +38,11 @@ export default async function payrollRoutes(app: FastifyInstance) {
     // Employee must belong to the caller's company (isolation).
     const [emp] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.companyId, c), eq(employees.id, empId)));
     if (!emp) throw bad("Employee not found", 404);
+    // R-08 (F-08-1): every head must belong to this company too.
+    for (const id of [...new Set(parsed.data.lines.map((l) => l.headId))]) {
+      const [row] = await db.select({ id: payHeads.id }).from(payHeads).where(and(eq(payHeads.companyId, c), eq(payHeads.id, id)));
+      if (!row) throw bad(`Pay head ${id} does not exist in this company`);
+    }
     await db.delete(salaryStructures).where(and(eq(salaryStructures.companyId, c), eq(salaryStructures.employeeId, empId)));
     for (const line of parsed.data.lines) {
       await db.insert(salaryStructures).values({
@@ -67,6 +75,20 @@ export default async function payrollRoutes(app: FastifyInstance) {
         const empRows = await tx.select().from(employees).where(and(eq(employees.companyId, c), eq(employees.isActive, true)));
         const heads = await tx.select().from(payHeads).where(eq(payHeads.companyId, c));
         const headById = new Map(heads.map((h) => [h.id, h]));
+
+        // R-08 (F-08-1) belt-and-braces: heads are company-scoped, but a legacy
+        // row may carry a foreign ledgerId (accepted before R-08). Failing loudly
+        // here is strictly better than posting an entry invisible to both
+        // companies' reports and silently unbalancing the TB.
+        if (heads.length > 0) {
+          const ledgerIds = [...new Set(heads.map((h) => h.ledgerId))];
+          const ledRows = await tx.select({ id: ledgers.id }).from(ledgers).where(and(eq(ledgers.companyId, c), inArray(ledgers.id, ledgerIds)));
+          if (ledRows.length !== ledgerIds.length) {
+            const okIds = new Set(ledRows.map((l) => l.id));
+            const badHead = heads.find((h) => !okIds.has(h.ledgerId));
+            throw bad(`Pay head "${badHead?.name ?? "?"}" references a ledger outside this company. Fix the pay head before processing payroll.`);
+          }
+        }
 
     const date = `${month}-28`; // month-end-ish posting date
     const entries: { ledgerId: number; amount: number }[] = [];

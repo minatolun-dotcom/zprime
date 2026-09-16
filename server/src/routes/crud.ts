@@ -3,6 +3,7 @@ import { and, eq, ilike, or } from "drizzle-orm";
 import { cid, bad, pgFriendly, pgCode, trimStrings } from "../lib/routes.js";
 import type { z } from "zod";
 import { groupSchema, tdsSectionSchema } from "../lib/routes.js";
+import { groups, ledgers, units, stockGroups, stockCategories } from "../db/schema.js";
 
 /** Field caps for the generic CRUD path: reject oversized strings with a
  *  400 instead of truncating silently (truncation would corrupt names).
@@ -35,6 +36,29 @@ function requireName(data: any): any {
 
 type Table = any;
 
+/** R-08 (F-08-1): company-scope validation for master FK references.
+ *  The schema-level FKs (ledgers.group_id, stock_items.unit_id, ...) are global,
+ *  so without this check a POST/PUT body could silently reference another
+ *  company's master. Downstream that is accounting corruption, not just odd
+ *  input: a payroll entry posted against a foreign ledger is invisible to BOTH
+ *  companies' reports (ledgerBalances is company-join-scoped) and the trial
+ *  balance goes unbalanced, silently (live-reproduced in R-08_INVESTIGATION.md).
+ *  The voucher path has enforced the same rule since before R-03
+ *  (assertLedgersTx/assertRefsTx); this closes the master-CRUD boundary. */
+export type RefSpec = Record<string, { table: Table; label: string }>;
+
+async function assertCompanyRefs(c: number, refs: RefSpec | undefined, data: any): Promise<void> {
+  if (!refs) return;
+  for (const [field, spec] of Object.entries(refs)) {
+    const v = data[field];
+    if (v === null || v === undefined) continue; // nullable/unset refs are fine
+    const id = typeof v === "number" ? v : typeof v === "string" && /^-?\d+$/.test(v.trim()) ? parseInt(v, 10) : NaN;
+    if (!Number.isFinite(id) || id <= 0) continue; // non-numeric junk is the schema's problem
+    const [row] = await db.select({ id: spec.table.id }).from(spec.table).where(and(eq(spec.table.companyId, c), eq(spec.table.id, id)));
+    if (!row) throw bad(`${spec.label} does not exist in this company`);
+  }
+}
+
 export function crud(
   app: any,
   name: string,
@@ -47,6 +71,8 @@ export function crud(
     schema?: z.ZodTypeAny;
     /** Domain hook applied after schema validation (e.g. derive nature from parent). */
     beforeSave?: (data: any, companyId: number) => Promise<any>;
+    /** R-08: FK fields that must reference rows of the SAME company. */
+    refs?: RefSpec;
   } = {}
 ) {
   app.get(`/${name}`, async (req: any) => {
@@ -80,6 +106,7 @@ export function crud(
       Object.assign(data, parsed.data); // normalized fields (trimmed, defaults resolved)
     }
     if (opts.beforeSave) data = await opts.beforeSave(data, c);
+    await assertCompanyRefs(c, opts.refs, data);
     requireName(data);
     try {
       const [row] = await db.insert(table).values(data).returning();
@@ -104,6 +131,7 @@ export function crud(
     delete data.id;
     delete data.companyId;
     if (opts.beforeSave) data = await opts.beforeSave(data, c);
+    await assertCompanyRefs(c, opts.refs, data);
     requireName(data);
     try {
       const [row] = await db.update(table).set(data).where(and(eq(table.companyId, c), eq(table.id, id))).returning();

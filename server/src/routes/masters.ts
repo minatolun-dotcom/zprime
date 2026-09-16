@@ -41,12 +41,21 @@ export default async function masterRoutes(app: FastifyInstance) {
       return { ...data, nature, isReserved: false };
     },
   });
-  crud(app, "ledgers", ledgers, { orderBy: byName, searchFields: [ledgers.name] });
+  // R-08 (F-08-1): FK refs are validated in-company at the CRUD boundary —
+  // a ledger may only reference a group of its own company, an item only a
+  // unit/stock-group/category of its own (schema FKs are global).
+  crud(app, "ledgers", ledgers, { orderBy: byName, searchFields: [ledgers.name],
+    refs: { groupId: { table: groups, label: "Group" } } });
   crud(app, "units", units, { orderBy: byName });
   crud(app, "stock-groups", stockGroups, { orderBy: byName });
   crud(app, "stock-categories", stockCategories, { orderBy: byName });
   crud(app, "godowns", godowns, { orderBy: byName });
-  crud(app, "stock-items", stockItems, { orderBy: byName, searchFields: [stockItems.name] });
+  crud(app, "stock-items", stockItems, { orderBy: byName, searchFields: [stockItems.name],
+    refs: {
+      unitId: { table: units, label: "Unit" },
+      groupId: { table: stockGroups, label: "Stock group" },
+      categoryId: { table: stockCategories, label: "Stock category" },
+    } });
   crud(app, "voucher-types", voucherTypes, { orderBy: byName });
   // tds_sections has no `name` column — sorting by name crashed the list route (F-TDS-01)
   crud(app, "tds-sections", tdsSections, { orderBy: bySection, schema: tdsSectionSchema });

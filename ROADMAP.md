@@ -14,13 +14,14 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.4.0 | **R-04** | XML import integrity (B-03 + B-05 + B-13 + B-14: single-transaction import, API-equivalent double-entry/bill validation, per-voucher error attribution, imported-ledger taxability classification, client multipart fix) |
 | v1.6.0 | **R-06** | Negative-stock availability guard (B-01: Model 1 reject-oversell with `allowNegativeStock` opt-out; chain-comparison chronological guard across create/edit/cancel/uncancel/delete/import; honest negative-stock valuation) |
 | v1.7.0 | **R-07** | Opening balances in reports (B-02: party openings surface in AR/AP as a display-only "Opening Balance" bill; BS zeroing structural across Stock-in-Hand sub-groups; F-07-2 documented per Model A) |
+| v1.8.0 | **R-08** | Cross-company master-reference validation (B-07: central `assertCompanyRefs` at the CRUD boundary for ledgers/items/pay-heads; salary-structure headId check; payroll belt-and-braces — legacy foreign-ledger row fails loudly at posting; route-level, no migration) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
 
-**R-07 is RELEASED as v1.7.0** (investigated → reviewed → approved [F-07-1 + F-07-3; F-07-2 Model A] → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
+**R-08 is RELEASED as v1.8.0** (investigated → reviewed → approved [route-level fix, no migration] → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
-Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-07 (cross-company master-reference validation), B-08 (deployment secrets hardening), B-10 (duplicate-submission protection).
+Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-08 (deployment secrets hardening), B-10 (duplicate-submission protection), B-12 (backup/restore UX).
 
 ## Upcoming candidates (derived from ZLEDGER_PRODUCTION_ACTION_PLAN.md — NOT yet tasks)
 
@@ -29,7 +30,7 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 | Order | Candidate | Source | Class | Notes |
 |---|---|---|---|---|
 | R-07 ✅ DONE (v1.7.0) | Opening balances in reports (B-02, re-graded P1+P2) | action plan, reproduced | bug | F-07-1 AR/AP openings + F-07-3 BS sub-group scope fixed; F-07-2 documented (Model A) |
-| later | Cross-company master-reference validation (B-07 P1) | action plan | bug | master CRUD gap; voucher path already validates |
+| R-08 ✅ DONE (v1.8.0) | Cross-company master-reference validation (B-07 P1) | action plan, reproduced | bug | central CRUD ref validation + payroll belt-and-braces; composite-FK DB enforcement deferred |
 | later | Deployment secrets hardening (B-08 P1*) | action plan | bug/ops | fail-fast on default JWT_SECRET for exposed deployments |
 | later | Duplicate-submission protection (B-10 P2) | action plan | bug | idempotency |
 | later | Purchase-return/DN test coverage (B-11 P2) | action plan | tests | coverage gap, not a demonstrated defect |

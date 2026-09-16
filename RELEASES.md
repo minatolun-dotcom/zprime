@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.8.0
+
+- **Commit:** `v1.8.0^{}` — resolve with `git rev-parse v1.8.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.8.0` (annotated; `v1.8.0^{}` = the release commit, verified at release)
+- **Major purpose:** Cross-company master-reference validation (R-08, B-07 P1, route-level fix — no migration). Central `assertCompanyRefs` hook in crud.ts: a declarative `opts.refs` spec verifies every provided FK id belongs to the caller's company on POST and PUT (wired: ledgers.`groupId`, stock-items.`unitId`/`groupId`/`categoryId`, pay-heads.`ledgerId`); salary-structure PUT validates every `headId` in-company; payroll processing belt-and-braces asserts every used pay-head's `ledgerId` belongs to the company — a legacy foreign-ledger row (accepted before R-08) now fails loudly at posting with a named-head 400 instead of silently unbalancing the books.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 796/796 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 514 (+17 dedicated R-08 checks: foreign group/unit/stock-group refs → 400 on POST and PUT, in-company refs still 200, pay-head foreign ledger → 400, salary-structure semantics, psql-inserted legacy foreign-ledger row → payroll 400 "references a ledger outside this company", TB asserted balanced after the rejection), attack-the-fixes 29)
+  - 198/198 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12) on the rebuilt bundle and a fresh volume; zero client changes (no new UI suite needed)
+  - typecheck (server + client) clean
+  - fresh Docker verified (fresh volume, healthchecks)
+  - independent accounting reconciliation green — no accounting-mathematics change: validation decides *whether a reference may be written*, never *how anything calculates*; voucher-path validation trio untouched; R-03/R-06/R-07 behavior unchanged
+  - no migration, no schema change; read paths unchanged so existing books keep working; DB-level composite-FK enforcement explicitly deferred (route-level validation closes every reachable path)
+- **Important fixes:** P1 closed — the last known path to silently unbalanced books (pay-head → foreign ledger → payroll → entry invisible to both companies' reports, TB Dr=0/Cr=10,000, live-reproduced on v1.7.0) is impossible: the reference is rejected at creation, and any legacy row fails loudly at posting.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.8.0` is the current production baseline.
+
 ## v1.7.0
 
 - **Commit:** `v1.7.0^{}` — resolve with `git rev-parse v1.7.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

@@ -1678,5 +1678,89 @@ check("F-07-3: sub-group ledger closing zeroed (no double-count)", fg_in_assets 
 # inventory engine, which has no items here) -> difference must be exactly 0.
 check("F-07-3: books balance with sub-group ledger present (difference 0)", abs(bs7["difference"]) < 0.005, bs7["difference"])
 
+# ================= R-08: cross-company master refs (F-08-1) =================
+print("-- R-08: cross-company master reference validation --")
+import subprocess as _sp
+
+def _sql(q):
+    out = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-tAc", q],
+                  capture_output=True, text=True)
+    return out.stdout.strip()
+
+# owner + two companies (R-03 pattern)
+s, oA = r03(sA, "POST", "/api/companies", {"name": "R08-A-Reg", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R08REG00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R08: company A created", s == 200 and oA.get("id"), (s, str(oA)[:80]))
+R8A = oA["id"]
+s, oB = r03(sA, "POST", "/api/companies", {"name": "R08-B-Reg", "state": "Karnataka", "stateCode": "29",
+    "gstin": "29R08REG00C3D4", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R08: company B created", s == 200 and oB.get("id"), (s, str(oB)[:80]))
+R8B = oB["id"]
+RA, RB = f"/api/c/{R8A}", f"/api/c/{R8B}"
+
+s, gA8 = r03(sA, "GET", f"{RA}/groups"); ga8 = {x["name"]: x["id"] for x in gA8}
+s, gB8 = r03(sA, "GET", f"{RB}/groups"); gb8 = {x["name"]: x["id"] for x in gB8}
+
+# B's masters that A must not be able to reference
+s, uB8 = r03(sA, "POST", f"{RB}/units", {"name": "B Unit", "symbol": "BU", "decimalPlaces": 0})
+s, lB8 = r03(sA, "POST", f"{RB}/ledgers", {"name": "B Ledger", "groupId": gb8["Cash-in-Hand"]})
+check("R08: B masters created", s == 200 and lB8.get("id"), (s, str(lB8)[:80]))
+
+# P1: ledger in A referencing B's group -> 400 (was 200 pre-R-08)
+s, bad8 = r03(sA, "POST", f"{RA}/ledgers", {"name": "A Bad Ledger", "groupId": gb8["Cash-in-Hand"]})
+check("R08/ledger: foreign groupId -> 400", s == 400 and "Group" in str(bad8.get("error", "")), (s, str(bad8)[:120]))
+s, ok8 = r03(sA, "POST", f"{RA}/ledgers", {"name": "A Good Ledger", "groupId": ga8["Cash-in-Hand"]})
+check("R08/ledger: in-company groupId still 200", s == 200 and ok8.get("id"), (s, str(ok8)[:80]))
+# PUT path validated too
+s, bad8b = r03(sA, "PUT", f"{RA}/ledgers/{ok8['id']}", {"groupId": gb8["Cash-in-Hand"]})
+check("R08/ledger: PUT foreign groupId -> 400", s == 400, (s, str(bad8b)[:120]))
+
+# P2: stock item in A referencing B's unit -> 400
+s, bad8c = r03(sA, "POST", f"{RA}/stock-items", {"name": "A Bad Item", "unitId": uB8["id"], "gstRate": "18", "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R08/item: foreign unitId -> 400", s == 400 and "Unit" in str(bad8c.get("error", "")), (s, str(bad8c)[:120]))
+s, uA8 = r03(sA, "POST", f"{RA}/units", {"name": "A Unit", "symbol": "AU", "decimalPlaces": 0})
+s, ok8b = r03(sA, "POST", f"{RA}/stock-items", {"name": "A Good Item", "unitId": uA8["id"], "gstRate": "18", "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R08/item: in-company unitId still 200", s == 200, (s, str(ok8b)[:80]))
+# stock group/category refs validated too
+s, sgB8 = r03(sA, "POST", f"{RB}/stock-groups", {"name": "B Stock Group"})
+s, bad8d = r03(sA, "POST", f"{RA}/stock-items", {"name": "A Bad Item 2", "unitId": uA8["id"], "groupId": sgB8["id"], "gstRate": "18", "openingQty": "0", "openingRate": "0", "openingValue": "0"})
+check("R08/item: foreign stock-groupId -> 400", s == 400 and "Stock group" in str(bad8d.get("error", "")), (s, str(bad8d)[:120]))
+
+# P3: pay-head with B's ledger -> 400 (both companies, same owner)
+s, bad8e = r03(sA, "POST", f"{RA}/pay-heads", {"name": "A Bad Head", "type": "earning", "ledgerId": lB8["id"]})
+check("R08/pay-head: foreign ledgerId -> 400", s == 400 and "Ledger" in str(bad8e.get("error", "")), (s, str(bad8e)[:120]))
+s, lA8 = r03(sA, "POST", f"{RA}/ledgers", {"name": "A Salary Led", "groupId": ga8["Indirect Expenses"]})
+s, ph8 = r03(sA, "POST", f"{RA}/pay-heads", {"name": "A Good Head", "type": "earning", "ledgerId": lA8["id"]})
+check("R08/pay-head: in-company ledgerId still 200", s == 200 and ph8.get("id"), (s, str(ph8)[:80]))
+
+# salary-structure head validation
+s, emp8 = r03(sA, "POST", f"{RA}/employees", {"name": "R08 Employee"})
+s, bad8f = r03(sA, "PUT", f"{RA}/salary-structure/{emp8['id']}", {"lines": [{"headId": 999999, "monthlyAmount": 1000}]})
+check("R08/salary-structure: unknown headId -> 400", s == 400 and "Pay head" in str(bad8f.get("error", "")), (s, str(bad8f)[:120]))
+s, ok8c = r03(sA, "PUT", f"{RA}/salary-structure/{emp8['id']}", {"lines": [{"headId": ph8["id"], "monthlyAmount": 10000}]})
+check("R08/salary-structure: in-company head accepted", s == 200, (s, str(ok8c)[:80]))
+
+# belt-and-braces: psql-insert a legacy foreign-ledger pay-head row, then
+# payroll must fail loudly instead of silently unbalancing the TB
+_lid = _sql(f"SELECT id FROM ledgers WHERE company_id={R8B} LIMIT 1")
+_bad = _sql(f"INSERT INTO pay_heads (company_id, name, type, ledger_id, affects_gross) VALUES ({R8A}, 'R08 Legacy Head', 'earning', {_lid}, true) RETURNING id").splitlines()[0]
+check("R08: legacy foreign pay-head row inserted via psql", bool(_bad), _bad)
+s, bad8g = r03(sA, "PUT", f"{RA}/salary-structure/{emp8['id']}", {"lines": [{"headId": int(_bad), "monthlyAmount": 10000}]})
+# the legacy HEAD exists in company A (its ledger is foreign) -> headId check passes;
+# the foreign LEDGER is caught at posting time by the belt-and-braces assert below.
+check("R08/salary-structure: legacy head accepted (head is in-company; ledger checked at posting)", s == 200, (s, str(bad8g)[:120]))
+# grant B membership to the operator session? No — posting happens in A; use the owner (member of A)
+# process payroll: the bad head exists on another employee-free structure — attach it first via psql
+_sql(f"INSERT INTO salary_structures (company_id, employee_id, head_id, monthly_amount) VALUES ({R8A}, {emp8['id']}, {int(_bad)}, 10000)")
+_sql(f"DELETE FROM salary_structures WHERE company_id={R8A} AND employee_id={emp8['id']} AND head_id={ph8['id']}")
+s, pay8 = r03(sA, "POST", f"{RA}/payroll/process", {"month": "2026-09"})
+check("R08/payroll: legacy foreign-ledger head fails loudly (400)", s == 400 and "outside this company" in str(pay8.get("error", "")), (s, str(pay8)[:160]))
+# books stay balanced — no voucher posted
+s, tb8 = r03(sA, "GET", f"{RA}/reports/trial-balance?from=2026-01-01&to=2026-12-31")
+check("R08/payroll: TB stays balanced (no posting)", tb8["totalDebit"] == tb8["totalCredit"], (tb8["totalDebit"], tb8["totalCredit"]))
+# cleanup legacy row so later suites/re-runs on same DB are unaffected
+_sql(f"DELETE FROM salary_structures WHERE head_id={int(_bad)}")
+_sql(f"DELETE FROM pay_heads WHERE id={int(_bad)}")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)
