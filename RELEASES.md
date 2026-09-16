@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.9.0 ⚠ BREAKING
+
+- **Commit:** `v1.9.0^{}` — resolve with `git rev-parse v1.9.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.9.0` (annotated; `v1.9.0^{}` = the release commit, verified at release)
+- **Major purpose:** Fail-fast deployment secrets (R-09, B-08 P1 deploy-dependent) — **⚠ BREAKING: deployments relying on default secrets refuse to boot until env is set.** Three independent fallback layers eliminated: compose required interpolation (`JWT_SECRET`/`ADMIN_PASSWORD` `:?`), the auth plugin's in-process `?? "dev-secret"` (the server never refused to boot), and the first-boot seeding fallback `admin123`. The stateless `{uid,username}` JWT plus a public default meant token forgery = full authentication bypass; the app can no longer boot with a missing/empty/known-insecure `JWT_SECRET`, and first-boot admin seeding requires `ADMIN_PASSWORD` (existing-user deployments unaffected). `POSTGRES_PASSWORD` keeps its default (db publishes no ports — documented residual risk).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 801/801 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 519 (+5 dedicated R-09 checks: missing secret refuses with guidance, `dev-secret` refuses, compose default refuses, strong secret boots, seeding precondition), attack-the-fixes 29)
+  - 198/198 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12) on the rebuilt fail-fast stack (fresh volume, `.env` present)
+  - compose negative test verified: without `.env`, compose refuses with the actionable guidance message
+  - typecheck (server + client) clean; fresh Docker verified
+  - no accounting surface touched, no client change, no migration; all seven suite spawn sites migrated to explicit secret fixtures
+- **Important fixes:** P1 closed — the last known configuration path to full authentication bypass (public JWT default + stateless identity) is impossible: the server refuses to boot insecurely.
+- **Upgrade instruction (≤ v1.8.0 → v1.9.0):** `cp .env.example .env`, set a strong `JWT_SECRET` and `ADMIN_PASSWORD`, then `docker compose up`.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.9.0` is the current production baseline.
+
 ## v1.8.0
 
 - **Commit:** `v1.8.0^{}` — resolve with `git rev-parse v1.8.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

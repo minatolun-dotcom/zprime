@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-16 (R-08 cross-company master-reference validation RELEASED as v1.8.0. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
+**Last updated:** 2026-09-16 (R-09 fail-fast deployment secrets RELEASED as v1.9.0 — BREAKING. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
 
 ## What zprime is
 
@@ -9,6 +9,12 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 ## Release status
 
 **All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
+
+### R-09 (P1 deploy-dependent confirmed → released as v1.9.0, 2026-09-16): fail-fast deployment secrets ⚠ BREAKING
+
+Investigation (`R-09_INVESTIGATION.md`) source-traced B-08 on v1.8.0: three fallback layers booted the app with public secrets (compose `change-me-in-production`/`admin123`; auth.ts in-process `?? "dev-secret"` — the server never refused to boot; seeding `?? "admin123"`). Stateless `{uid,username}` JWT + a public default = **full authentication bypass by token forgery** on exposed deployments. scrypt verify verified correct (NOT A BUG).
+
+Implemented per approved **full fail-fast (always enforced, no dev escape hatch)**: `auth.ts` refuses to boot on missing/empty/known-insecure `JWT_SECRET` with guidance; `index.ts` requires `ADMIN_PASSWORD` for first-boot seeding only; compose `:?` required interpolation (verified: without `.env`, compose fails with the actionable message); all seven suite spawn sites migrated to explicit fixtures; README rewritten (`.env` required + breaking-change callout). Regression: final_regression 514 → **519** (+5: missing/insecure secrets refuse with guidance, strong secret boots, seeding precondition); Python **801/801**; browser **198/198**; typecheck clean; fresh Docker with `.env` healthy; compose-without-`.env` correctly refused. No accounting surface, no client change, no migration.
 
 ### R-08 (P1 confirmed → released as v1.8.0, 2026-09-16): cross-company master-reference validation
 

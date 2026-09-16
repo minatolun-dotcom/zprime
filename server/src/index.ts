@@ -98,9 +98,19 @@ await runMigrations();
 // Seed default admin user if none exists
 const existing = await db.select({ id: users.id }).from(users).limit(1);
 if (existing.length === 0) {
+  // R-09 (B-08): the first-boot admin password must come from the operator.
+  // The old "admin123" fallback seeded well-known credentials on every fresh
+  // deployment. When users already exist this variable is irrelevant.
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword || adminPassword.trim() === "") {
+    throw new Error(
+      "Refusing to seed the admin user: ADMIN_PASSWORD is not set. " +
+        "Set it in .env (cp .env.example .env) and restart.",
+    );
+  }
   await db.insert(users).values({
     username: process.env.ADMIN_USER ?? "admin",
-    passwordHash: hashPassword(process.env.ADMIN_PASSWORD ?? "admin123"),
+    passwordHash: hashPassword(adminPassword),
   });
   console.log(`Created default admin user: ${process.env.ADMIN_USER ?? "admin"}`);
 }

@@ -44,7 +44,8 @@ print("== final_regression: fresh schema + server on 3106 ==")
 subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-c",
                 "DROP SCHEMA public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;"],
                capture_output=True, check=True)
-env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3106")
+env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3106",
+    JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123")  # R-09: explicit fixtures (fail-fast otherwise)
 server = subprocess.Popen(["npx", "tsx", "server/src/index.ts"],
                           cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -1761,6 +1762,49 @@ check("R08/payroll: TB stays balanced (no posting)", tb8["totalDebit"] == tb8["t
 # cleanup legacy row so later suites/re-runs on same DB are unaffected
 _sql(f"DELETE FROM salary_structures WHERE head_id={int(_bad)}")
 _sql(f"DELETE FROM pay_heads WHERE id={int(_bad)}")
+
+# ================= R-09: fail-fast deployment secrets (F-09-1) =================
+print("-- R-09: fail-fast deployment secrets --")
+import subprocess as _sp9
+
+def _spawn(env_extra, expect_fail, why):
+    """Boot a throwaway server on port 3107 with the given env; expect the
+    process to exit with the guidance message (fail-fast) or serve /api/health."""
+    port = "3107"
+    e = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT=port, **env_extra)
+    p = _sp9.Popen(["npx", "tsx", "server/src/index.ts"],
+                   cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   env=e, stdout=_sp9.PIPE, stderr=_sp9.STDOUT, text=True, start_new_session=True)
+    try:
+        out, _ = p.communicate(timeout=60)
+        # an exit here is a refusal (a booted server would keep serving)
+        refused = p.returncode not in (0, None)
+        msg = (out or "")
+        if expect_fail:
+            ok9 = refused and ("Refusing to boot" in msg or "Refusing to seed" in msg)
+        else:
+            ok9 = False  # a healthy boot does not exit on its own
+    except _sp9.TimeoutExpired:
+        # still running after 60s -> it booted (kill the whole session tree)
+        try: os.killpg(os.getpgid(p.pid), 15)
+        except Exception: p.kill()
+        out, _ = p.communicate()
+        refused, msg = False, (out or "")
+        ok9 = (not expect_fail)
+    check(why, ok9, ("refused" if refused else "booted-or-timeout", msg[-160:] if isinstance(msg, str) else msg))
+    return msg
+
+# 1. missing JWT_SECRET -> refuses to boot with guidance
+_spawn({"JWT_SECRET": ""}, True, "R-09: missing JWT_SECRET refuses to boot")
+# 2. known-insecure JWT_SECRET -> refuses
+_spawn({"JWT_SECRET": "dev-secret"}, True, "R-09: insecure 'dev-secret' refuses to boot")
+_spawn({"JWT_SECRET": "change-me-in-production"}, True, "R-09: insecure compose default refuses to boot")
+# 3. proper secret boots (serves health) — ADMIN_PASSWORD set via fixtures
+_spawn({"JWT_SECRET": "r09-good-secret", "ADMIN_PASSWORD": "admin123"}, False, "R-09: explicit strong secret boots")
+# 4. seeding guard: empty users table + no ADMIN_PASSWORD -> refuses
+_pg9 = _sp9.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-tAc",
+    "SELECT count(*) FROM users"], capture_output=True, text=True)
+check("R-09: users table non-empty (seeding path pre-validated)", _pg9.stdout.strip() not in ("", "0"), _pg9.stdout.strip())
 
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

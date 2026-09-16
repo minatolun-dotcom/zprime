@@ -28,7 +28,8 @@ print("== repro_findings: fresh schema + server on 3105 ==")
 subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-c",
                 "DROP SCHEMA public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;"],
                capture_output=True, check=True)
-env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3105")
+env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3105",
+    JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123")  # R-09: explicit fixtures (fail-fast otherwise)
 server = subprocess.Popen(["npx", "tsx", "server/src/index.ts"],
                           cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)

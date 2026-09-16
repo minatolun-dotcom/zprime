@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased — R-08 cross-company master-reference validation (B-07)
+## Unreleased — R-09 fail-fast deployment secrets (B-08) — BREAKING
+
+**801/801 automated checks passed (Python: 39+88+65+61+519+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
+
+### R-09 — Fail-fast deployment secrets: B-08 (CONFIRMED P1 deploy-dependent → IMPLEMENTED, full fail-fast approved) — ⚠ BREAKING
+
+**Root cause (investigation, source-traced on v1.8.0):** three independent fallback layers booted the app with public secrets — compose `${JWT_SECRET:-change-me-in-production}` / `${ADMIN_PASSWORD:-admin123}`, the auth plugin's in-process `JWT_SECRET ?? "dev-secret"` (the server never refused to boot), and the first-boot seeding fallback `ADMIN_PASSWORD ?? "admin123"`. The JWT payload is stateless `{uid, username}`, so anyone who knows the public default could forge a token for any user id: a **full authentication bypass** on any deployment exposed beyond localhost.
+
+**Fix (approved: full fail-fast, always enforced — no dev escape hatch):**
+- **`auth.ts`:** boot is refused when `JWT_SECRET` is missing, empty, or one of the known-insecure values (`dev-secret`, `change-me-in-production`) — with guidance pointing at `.env.example`.
+- **`index.ts`:** first-boot admin seeding requires `ADMIN_PASSWORD` (when users already exist the variable is irrelevant — no rotation machinery in scope).
+- **`docker-compose.yml`:** `:?` required interpolation for `JWT_SECRET`/`ADMIN_PASSWORD` with actionable error text (compose fails before the app starts); `POSTGRES_PASSWORD` keeps its default (db publishes no ports — documented residual risk).
+- **Test rig:** all seven suite spawn sites now set explicit `JWT_SECRET`/`ADMIN_PASSWORD` fixtures; the verification stack runs with a committed-pattern `.env` (never committed).
+- **README:** `.env` is no longer optional; breaking-change callout with upgrade instructions.
+
+**⚠ Upgrade instruction (≤ v1.8.0 → v1.9.0):** create `.env` (`cp .env.example .env`) and set a strong `JWT_SECRET` + `ADMIN_PASSWORD` before `docker compose up`. Deployments relying on the old defaults will refuse to boot — by design.
+
+| Suite | Checks | Result |
+|---|---|---|
+| Smoke | 39 | PASS |
+| Adversarial attack | 88 | PASS |
+| Bug-fix regression | 65 | PASS |
+| Independent reconciliation | 61 | PASS |
+| Final regression (incl. 5 R-09 checks) | 519 (+5) | PASS |
+| Attack-the-fixes | 29 | PASS |
+| Real-browser UI acceptance | 153 + 12 + 9 + 12 + 12 | PASS |
+| Typecheck (server + client) | — | PASS |
+| Docker fresh volume (with .env) | — | PASS |
+| Compose without .env | refused with guidance | PASS |
+
+## v1.8.0 — R-08 cross-company master-reference validation (B-07)
 
 **796/796 automated checks passed (Python: 39+88+65+61+514+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
 

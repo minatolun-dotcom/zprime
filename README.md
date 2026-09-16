@@ -7,10 +7,17 @@ A self-hostable, keyboard-first accounting app for local usage — modern web UI
 ## Quick start
 
 ```bash
-cp .env.example .env      # optional: adjust passwords/secret
+cp .env.example .env      # REQUIRED since v1.9.0 — set JWT_SECRET and ADMIN_PASSWORD
 docker compose up -d
-# open http://localhost:3000 — login: admin / admin123
+# open http://localhost:3000 — login with the ADMIN_USER/ADMIN_PASSWORD you set
 ```
+
+> **Breaking change (v1.9.0):** the server refuses to boot with a missing or
+> known-insecure `JWT_SECRET` (the old defaults allowed token forgery = full
+> authentication bypass), and first-boot admin seeding requires `ADMIN_PASSWORD`.
+> Compose also fails fast via required interpolation. Existing deployments
+> upgrading from ≤ v1.8.0: create `.env` before `docker compose up`.
+> If the admin user already exists, `ADMIN_PASSWORD` only matters for fresh volumes.
 
 ## Features
 
@@ -74,4 +81,4 @@ All data lives in the `pgdata` Docker volume. Backup: `docker compose exec db pg
 ## Notes & limits
 
 - GST reports are management summaries (not e-filing JSON); TDS is deduction/payable tracking without challan e-file formats.
-- Serving the UI + API is single-container (`app`) + `db`. Change `JWT_SECRET` and `ADMIN_PASSWORD` before exposing beyond localhost.
+- Serving the UI + API is single-container (`app`) + `db`. `JWT_SECRET` and `ADMIN_PASSWORD` are **required** (fail-fast at boot since v1.9.0); `POSTGRES_PASSWORD` still defaults to `zprime` — acceptable because the `db` service publishes no ports, but change it if you expose Postgres.

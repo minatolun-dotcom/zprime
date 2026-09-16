@@ -23,8 +23,22 @@ export function verifyPassword(password: string, stored: string): boolean {
 }
 
 export default fastifyPlugin(async (app) => {
+  // R-09 (B-08): fail-fast on missing or known-insecure JWT secrets.
+  // The JWT payload is stateless {uid, username} — anyone who knows the secret
+  // can forge a token for any user id, so a public default ("dev-secret",
+  // "change-me-in-production" from the old compose fallbacks) is a full
+  // authentication bypass, not a configuration nit. Always enforced: an
+  // explicit secret is one line in any test rig or dev shell.
+  const secret = process.env.JWT_SECRET;
+  const INSECURE = new Set(["dev-secret", "change-me-in-production"]);
+  if (!secret || secret.trim() === "" || INSECURE.has(secret)) {
+    throw new Error(
+      "Refusing to boot: JWT_SECRET is missing or insecure. " +
+        "Set a strong secret in .env (cp .env.example .env) and restart.",
+    );
+  }
   await app.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET ?? "dev-secret",
+    secret,
     cookie: { cookieName: "token", signed: false },
   });
 

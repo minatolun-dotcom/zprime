@@ -37,7 +37,8 @@ def check(name, cond, detail=""):
 
 SERVER_PROC = [None]
 def start_server():
-    env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3103")
+    env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3103",
+    JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123")  # R-09: explicit fixtures (fail-fast otherwise)
     SERVER_PROC[0] = subprocess.Popen(["npx", "tsx", "server/src/index.ts"],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)

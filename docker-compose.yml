@@ -17,9 +17,11 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://zprime:${POSTGRES_PASSWORD:-zprime}@db:5432/zprime
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      # R-09 (B-08): required — the app also fails fast in-process if these are
+      # missing/insecure. Create .env first (cp .env.example .env).
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (cp .env.example .env)}
       ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env (cp .env.example .env)}
       PORT: "3000"
     ports:
       - "3000:3000"

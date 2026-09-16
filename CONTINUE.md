@@ -1,6 +1,6 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-16 — R-08 released as v1.8.0 (cross-company master-reference validation: central `assertCompanyRefs` CRUD boundary, salary-structure headId check, payroll belt-and-braces; route-level, no migration). Process state: IDLE.
+**Last updated:** 2026-09-16 — R-09 released as v1.9.0 (fail-fast deployment secrets, BREAKING: default-secret deployments refuse to boot). Process state: IDLE.
 
 ---
 
@@ -9,8 +9,9 @@
 - **Current release:** v1.6.0
 - **Current HEAD:** `caadf983aba600ffc5abd976f2e5281df890cf97` (= tag `v1.6.0`; see RELEASES.md)
 - **Current phase:** `IDLE` — no active R-item — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. R-08 (B-07, route-level fix) is complete and released as v1.8.0.
-- **Next permitted action:** next investigation only (B-08 deployment secrets hardening / B-10 duplicate-submission protection are the leading remaining candidates) — never implementation without its own investigation → review → approval cycle.
+- **Current task:** none. R-09 (B-08, full fail-fast) is complete and released as v1.9.0.
+- **Next permitted action:** next investigation only (B-10 duplicate-submission protection / B-12 backup-restore UX are the leading remaining candidates) — never implementation without its own investigation → review → approval cycle.
+- **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
 - **Blocked decisions (waiting on human):** none.
 
 ## Baseline verification (must re-confirm every session)
@@ -46,6 +47,31 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-16 — R-09 RELEASED as v1.9.0 (BREAKING)
+
+- **Release review:** passed (diff audited hunk-by-hunk; scope contains exactly the approved fail-fast scope; no accounting surface, no client change, no migration; no tests weakened — suites migrated to explicit fixtures, assertions unchanged).
+- **Release commit:** "Release v1.9.0: fail-fast deployment secrets". **Tag:** annotated `v1.9.0` — "zprime v1.9.0 — deployment secrets enforced". `v1.9.0^{}` == HEAD verified; tree clean; all prior tags immutable.
+- **Release-gate results (final build):** Python 801/801 · browser 198/198 · typecheck clean · fresh Docker with `.env` healthy · compose-without-`.env` refused · `git diff --check` clean.
+- **Current state:** RELEASED → IDLE. No active R-item.
+- **Next permitted action:** next investigation only (B-10/B-12 candidates) — never implementation without its own approval cycle.
+
+### 2026-09-16 — R-09 implemented and verified (RELEASE_REVIEW pending)
+
+- **Approved scope:** full fail-fast, always enforced (human approved via structured question).
+- **Implementation:** `auth.ts` — boot refused on missing/empty/known-insecure `JWT_SECRET` (`dev-secret`, `change-me-in-production`) with `.env.example` guidance; `index.ts` — first-boot seeding requires `ADMIN_PASSWORD` (existing users unaffected); `docker-compose.yml` — `:?` required interpolation for JWT_SECRET/ADMIN_PASSWORD; README — `.env` required + breaking-change callout + POSTGRES_PASSWORD residual-risk note; all seven suite spawn sites (smoke/attack_test/fix_regression/attack2/reconcile/repro_findings/final_regression) now set explicit `JWT_SECRET`/`ADMIN_PASSWORD` fixtures.
+- **Test-harness lesson:** the R-09 spawn probes initially hung the suite — `npx tsx` cold compile can exceed a 25s window and `p.kill()` leaves the node child alive. Fixed: 60s window + `start_new_session=True` + `os.killpg` cleanup; probes run last (final_regression 514 → **519**).
+- **Tests:** Python **801/801** (39+88+65+61+519+29); browser **198/198** (153+12+9+12+12) on the rebuilt fail-fast stack (fresh volume, `.env` present); compose-without-`.env` verified refused (exit 1 with guidance); typecheck server+client clean.
+- **Guardrails honored:** no accounting surface, no client change, no migration; verification stack `.env` created locally (never committed; `.gitignore` covers it).
+- **Files changed:** `server/src/plugins/auth.ts`, `server/src/index.ts`, `docker-compose.yml`, `README.md`, `scripts/{smoke_test,attack_test,fix_regression,attack2,reconcile,repro_findings,final_regression}.py`, `CHANGELOG.md`, `STATE.md`, `CONTINUE.md` (this entry). `R-09_INVESTIGATION.md` untracked → stage at release.
+- **Next permitted action:** release review of the full diff → on pass + explicit instruction, commit + tag v1.9.0.
+
+### 2026-09-16 — R-09 investigated (B-08 deployment secrets) — HUMAN_REVIEW pending
+
+- **Investigation:** `R-09_INVESTIGATION.md` — source-traced (no exploit needed): three fallback layers (docker-compose.yml:20-22 `change-me-in-production`/`admin123`; auth.ts:27 `?? "dev-secret"` — server never refuses boot; index.ts:103 seeding fallback). JWT forge = full auth bypass on exposed deployments (payload {uid,username}, stateless). Blast radius mapped: all six Python suites + browser stack depend on fallbacks (suites set only DATABASE_URL/PORT); README marks .env optional. scrypt verify correct (NOT A BUG — VERIFIED). POSTGRES_PASSWORD default documented as P4 residual (db not network-exposed).
+- **Files changed:** only `R-09_INVESTIGATION.md` created; `CONTINUE.md` (this entry). No source/test/migration/doc changes.
+- **Current state:** INVESTIGATION complete → HUMAN_REVIEW pending.
+- **Next permitted action:** human approval of R-09 scope (report §5).
 
 ### 2026-09-16 — R-08 RELEASED as v1.8.0
 
