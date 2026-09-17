@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — R-10 duplicate-submission idempotency (B-10)
+## Unreleased — R-11 purchase-side settlement coverage (B-11)
+
+**Test-only change — no source, migration, or client modifications.**
+
+B-11 (P3, reclassified from P2 by R-11 investigation): purchase-return / Debit-Note flows were implemented and correct but had **zero purchase-side regression coverage** — the creditor-side mirror of the bill-wise machinery (BUG-002 covers debtors only) and the hand-computed BP assertion were the only supplier-side proofs.
+
+- `final_regression.py` **+21 R-11 checks** (`final_regression: 552`): creditor-side adversarial mirror (wrong-party, nonexistent bill, over-open, direction-mismatch rejections), **Debit Note settling a purchase bill via mixed-sign `against_ref`**, DN over-settlement rejection, payment settling the DN-reduced remainder, **advance-to-creditor consumed by a later purchase's credit entry** (direction-strict pattern), one voucher settling two open bills via opposing entries, AP-report assertions at every stage, GSTR-3B ITC reversal from the DN, TB identity throughout.
+- `reconcile.py` (+3 → 61 checks): bill-wise Debit Note (DN-2: goods return 8,000 + duty 1,440 settling bill PUR-1) woven into the hand-computed scenario; all downstream independent expectations recomputed (TB 7,64,400, purchases 42,000, profit 1,26,000, Sigma 19,560, ITC 3,780, net GST 24,840) — the full-period identity `netCgst − ITC == CGST ledger net credit` now also holds across a **bill-wise** DN.
+
+## v1.10.0 — R-10 duplicate-submission idempotency (B-10)
 
 **813/813 automated checks passed (Python: 39+88+65+61+531+29), 208/208 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07 + 10 R-10), zero failures.**
 

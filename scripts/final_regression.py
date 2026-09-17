@@ -1916,5 +1916,134 @@ _sql(f"DELETE FROM ledgers WHERE company_id={c10['id']} OR company_id={c10b['id'
 _sql(f"DELETE FROM user_companies WHERE company_id={c10['id']} OR company_id={c10b['id']}")
 _sql(f"DELETE FROM companies WHERE id={c10['id']} OR id={c10b['id']}")
 
+# ================= R-11: purchase-side (creditor) settlement coverage (B-11) =================
+# B-11: the supplier-side mirror of the bill-wise machinery had zero regression
+# coverage. Test-only addition (no source changes): purchase bill -> Debit Note
+# settling it (mixed-sign against_ref) -> payment -> advance-to-creditor ->
+# netting -> split-allocation multi-bill settlement -> adversarial rejections ->
+# GSTR-3B ITC reversal -> TB identity.
+print("-- R-11: purchase-side (creditor) bill-wise settlement --")
+
+s, c11 = req("POST", "/api/companies", {"name": "R11 Suite Co", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R11: company created", s == 200 and c11.get("id"), (s, str(c11)[:120]))
+C11 = f"/api/c/{c11['id']}"
+s, g11 = req("GET", f"{C11}/groups")
+G11 = {g["name"]: g["id"] for g in g11}
+s, t11 = req("GET", f"{C11}/voucher-types")
+T11 = {t["name"]: t["id"] for t in t11}
+s, led11 = req("GET", f"{C11}/ledgers")
+CASH11 = next(l for l in led11 if l["name"] == "Cash")["id"]
+CGST11 = next(l for l in led11 if l["name"] == "CGST")["id"]
+SGST11 = next(l for l in led11 if l["name"] == "SGST/UTGST")["id"]
+s, vend11 = req("POST", f"{C11}/ledgers", {"name": "R11 Vendor", "groupId": G11["Sundry Creditors"], "billWise": True})
+V11 = vend11["id"]
+s, vend2_11 = req("POST", f"{C11}/ledgers", {"name": "R11 Vendor Two", "groupId": G11["Sundry Creditors"], "billWise": True})
+V2_11 = vend2_11["id"]
+s, puracc11 = req("POST", f"{C11}/ledgers", {"name": "R11 Purchases", "groupId": G11["Purchase Accounts"], "taxability": "taxable", "gstRate": "18"})
+PACC11 = puracc11["id"]
+
+def _ap11():
+    s, ap = req("GET", f"{C11}/reports/payables?to=2027-12-31")
+    part = next((p for p in ap["parties"] if p["ledgerId"] == V11), None)
+    return part, {b["billName"]: b["amount"] for b in (part or {}).get("bills", [])}
+
+# 1. purchase bill PUR-1: 5,000 + CGST 450 + SGST 450 = 5,900
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Purchase"], "date": "2026-10-01", "partyLedgerId": V11, "reference": "PUR-1",
+    "entries": [
+        {"ledgerId": PACC11, "amount": 5000},
+        {"ledgerId": CGST11, "amount": 450},
+        {"ledgerId": SGST11, "amount": 450},
+        {"ledgerId": V11, "amount": -5900, "bills": [{"billType": "new_ref", "billName": "PUR-1", "amount": -5900}]}]})
+check("R11: purchase bill posted", s == 200, s)
+_, bills = _ap11()
+check("R11: AP PUR-1 open at -5900", abs(bills.get("PUR-1", 0) + 5900) < 0.01, bills)
+
+# 2. adversarial mirror of BUG-002 on the creditor side
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-02", "entries": [
+    {"ledgerId": CASH11, "amount": 100},
+    {"ledgerId": V2_11, "amount": -100, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": -100}]}]})
+check("R11: wrong-party creditor settlement rejected", s == 400, s)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-02", "entries": [
+    {"ledgerId": CASH11, "amount": 100},
+    {"ledgerId": V11, "amount": 100, "bills": [{"billType": "against_ref", "billName": "NOPE-1", "amount": 100}]}]})
+check("R11: nonexistent bill ref rejected (creditor)", s == 400, s)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-02", "entries": [
+    {"ledgerId": CASH11, "amount": 6000},
+    {"ledgerId": V11, "amount": 6000, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": 6000}]}]})
+check("R11: settlement beyond open bill rejected", s == 400, s)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Journal"], "date": "2026-10-02", "entries": [
+    {"ledgerId": V11, "amount": -100, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": -100}]},
+    {"ledgerId": PACC11, "amount": 100}]})
+check("R11: direction-mismatched creditor allocation rejected", s == 400, s)
+
+# 3. Debit Note settling PUR-1 (mixed-sign: +2180 against a -5900 open bill)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Debit Note"], "date": "2026-10-05", "partyLedgerId": V11, "reference": "DN-R11",
+    "entries": [
+        {"ledgerId": V11, "amount": 2180, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": 2180}]},
+        {"ledgerId": PACC11, "amount": -2000},
+        {"ledgerId": CGST11, "amount": -90},
+        {"ledgerId": SGST11, "amount": -90}]})
+check("R11: Debit Note settles purchase bill (mixed-sign)", s == 200, s)
+_, bills = _ap11()
+check("R11: AP PUR-1 nets to -3720 after DN", abs(bills.get("PUR-1", 0) + 3720) < 0.01, bills)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Debit Note"], "date": "2026-10-06", "entries": [
+    {"ledgerId": V11, "amount": 4000, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": 4000}]},
+    {"ledgerId": PACC11, "amount": -4000}]})
+check("R11: DN settlement beyond open bill rejected", s == 400, s)
+
+# 4. payment settles the DN-reduced remainder
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-10", "entries": [
+    {"ledgerId": V11, "amount": 3720, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": 3720}]},
+    {"ledgerId": CASH11, "amount": -3720}]})
+check("R11: payment settles DN-reduced remainder", s == 200, s)
+part, bills = _ap11()
+check("R11: vendor fully settled (absent/zero in AP)", (part is None or abs(part.get("total", 0)) < 0.01) and not bills, (part, bills))
+
+# 5. advance to creditor (Dr Vendor, reducible +) then consumed by a later
+#    purchase's credit entry (direction-strict against_ref mirror of the
+#    debtor advance pattern)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-12", "entries": [
+    {"ledgerId": V11, "amount": 1000, "bills": [{"billType": "advance", "billName": "ADV-11", "amount": 1000}]},
+    {"ledgerId": CASH11, "amount": -1000}]})
+check("R11: advance to creditor posted", s == 200, s)
+_, bills = _ap11()
+check("R11: AP shows advance as +1000 (reducible)", abs(bills.get("ADV-11", 0) - 1000) < 0.01, bills)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Purchase"], "date": "2026-10-15", "partyLedgerId": V11, "reference": "PUR-2",
+    "entries": [
+        {"ledgerId": PACC11, "amount": 800},
+        {"ledgerId": V11, "amount": -800, "bills": [{"billType": "against_ref", "billName": "ADV-11", "amount": -800}]}]})
+check("R11: purchase consumes the advance (against_ref on the purchase)", s == 200, s)
+_, bills = _ap11()
+check("R11: AP after consumption: ADV-11 at +200, no PUR-2 bill", abs(bills.get("ADV-11", 0) - 200) < 0.01 and "PUR-2" not in bills, bills)
+
+# 6. one voucher settles two open bills (two opposing creditor entries)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Purchase"], "date": "2026-10-20", "partyLedgerId": V11, "reference": "PUR-3",
+    "entries": [
+        {"ledgerId": PACC11, "amount": 600},
+        {"ledgerId": V11, "amount": -600, "bills": [{"billType": "new_ref", "billName": "PUR-3", "amount": -600}]}]})
+check("R11: third purchase posted", s == 200, s)
+s, _ = req("POST", f"{C11}/vouchers", {"voucherTypeId": T11["Payment"], "date": "2026-10-21", "entries": [
+    {"ledgerId": V11, "amount": 400, "bills": [{"billType": "against_ref", "billName": "PUR-3", "amount": 400}]},
+    {"ledgerId": V11, "amount": -200, "bills": [{"billType": "against_ref", "billName": "ADV-11", "amount": -200}]},
+    {"ledgerId": CASH11, "amount": -200}]})
+check("R11: one voucher settles two open bills (opposing entries)", s == 200, s)
+_, bills = _ap11()
+check("R11: AP after multi-bill voucher: PUR-3 at -200, ADV-11 closed", abs(bills.get("PUR-3", 0) + 200) < 0.01 and abs(bills.get("ADV-11", 0)) < 0.01, bills)
+
+# 7. GSTR-3B ITC reversal from the DN + TB identity
+s, g311 = req("GET", f"{C11}/reports/gstr3b?from=2026-10-01&to=2026-10-31")
+check("R11: GSTR-3B ITC cgst = 450 - 90 = 360 (DN reverses ITC)", abs(g311["itc"]["cgst"] - 360) < 0.01, g311["itc"])
+s, tb11 = req("GET", f"{C11}/reports/trial-balance")
+check("R11: TB balanced after full creditor lifecycle", tb11["totalDebit"] == tb11["totalCredit"], (tb11["totalDebit"], tb11["totalCredit"]))
+
+# cleanup
+_sql(f"DELETE FROM bill_allocations WHERE entry_id IN (SELECT id FROM voucher_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c11['id']}))")
+_sql(f"DELETE FROM voucher_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c11['id']})")
+_sql(f"DELETE FROM inventory_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c11['id']})")
+_sql(f"DELETE FROM vouchers WHERE company_id={c11['id']}")
+_sql(f"DELETE FROM ledgers WHERE company_id={c11['id']}")
+_sql(f"DELETE FROM user_companies WHERE company_id={c11['id']}")
+_sql(f"DELETE FROM companies WHERE id={c11['id']}")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

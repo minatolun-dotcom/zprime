@@ -1,15 +1,18 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-16 — **v1.10.0 RELEASED** (R-10 B-10 duplicate-submission idempotency). Process state: IDLE.
+**Last updated:** 2026-09-17 — **v1.11.0 RELEASED** (R-11 B-11 purchase-side settlement coverage, test-only). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.10.0
-- **Current HEAD:** the v1.10.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — R-10 released; next R-item requires its own investigation → review → approval cycle
-- **Last completed task:** R-10 (B-10 duplicate-submission idempotency). Investigation: `R-10_INVESTIGATION.md`; release entry: `RELEASES.md`.
+- **Current release:** v1.11.0
+- **Current HEAD:** the v1.11.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — R-11 released; next R-item requires its own investigation → review → approval cycle
+- **Last completed task:** R-11 (B-11 purchase-side settlement coverage, test-only). Investigation: `R-11_INVESTIGATION.md`; release entry: `RELEASES.md`.
+- **Next permitted action:** on instruction, begin the R-12 investigation (leading candidates: B-12 backup/restore UX, VoucherScreen negative-stock warning, import pre-validation feedback). No implementation without investigation → review → approval.
+- **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
+- **Blocked decisions (waiting on human):** none.
 - **What changed (approved full scope):** additive migration `0005_r10_idempotency_keys.sql` (`idempotency_keys`, UNIQUE(company_id, key)); `vouchers.ts` POST accepts optional `idempotencyKey` (body or `X-Idempotency-Key` header) — replay returns the ORIGINAL voucher, key+voucher recorded in one transaction, concurrent same-key race resolves to one voucher; `VoucherScreen.tsx` generates a UUID per new-voucher form and sends it, plus a `savingRef` guard making Ctrl+A single-shot; `final_regression.py` +12 R-10 checks; `r10_ui.js` new 10-check browser suite.
 - **Verification on the final tree:** Python **813/813** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **531** incl. 12 R-10, attack-the-fixes 29); browser **208/208** (153 + 12 + 9 + 12 + 12 + 10 R-10) on a rebuilt client with a fresh-volume stack; typecheck server+client clean; migration verified on both fresh install (6/6 applied) and the test rig (0005 forward-applied from 5).
 - **Next permitted action:** on instruction, begin the R-11 investigation (leading candidates: B-12 backup/restore UX, B-11 purchase-return/DN test coverage, VoucherScreen negative-stock warning). No implementation without investigation → review → approval.
@@ -19,12 +22,12 @@
 ## Baseline verification (must re-confirm every session)
 
 ```bash
-git rev-parse HEAD     # expect the v1.10.0 release commit (see RELEASES.md)
-git describe --tags    # expect v1.10.0
+git rev-parse HEAD     # expect the v1.11.0 release commit (see RELEASES.md)
+git describe --tags    # expect v1.11.0
 git status --short     # expect clean tree except the intentional untracked ZLEDGER_PRODUCTION_ACTION_PLAN.md
 ```
 
-- Test baseline at v1.10.0: **813/813 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 531 incl. R-06/R-07/R-08/R-09/R-10 checks, attack-the-fixes 29) + **208/208 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10). Exact commands in `STATE.md` ("Verification record").
+- Test baseline at v1.11.0: **831/831 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 552 incl. R-06/R-07/R-08/R-09/R-10/R-11 checks, attack-the-fixes 29) + **208/208 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10). Exact commands in `STATE.md` ("Verification record").
 - Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s). If docker-compose suites fail with "cannot connect", check the container exited (host reboot/Docker daemon restart leaves it Exited) and `docker start zprime-test-pg` first.
 - Harness lessons (R-10): never `pkill -f <pattern>` where the pattern matches your own shell's command line — use a `[x]`-bracketed pattern or `start_new_session=True` + `os.killpg`; suite output can be block-buffered — rerun with `python3 -u` before diagnosing a "hang".
 

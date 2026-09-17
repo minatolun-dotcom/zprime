@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-16 (**v1.10.0 RELEASED** — R-10 duplicate-submission idempotency (B-10). Release commit + annotated tag `v1.10.0` created; v1.10.0 is the current immutable baseline. See RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-17 (**v1.11.0 RELEASED** — R-11 purchase-side settlement coverage (B-11, test-only). Release commit + annotated tag `v1.11.0` created; v1.11.0 is the current immutable baseline. See RELEASES.md, CHANGELOG.md, CONTINUE.md.)
 
 ## What zprime is
 

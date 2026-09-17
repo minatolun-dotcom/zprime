@@ -132,6 +132,16 @@ try:
         {"ledgerId": L["Bank"], "amount": -30000},
     ])
 
+    # 7b. Purchase return via bill-wise Debit Note (B-11): return goods 8,000 +
+    #     duty (CGST 720 / SGST 720) = 9,440, settling bill PUR-1 — mixed-sign
+    #     against_ref against the creditor's negative open bill
+    voucher("Debit Note", "2025-04-29", [
+        {"ledgerId": L["Sigma Suppliers"], "amount": 9440, "bills": [{"billType": "against_ref", "billName": "PUR-1", "amount": 9440}]},
+        {"ledgerId": L["Purchases Local"], "amount": -8000},
+        {"ledgerId": L["CGST"], "amount": -720},
+        {"ledgerId": L["SGST/UTGST"], "amount": -720},
+    ])
+
     # 8. Rent paid 12,000 (Dr Rent, Cr Bank)
     voucher("Payment", "2025-04-30", [
         {"ledgerId": L["Rent"], "amount": 12000},
@@ -143,25 +153,25 @@ try:
     # Purchases    = 50,000 (dr)
     # Rent         = 12,000 (dr)
     # Output GST   = CGST 7,200 + SGST 7,200 + IGST 18,000 = 32,400 (cr)
-    # Input GST    = CGST 4,500 + SGST 4,500 = 9,000 (dr)
-    # Net GST payable = 32,400 - 9,000 = 23,400
+    # Input GST    = CGST 3,780 + SGST 3,780 = 7,560 (dr)  [4,500 - 720 DN-2 each]
+    # Net GST payable = 32,400 - 7,560 = 24,840
     # Cash         = 2,00,000 (dr)
     # Bank         = 3,00,000 + 94,400 - 30,000 - 12,000 = 3,52,400 (dr)
     # Pune Stores  = 0 (94,400 - 94,400)
     # Omega        = 1,18,000 (dr)  [open bill INV-2]
-    # Sigma        = 59,000 - 30,000 = 29,000 (cr)  [open bill PUR-1]
+    # Sigma        = 59,000 - 30,000 - 9,440 (DN-2) = 19,560 (cr)  [open bill PUR-1]
     # Capital      = 5,00,000 (cr)
-    # Profit       = 1,80,000 - 50,000 - 12,000 = 1,18,000 (stock unchanged: no consumption)
+    # Profit       = 1,80,000 - 42,000 - 12,000 = 1,26,000 (stock unchanged: no consumption)
     #   (inventory: opening 40,000 = closing 40,000 -> COGS 0)
 
     print("== TRIAL BALANCE ==")
     s, tb = req("GET", f"{C}/reports/trial-balance?from=2025-04-01&to=2025-04-30")
     # Net ledger closings: Dr rows: Cash 2,00,000 + Bank 3,52,400 + Opening Stock 40,000
-    #   + Purchases 50,000 + Rent 12,000 + Omega 1,18,000 = 7,72,400
-    # Cr rows: Sales 1,80,000 + CGST 2,700 + SGST 2,700 + IGST 18,000 + Sigma 29,000
-    #   + Capital 5,40,000 = 7,72,400  (GST ledgers NET: dr 4,500 - cr 7,200 = cr 2,700)
-    eq("TB totalDebit", tb["totalDebit"], 772400)
-    eq("TB totalCredit", tb["totalCredit"], 772400)
+    #   + Purchases 42,000 + Rent 12,000 + Omega 1,18,000 = 7,64,400
+    # Cr rows: Sales 1,80,000 + CGST 3,420 + SGST 3,420 + IGST 18,000 + Sigma 19,560
+    #   + Capital 5,40,000 = 7,64,400  (GST ledgers NET: dr 3,780 - cr 7,200 = cr 3,420)
+    eq("TB totalDebit", tb["totalDebit"], 764400)
+    eq("TB totalCredit", tb["totalCredit"], 764400)
     check("TB balanced", tb["totalDebit"] == tb["totalCredit"], (tb["totalDebit"], tb["totalCredit"]))
     rows = {r["name"]: r for r in tb["rows"]}
     # Debit rows total 7,72,400 == Credit rows 7,72,400 (every voucher balances).
@@ -169,38 +179,38 @@ try:
     eq("Cash in TB", rows["Cash"]["debit"], 200000)
     eq("Bank in TB", rows["Bank"]["debit"], 352400)
     eq("Omega in TB", rows["Omega Traders"]["debit"], 118000)
-    eq("Sigma in TB (credit)", rows["Sigma Suppliers"]["credit"], 29000)
+    eq("Sigma in TB (credit)", rows["Sigma Suppliers"]["credit"], 19560)
     eq("Sales in TB (credit)", rows["Sales Local"]["credit"], 180000)
-    eq("CGST net (dr 4500 - cr 7200 = cr 2700)", rows["CGST"]["credit"], 2700)
-    eq("SGST net (cr 2700)", rows["SGST/UTGST"]["credit"], 2700)
+    eq("CGST net (dr 3780 - cr 7200 = cr 3420)", rows["CGST"]["credit"], 3420)
+    eq("SGST net (cr 3420)", rows["SGST/UTGST"]["credit"], 3420)
     eq("IGST (cr 18000)", rows["IGST"]["credit"], 18000)
     eq("Rent (dr 12000)", rows["Rent"]["debit"], 12000)
-    eq("Purchases (dr 50000)", rows["Purchases Local"]["debit"], 50000)
+    eq("Purchases (dr 42000 after DN-2 return)", rows["Purchases Local"]["debit"], 42000)
     eq("Opening Stock (dr 40000)", rows["Opening Stock"]["debit"], 40000)
     eq("Capital (cr 540000 = 5,00,000 + 40,000 opening stock)", rows["Owners Capital"]["credit"], 540000)
 
     print("== P&L ==")
     s, pl = req("GET", f"{C}/reports/profit-loss?from=2025-04-01&to=2025-04-30")
     eq("P&L sales", pl["sales"], 180000)
-    eq("P&L purchases", pl["purchases"], 50000)
+    eq("P&L purchases", pl["purchases"], 42000)
     eq("P&L closing stock", pl["closingStock"], 40000)
     # Opening stock: item openings exist BEFORE books begin -> 40,000 on 2025-03-31
     eq("P&L opening stock", pl["openingStock"], 40000)
-    # cogs = purchases 50,000 + opening 40,000 - closing 40,000 = 50,000 (no consumption)
-    eq("P&L COGS", pl.get("cogs", 50000), 50000)
+    # cogs = purchases 42,000 + opening 40,000 - closing 40,000 = 42,000 (no consumption)
+    eq("P&L COGS", pl.get("cogs", 42000), 42000)
     eq("P&L rent (indirect)", pl["indirectExpenses"], 12000)
     # netProfit = sales 1,80,000 - cogs 50,000 - indirect 12,000 = 1,18,000
-    eq("P&L net profit", pl["netProfit"], 118000)
+    eq("P&L net profit", pl["netProfit"], 126000)
 
     print("== BALANCE SHEET ==")
     s, bs = req("GET", f"{C}/reports/balance-sheet?to=2025-04-30")
     # Assets = Cash 2,00,000 + Bank 3,52,400 + Stock 40,000 + Omega 1,18,000 = 7,10,400
-    # Liabilities = Capital 5,40,000 + Sigma 29,000 + net GST 23,400 + Profit 1,18,000 = 7,10,400
+    # Liabilities = Capital 5,40,000 + Sigma 19,560 + net GST 24,840 + Profit 1,26,000 = 7,10,400
     eq("BS totalAssets", bs["totalAssets"], 710400)
     eq("BS totalLiabilities (incl profit)", bs["totalLiabilities"], 710400)
     eq("BS difference", bs["difference"], 0)
     eq("BS stockValue", bs["stockValue"], 40000)
-    eq("BS netProfit", bs["netProfit"], 118000)
+    eq("BS netProfit", bs["netProfit"], 126000)
 
     print("== BILLS RECEIVABLE / PAYABLE ==")
     s, br = req("GET", f"{C}/reports/receivables?to=2025-04-30")
@@ -208,7 +218,7 @@ try:
     eq("BR: Omega open INV-2", sum(b["amount"] for b in omega["bills"]) if omega else None, 118000)
     s, bp = req("GET", f"{C}/reports/payables?to=2025-04-30")
     sigma = next((p for p in bp["parties"] if p["ledgerName"] == "Sigma Suppliers"), None)
-    eq("BP: Sigma open PUR-1", sum(b["amount"] for b in sigma["bills"]) if sigma else None, -29000)
+    eq("BP: Sigma open PUR-1 (net of payment + DN-2)", sum(b["amount"] for b in sigma["bills"]) if sigma else None, -19560)
 
     print("== GST REPORTS ==")
     s, g1 = req("GET", f"{C}/reports/gstr1?from=2025-04-01&to=2025-04-30")
@@ -224,10 +234,11 @@ try:
     eq("GSTR-3B outward IGST", g3["outward"]["igst"], 18000)
     eq("GSTR-3B outward CGST", g3["outward"]["cgst"], 7200)
     eq("GSTR-3B outward SGST", g3["outward"]["sgst"], 7200)
-    eq("GSTR-3B ITC CGST", g3["itc"]["cgst"], 4500)
-    eq("GSTR-3B ITC SGST", g3["itc"]["sgst"], 4500)
-    # Net payable = output 32,400 - ITC 9,000 = 23,400
-    eq("GSTR-3B net payable", g3["net"]["total"], 23400)
+    # ITC = purchase 4,500 each − DN-2 duty reversal 720 each = 3,780
+    eq("GSTR-3B ITC CGST (net of DN-2)", g3["itc"]["cgst"], 3780)
+    eq("GSTR-3B ITC SGST (net of DN-2)", g3["itc"]["sgst"], 3780)
+    # Net payable = output 32,400 - ITC 7,560 = 24,840
+    eq("GSTR-3B net payable", g3["net"]["total"], 24840)
 
     print("== REGISTERS / LEDGER ==")
     s, sr = req("GET", f"{C}/reports/register?typeName=Sales&from=2025-04-01&to=2025-04-30")
@@ -256,8 +267,8 @@ try:
     #         (party Dr 5,900; duty Cr 450/450)
     # Independently derived GST positions for May:
     #   output:  taxable 180,000−10,000 = 170,000 (igst 18,000; cgst 7,200−900; sgst 7,200−900)
-    #   itc:     cgst 4,500−450 = 4,050; sgst 4,050
-    #   net:     igst 18,000; cgst 2,700; sgst 2,700 → total 23,400 (unchanged:
+    #   itc:     cgst 4,500−450−720 (DN-2) = 3,330; sgst 3,330
+    #   net:     igst 18,000; cgst 5,580; sgst 5,580 → total 29,160
     #            the CN and DN duty reversals exactly offset in the net position)
     s, custs = req("GET", f"{C}/ledgers")
     ledmap = {l["name"]: l["id"] for l in custs}
@@ -292,15 +303,16 @@ try:
     eq("CN: May 3B ITC cgst = −450 (DN reverses April ITC)", g3m["itc"]["cgst"], -450)
     eq("CN: May 3B net = −900 (CN/DN duty reversals net)", g3m["net"]["total"], -900)
     # Full-period identity (Apr+May): net output − ITC == cumulative CGST ledger
-    # net credit. Independently: netCgst 7,200−900 = 6,300; ITC 4,500−450 = 4,050;
-    # difference 2,250 must equal the CGST ledger's cumulative net credit.
+    # net credit. Independently: netCgst 7,200−900 = 6,300 (DN-2 is ITC-side);
+    # ITC 4,500−450−720 = 3,330; difference 2,970 must equal the CGST ledger's
+    # cumulative net credit (dr 5,400 − cr 8,370).
     s, g1f = req("GET", f"{C}/reports/gstr1?from=2025-04-01&to=2025-05-31")
     s, g3f = req("GET", f"{C}/reports/gstr3b?from=2025-04-01&to=2025-05-31")
     s, tb5 = req("GET", f"{C}/reports/trial-balance")
     rr = {x["name"]: (float(x["debit"]), float(x["credit"])) for x in tb5["rows"]}
     cgst_net = round(rr["CGST"][0] - rr["CGST"][1], 2)
     eq("CN: full-period netCgst = 6,300", g1f["totals"]["netCgst"], 6300)
-    eq("CN: full-period ITC cgst = 4,050", g3f["itc"]["cgst"], 4050)
+    eq("CN: full-period ITC cgst = 3,330 (DN-1 + bill-wise DN-2)", g3f["itc"]["cgst"], 3330)
     eq("CN: identity netCgst − ITC == CGST ledger net credit",
        round(g1f["totals"]["netCgst"] - g3f["itc"]["cgst"], 2), round(-cgst_net, 2))
 

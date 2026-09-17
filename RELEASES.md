@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.11.0
+
+- **Commit:** `v1.11.0^{}` — resolve with `git rev-parse v1.11.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.11.0` (annotated; `v1.11.0^{}` = the release commit, verified at release)
+- **Major purpose:** Purchase-side settlement regression coverage (R-11, B-11 P3 reclassified from P2) — **test-only release: no source, migration, or client changes.** B-11 confirmed the creditor-side mirror of the bill-wise machinery had zero coverage. `final_regression.py` +21 R-11 checks (creditor-side adversarial mirror of BUG-002, Debit Note settling a purchase bill via mixed-sign `against_ref`, DN over-settlement rejection, payment settling the DN-reduced remainder, advance-to-creditor consumed by a later purchase's credit entry (direction-strict pattern), one voucher settling two open bills via opposing entries, AP assertions at every stage, GSTR-3B ITC reversal, TB identity) → 552; `reconcile.py` +3 checks (61): bill-wise DN-2 woven into the hand-computed scenario with all downstream independent expectations recomputed (TB 7,64,400 / purchases 42,000 / profit 1,26,000 / Sigma 19,560 / ITC 3,780 / net GST 24,840).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 831/831 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 552 (+21 dedicated R-11 checks), attack-the-fixes 29)
+  - 208/208 browser checks unchanged (zero client changes; live stack healthy on the released bundle)
+  - no assertion weakened anywhere — coverage only grew
+  - investigation live-probed the full supplier-side lifecycle first: all flows correct, all probe "failures" proven to be probe bugs (F-11-1/2/3 recorded as NOT A BUG — VERIFIED)
+- **Important fixes:** P3 closed — the app's most intricate arithmetic (signed bill netting on Sundry Creditors) now has regression-level protection on the supplier side, matching the debtor-side rigor.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.11.0` is the current production baseline.
+
+---
+
 ## v1.10.0
 
 - **Commit:** `v1.10.0^{}` — resolve with `git rev-parse v1.10.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

@@ -17,13 +17,14 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.8.0 | **R-08** | Cross-company master-reference validation (B-07: central `assertCompanyRefs` at the CRUD boundary for ledgers/items/pay-heads; salary-structure headId check; payroll belt-and-braces — legacy foreign-ledger row fails loudly at posting; route-level, no migration) |
 | v1.9.0 | **R-09** ⚠ | Fail-fast deployment secrets (B-08: JWT_SECRET required + insecure-value denylist at boot, ADMIN_PASSWORD required at first-boot seeding, compose `:?` interpolation — BREAKING: default-secret deployments refuse to boot) |
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
+| v1.11.0 | **R-11** | Purchase-side settlement regression coverage (B-11, test-only: creditor-side adversarial mirror of BUG-002 + bill-wise DN settling a purchase bill + advance-consumption + AP/GSTR-3B assertions → 831 checks; no source changes) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
 
-**R-10 is RELEASED as v1.10.0** (investigated → reviewed → approved [full scope] → implemented → verified → browser-verified → release-reviewed → released). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
+**R-11 is RELEASED as v1.11.0** (investigated → reviewed → approved [test-only] → implemented → verified → release-reviewed → released; no browser deltas required — zero client changes). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
-Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-12 (backup/restore UX), B-11 (purchase-return/DN test coverage), plus non-bug hardening (VoucherScreen negative-stock warning, import pre-validation feedback).
+Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-12 (backup/restore UX), plus non-bug hardening (VoucherScreen negative-stock warning, import pre-validation feedback).
 
 ## Upcoming candidates (derived from ZLEDGER_PRODUCTION_ACTION_PLAN.md — NOT yet tasks)
 
@@ -35,6 +36,7 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 | R-08 ✅ DONE (v1.8.0) | Cross-company master-reference validation (B-07 P1) | action plan, reproduced | bug | central CRUD ref validation + payroll belt-and-braces; composite-FK DB enforcement deferred |
 | R-09 ✅ DONE (v1.9.0) | Fail-fast deployment secrets (B-08 P1) | action plan, source-traced | bug | breaking change accepted; login rate limiting (P3) remains postponed |
 | R-10 ✅ DONE (v1.10.0) | Duplicate-submission protection (B-10 P2) | action plan, live-reproduced | bug | idempotency key + client single-shot guard; keyless behavior unchanged |
+| R-11 ✅ DONE (v1.11.0) | Purchase-side settlement coverage (B-11 P3) | action plan, live-probed | tests | test-only: +24 checks; no defect found (F-11-1/2/3 NOT A BUG — VERIFIED) |
 | later | Deployment secrets hardening (B-08 P1*) | action plan | bug/ops | fail-fast on default JWT_SECRET for exposed deployments |
 | later | Duplicate-submission protection (B-10 P2) | action plan | bug | idempotency |
 | later | Purchase-return/DN test coverage (B-11 P2) | action plan | tests | coverage gap, not a demonstrated defect |
