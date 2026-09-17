@@ -1,6 +1,10 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-17 (R-15 RELEASED as v1.15.0 — opening-GST semantics regression lock, test-only. v1.15.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-17 (R-16 RELEASED as v1.16.0 — deployment self-healing (compose-only) + RELEASE CANDIDATE status adopted per READINESS_REVIEW.md. v1.16.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+
+## Product status
+
+**RELEASE CANDIDATE** (adopted 2026-09-17 per READINESS_REVIEW.md — supersedes the production action plan's ALPHA verdict, which predated R-04…R-15). Production-ready for the designed model: self-hosted, single operator/small trusted team; internet-exposed acceptable with documented hardening. Not a multi-tenant SaaS.
 
 ## What zprime is
 

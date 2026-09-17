@@ -19,6 +19,11 @@ docker compose up -d
 > upgrading from ≤ v1.8.0: create `.env` before `docker compose up`.
 > If the admin user already exists, `ADMIN_PASSWORD` only matters for fresh volumes.
 
+Both containers use `restart: unless-stopped`, so the stack survives host
+reboots and self-heals a first-boot race (on a brand-new volume the database
+healthcheck can pass transiently during `initdb`; the app then restarts and
+migrates cleanly instead of staying dead).
+
 ## Features
 
 **Accounting**

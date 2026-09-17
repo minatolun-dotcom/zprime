@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased — R-15 opening-GST semantics regression lock (test-only)
+## Unreleased — R-16 deployment self-healing (F-R1) + RELEASE CANDIDATE status
+
+**Compose-only change — no application code, no migration, no client modifications.**
+
+The v1.15.0 production-readiness review (READINESS_REVIEW.md) verified the full product with fresh evidence (fresh-volume compose 6/6 migrations; browser 219/219; Python 868/868; typechecks clean) and adopted **RELEASE CANDIDATE** as the product status, superseding the action plan's ALPHA verdict (which predated R-04…R-15). One new finding, F-R1 (P3, deployment): on a fresh volume the db healthcheck (`pg_isready`) can pass transiently during `initdb`; the app's first migration connection then hits ECONNREFUSED and, with no restart policy, the container exited and stayed dead until manual restart (reproduced live during the review; migrations apply cleanly on the recovering boot — no data risk).
+
+- **`docker-compose.yml`:** `restart: unless-stopped` on both `app` and `db` — the stack survives host reboots and self-heals the first-boot race (verified live: app-initiated crash → automatic restart → healthy, no operator action; note: `docker kill`/`stop` remain honored as operator intent per Docker semantics).
+- **README:** deployment note documenting the restart policy and the self-healing behavior.
+
+Verification: fresh-volume boot healthy (6/6 migrations); kill-and-recover proven live; Python **868/868**; browser 219/219 (baseline + R-14 suites re-run on the rebuilt stack).
+
+---
+
+## v1.15.0 — R-15 opening-GST semantics regression lock (test-only)
 
 **Test-only change — no source, migration, or client modifications.**
 

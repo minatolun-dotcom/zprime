@@ -12,6 +12,9 @@ services:
       interval: 3s
       timeout: 3s
       retries: 15
+    # R-16 (F-R1): self-healing deployment — bring the stack back after host
+    # reboots or transient failures without operator intervention.
+    restart: unless-stopped
 
   app:
     build: .
@@ -28,6 +31,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # R-16 (F-R1): the db healthcheck can pass transiently during a fresh
+    # volume's initdb; if the app's first migration connection then hits
+    # ECONNREFUSED, the container self-restarts instead of staying dead.
+    restart: unless-stopped
 
 volumes:
   pgdata:

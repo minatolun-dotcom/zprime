@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.16.0
+
+- **Commit:** `v1.16.0^{}` — resolve with `git rev-parse v1.16.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.16.0` (annotated; `v1.16.0^{}` = the release commit, verified at release)
+- **Major purpose:** Deployment self-healing (R-16, F-R1 P3 from READINESS_REVIEW.md) — **compose/docs-only release: no application code, no migration, no client changes.** F-R1 (reproduced live during the readiness review): on a fresh volume the db healthcheck (`pg_isready`) can pass transiently during `initdb`; the app's first migration connection then hits ECONNREFUSED and, with no restart policy, the container exited and stayed dead until manual restart (recoverable; migrations apply cleanly on the recovering boot — no data risk). Fix: `restart: unless-stopped` on both `app` and `db`; README note documents the policy, the self-healing behavior, and that `docker stop/kill` remain honored as operator intent. This release also **adopts RELEASE CANDIDATE** as the product status in STATE.md (per READINESS_REVIEW.md — supersedes the production action plan's ALPHA verdict, which predated R-04…R-15).
+- **Verification status:** VERIFIED AT RELEASE —
+  - fresh-volume compose boot healthy (6/6 migrations); self-healing proven live: app-initiated crash → automatic restart → health 200 with zero operator action; `docker kill` correctly stayed down (documented Docker semantics)
+  - 868/868 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 586, attack-the-fixes 29)
+  - 219/219 browser checks (baseline run + R-14 suite re-run green on the rebuilt stack; compose-only change)
+  - no application code touched; no test weakened
+- **Important fixes:** P3 closed — a genuinely fresh deployment now self-recovers from the first-boot race instead of requiring an operator `docker compose up`.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.16.0` is the current production baseline.
+
+---
+
 ## v1.15.0
 
 - **Commit:** `v1.15.0^{}` — resolve with `git rev-parse v1.15.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
