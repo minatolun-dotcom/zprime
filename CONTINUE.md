@@ -1,20 +1,22 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-17 — R-14 RELEASED as v1.14.0 (TB health surface). Process state: IDLE.
+**Last updated:** 2026-09-17 — R-15 RELEASED as v1.15.0 (opening-GST semantics regression lock, test-only). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.14.0 (resolve with `git rev-parse v1.14.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.14.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.14.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-14 (TB health surface). Investigation: `R-14_INVESTIGATION.md`.
+- **Current release:** v1.15.0 (resolve with `git rev-parse v1.15.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.15.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.15.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-15 (opening-GST regression lock). Investigation: `R-15_INVESTIGATION.md`.
+- **What changed (approved test-only scope):** `final_regression.py` +8 R-15 checks → 586: paired openings → TB 0; interstate sale → GSTR-3B net.igst 900 and GSTR-1 netIgst 900 (openings excluded, period-only return semantics); IGST duty-ledger position −5,000 → −5,900 (book position carries opening); unpaired opening → TB −5,000 / BS +5,000 surfaced honestly. No source, migration, or client changes.
+- **Investigation findings (live-probed on v1.14.0):** GST returns are period-only by design (derived purely from voucher entries; openings never enter the query) — GSTR-3B net 900 with a Cr-5000 IGST opening present; the duty ledger carries the true position (−5,000 → −5,900); unpaired openings surface honestly as TB/BS difference (R-14 card). No false invariant anywhere → F-15-1/F-15-2 NOT A BUG — VERIFIED. Proposed R-15: test-hardening only, ~6 checks locking this semantics (no source changes) → 866; alternatively a formal readiness review.
 - **Investigation findings (summary):** F-14-1 TB had no out-of-balance surface anywhere — SELECTED, P3. F-14-2 negative-stock warning: NOT A BUG — VERIFIED (R-06 server guard). F-14-3 import error surfacing: NOT A BUG — VERIFIED (R-04 atomic import, live-probed). F-14-4 opening-stock helper: documented limitation (F-07-2 Model A).
 - **What changed (approved full scope):** `accounting.ts` `trialBalance()` returns additive `difference` field (display-only); TB report gains the amber out-of-balance banner (copy of the existing BS pattern); Gateway gains a compact "Books Health" card (silent-degrade). `final_regression.py` +6 R-14 checks → 578; new `r14_ui.js` (11 checks: clean → balanced chip + no banner; Dr-777.77 asymmetry → banner + out-by chip + view link; counterpart opening restores balance). No migration, no accounting-math change.
 - **What changed (approved full scope):** new `server/src/lib/loginGuard.ts` (in-memory sliding-window limiter: 10 failures/10 min per source-IP+username → 429 + Retry-After until oldest failure ages out; success resets); `auth.ts` lockout check before user lookup + dummy-scrypt timing equalization (unknown-user path now performs one scrypt — the 20.7× enumeration oracle is collapsed); `final_regression.py` +14 R-13 checks → 572; README login-throttling + timing-equalization notes. No migration, no client change, no new dependency.
-- **Verification:** Python **860/860** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **578** incl. 6 R-14, attack-the-fixes 29); browser **219/219** (baseline 153 + R-03 12 + R-04 9 + R-05 12 + R-07 12 + R-10 10 + **R-14 11**) on a rebuilt image + fresh volume; typecheck server+client clean.
-- **Next permitted action:** on "continue zprime" → begin the R-15 investigation. All B-01…B-12 and §12 UX items are now dispositioned; candidates: audit-trail groundwork (created_by/updated_by — plan Phase 5, schema-expanding, currently postponed), opening-GST balances (P2, plan §13), or a readiness review if no confirmed defect emerges.
+- **Verification:** Python **868/868** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **586** incl. 8 R-15, attack-the-fixes 29); browser **219/219** unchanged (zero client changes).
+- **Next permitted action:** on "continue zprime" → the natural next milestone is the **formal production-readiness review** (all plan findings dispositioned, no P1/P2 defects remaining); or a new investigation if the human names a specific target (remaining known-postponed: audit-trail groundwork, RCM/e-invoice/e-way/GSTR-9/TCS — all explicitly postponed).
 - **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
 - **Blocked decisions (waiting on human):** none.
 - **What changed (R-10, historical):** additive migration `0005_r10_idempotency_keys.sql` (`idempotency_keys`, UNIQUE(company_id, key)); `vouchers.ts` POST accepts optional `idempotencyKey` (body or `X-Idempotency-Key` header) — replay returns the ORIGINAL voucher, key+voucher recorded in one transaction, concurrent same-key race resolves to one voucher; `VoucherScreen.tsx` generates a UUID per new-voucher form and sends it, plus a `savingRef` guard making Ctrl+A single-shot; `final_regression.py` +12 R-10 checks; `r10_ui.js` new 10-check browser suite.
@@ -31,7 +33,7 @@ git describe --tags    # expect v1.11.0
 git status --short     # expect clean tree except the intentional untracked ZLEDGER_PRODUCTION_ACTION_PLAN.md
 ```
 
-- Test baseline at v1.14.0: **860/860 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 578 incl. R-06…R-14 checks, attack-the-fixes 29) + **219/219 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10 + R-14 UI 11). Exact commands in `STATE.md` ("Verification record"). Note: totals through v1.11.0 were previously advertised as 813/831; the measured component sums are the authority (813 for v1.10.0 stands, v1.11.0 is 834).
+- Test baseline at v1.15.0: **868/868 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 586 incl. R-06…R-15 checks, attack-the-fixes 29) + **219/219 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10 + R-14 UI 11). Exact commands in `STATE.md` ("Verification record"). Note: totals through v1.11.0 were previously advertised as 813/831; the measured component sums are the authority (813 for v1.10.0 stands, v1.11.0 is 834).
 - Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s). If docker-compose suites fail with "cannot connect", check the container exited (host reboot/Docker daemon restart leaves it Exited) and `docker start zprime-test-pg` first.
 - Harness lessons (R-10): never `pkill -f <pattern>` where the pattern matches your own shell's command line — use a `[x]`-bracketed pattern or `start_new_session=True` + `os.killpg`; suite output can be block-buffered — rerun with `python3 -u` before diagnosing a "hang".
 

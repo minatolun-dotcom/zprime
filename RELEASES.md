@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.15.0
+
+- **Commit:** `v1.15.0^{}` — resolve with `git rev-parse v1.15.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.15.0` (annotated; `v1.15.0^{}` = the release commit, verified at release)
+- **Major purpose:** Opening-GST semantics regression lock (R-15, test-only — no source, migration, or client changes). The R-15 investigation live-verified the opening-GST-balances candidate (plan §13 P2) as NOT A BUG: GST returns are period-only by design (derived purely from voucher entries; ledger openings never enter the query — `gst.ts` has no opening term), the duty ledger carries the true book position, and unpaired openings surface honestly as TB/BS differences via the R-14 health surface. No false invariant anywhere. The verified semantics had zero coverage — this release locks it in: `final_regression.py` +8 R-15 checks (586) — migrated-books company with paired openings (Cr 5,000 IGST liability vs Dr 5,000 counterpart) → TB difference 0; interstate sale (taxable 10,000 + IGST 900); GSTR-3B `net.igst == 900` and GSTR-1 `netIgst == 900` (openings excluded — period-only return semantics); IGST duty-ledger position −5,000 → −5,900 (book position carries the opening); unpaired-opening company → TB −5,000 / BS +5,000 surfaced honestly.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 868/868 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 586 (+8 dedicated R-15 checks), attack-the-fixes 29)
+  - 219/219 browser checks unchanged (zero client changes)
+  - no assertion weakened anywhere — coverage only grew; no source changes at all
+- **Important fixes:** P2-class coverage gap closed — the returned-vs-ledger GST semantics for migrated books (openings excluded from returns, carried in ledgers) is now protected against regression, matching the B-11 discipline of locking verified-correct behavior.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.15.0` is the current production baseline.
+
+---
+
 ## v1.14.0
 
 - **Commit:** `v1.14.0^{}` — resolve with `git rev-parse v1.14.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

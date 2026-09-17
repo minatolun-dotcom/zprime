@@ -2200,5 +2200,65 @@ check("R-14: injected imbalance surfaces in difference", _s14 == 200 and abs(tb1
       {"diff": tb14b.get("difference"), "dr": tb14b.get("totalDebit"), "cr": tb14b.get("totalCredit")})
 check("R-14: difference equals totalDebit - totalCredit", abs(tb14b["difference"] - (tb14b["totalDebit"] - tb14b["totalCredit"])) < 0.005, tb14b.get("difference"))
 
+# ================= R-15: opening-GST semantics (regression lock, verified R-15 investigation) =================
+print("-- R-15: opening-GST balances — returns vs ledger position --")
+
+# Migrated-books scenario, live-verified in R-15: a duty-ledger opening (Cr
+# liability from before books-begin) must NOT enter the statutory returns
+# (period-only), must carry into the ledger book position, and an unpaired
+# opening must surface honestly as a TB/BS difference (R-14 surface).
+
+def _set_opening15(comp, ledger, value):
+    return req("PUT", f"/api/c/{comp['id']}/ledgers/{ledger['id']}", {**ledger, "openingBalance": value})
+
+# --- Company 1: paired openings + one interstate sale ---
+s, co15 = req("POST", "/api/companies", {"name": "R15 GST Open Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R15GSTOA1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R-15: migrated-books company created", s == 200 and co15.get("id"), (s, str(co15)[:120]))
+C15 = f"/api/c/{co15['id']}"
+leds15 = req("GET", f"{C15}/ledgers")[1]
+igst15 = next(l for l in leds15 if l.get("dutyHead") == "IGST")
+cash15 = next(l for l in leds15 if l["name"] == "Cash")
+_s15, _ = _set_opening15(co15, igst15, "-5000")   # Cr 5000 liability
+_s15, _ = _set_opening15(co15, cash15, "5000")     # paired Dr counterpart
+_s15, tb15 = req("GET", f"{C15}/reports/trial-balance")
+check("R-15: paired openings balance the books (TB difference 0)", abs(tb15["difference"]) < 0.005, tb15)
+
+# interstate sale: taxable 10000 + IGST 900 (buyer in state 29)
+g15 = {x["name"]: x["id"] for x in req("GET", f"{C15}/groups")[1]}
+vt15 = {v["name"]: v["id"] for v in req("GET", f"{C15}/voucher-types")[1]}
+_s15, buyer15 = req("POST", f"{C15}/ledgers", {"name": "R15 Buyer", "groupId": g15["Sundry Debtors"], "gstin": "29R15BUYER0A1B2", "gstRegistrationType": "regular", "taxability": "taxable"})
+_s15, sales15 = req("POST", f"{C15}/ledgers", {"name": "R15 Sales", "groupId": g15["Sales Accounts"], "taxability": "taxable", "gstRate": 9})
+_s15, v15 = req("POST", f"{C15}/vouchers", {"voucherTypeId": vt15["Sales"], "date": "2026-04-10", "partyLedgerId": buyer15["id"],
+    "entries": [
+        {"ledgerId": buyer15["id"], "amount": 10900},
+        {"ledgerId": sales15["id"], "amount": -10000, "gstRate": 9, "taxability": "taxable"},
+        {"ledgerId": igst15["id"], "amount": -900, "gstRate": 9, "taxability": "taxable"},
+    ]})
+check("R-15: interstate sale posted", _s15 == 200 and v15.get("id"), (_s15, str(v15)[:120]))
+
+_s15, g3b15 = req("GET", f"{C15}/reports/gstr3b?from=2026-04-01&to=2026-06-30")
+check("R-15: GSTR-3B net excludes opening liability (period-only)", g3b15["net"]["igst"] == 900 and g3b15["outward"]["igst"] == 900,
+      {"net": g3b15["net"]["igst"], "outward": g3b15["outward"]["igst"]})
+_s15, g115 = req("GET", f"{C15}/reports/gstr1?from=2026-04-01&to=2026-06-30")
+check("R-15: GSTR-1 netIgst excludes opening liability", g115["totals"]["netIgst"] == 900, g115["totals"])
+_s15, lv15 = req("GET", f"{C15}/reports/ledger-vouchers/{igst15['id']}?from=2026-04-01&to=2026-06-30")
+check("R-15: duty-ledger position carries opening (-5000 -> -5900)",
+      abs(lv15["opening"] - (-5000)) < 0.005 and abs(lv15["closing"] - (-5900)) < 0.005,
+      {"opening": lv15.get("opening"), "closing": lv15.get("closing")})
+
+# --- Company 2: unpaired opening must surface as a books difference ---
+s, co15b = req("POST", "/api/companies", {"name": "R15 Unpaired Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R15UNPR0A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R-15: unpaired company created", s == 200 and co15b.get("id"), (s, str(co15b)[:120]))
+leds15b = req("GET", f"/api/c/{co15b['id']}/ledgers")[1]
+igst15b = next(l for l in leds15b if l.get("dutyHead") == "IGST")
+_s15, _ = _set_opening15(co15b, igst15b, "-5000")   # no counterpart
+_s15, tb15b = req("GET", f"/api/c/{co15b['id']}/reports/trial-balance")
+_s15, bs15b = req("GET", f"/api/c/{co15b['id']}/reports/balance-sheet")
+check("R-15: unpaired opening surfaces honestly (TB -5000 / BS +5000)",
+      abs(tb15b["difference"] - (-5000)) < 0.005 and abs(bs15b["difference"] - 5000) < 0.005,
+      {"tb": tb15b["difference"], "bs": bs15b.get("difference")})
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

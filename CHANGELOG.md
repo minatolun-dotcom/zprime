@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased — R-14 TB health surface (out-of-balance visibility)
+## Unreleased — R-15 opening-GST semantics regression lock (test-only)
+
+**Test-only change — no source, migration, or client modifications.**
+
+R-15 investigation live-verified the opening-GST-balances candidate (plan §13 P2) as **NOT A BUG**: GST returns are period-only by design (derived purely from voucher entries; ledger openings never enter the query), the duty ledger carries the true book position (−5,000 opening → −5,900 after a 900 interstate sale), and unpaired openings surface honestly as TB/BS differences via the R-14 health surface. No false invariant exists anywhere. The verified semantics had zero coverage — this release locks it in:
+
+- **`final_regression.py` +8 R-15 checks (586):** migrated-books company with paired openings (Cr 5,000 IGST liability vs Dr 5,000 counterpart) → TB difference 0; interstate sale (taxable 10,000 + IGST 900) posted; **GSTR-3B net.igst == 900** and **GSTR-1 netIgst == 900** (openings excluded — period-only return semantics); **IGST duty-ledger position −5,000 → −5,900** (book position carries the opening); unpaired-opening company → TB −5,000 / BS +5,000 surfaced honestly.
+
+Verification: Python **868/868** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **586** incl. 8 R-15, attack-the-fixes 29); browser **219/219** unchanged (zero client changes).
+
+---
+
+## v1.14.0 — R-14 TB health surface (out-of-balance visibility)
 
 **Minimal additive change — no migration, no accounting-math change.**
 
