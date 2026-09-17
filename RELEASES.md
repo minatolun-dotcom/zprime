@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.14.0
+
+- **Commit:** `v1.14.0^{}` — resolve with `git rev-parse v1.14.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.14.0` (annotated; `v1.14.0^{}` = the release commit, verified at release)
+- **Major purpose:** TB health surface (R-14, F-14-1 P3) — out-of-balance visibility. The R-14 investigation re-verified the action plan's three remaining UX candidates: negative-stock warning and import error surfacing were superseded by R-06/R-04 server-side guards (NOT A BUG — VERIFIED; import atomicity live-probed: unbalanced voucher → 400 per-voucher error, zero persisted, TB diff 0). The confirmed gap: books imbalance had **no surface anywhere** — the TB report showed Dr/Cr totals side-by-side with no warning, the Gateway had no health indicator. Since posting-time validation exists, only operator data (an asymmetric opening entry — the historical B-02 class) can unbalance books; validation of the feature surfaced that the test suite's own O-1 fixture had silently carried a 10,000 imbalance, caught by nothing until now. Changes: `trialBalance()` returns additive `difference: r2(totalDebit - totalCredit)` (display-only, same class as the BS `difference`); TB report gains the amber "Difference in books" banner (copy of the existing BS pattern); Gateway gains a compact "Books Health" card (✓ balanced / ✗ out by X + view link; silent-degrade on fetch failure). No migration, no accounting-math change.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 860/860 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 578 (+6 dedicated R-14 checks: additive field present, 0 on clean books, injected Dr-777.77 asymmetry surfaces exactly, identity difference == totalDebit − totalCredit), attack-the-fixes 29)
+  - 219/219 browser checks (baseline 153 + R-03 12 + R-04 9 + R-05 12 + R-07 12 + R-10 10 + **R-14 11**: clean → balanced chip + no banner; asymmetry → banner + out-by chip + view link; counterpart opening restores balance) on a rebuilt image with fresh volume
+  - typecheck (server + client) clean
+  - accounting calculations untouched (one display field added); no test weakened — coverage only grew
+- **Important fixes:** books imbalance is now visible at a glance on the Gateway and in the TB report — the B-02/B-03 imbalance *class* gets an immediate detection surface instead of relying on someone manually comparing two TB columns.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.14.0` is the current production baseline.
+
+---
+
 ## v1.13.0
 
 - **Commit:** `v1.13.0^{}` — resolve with `git rev-parse v1.13.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

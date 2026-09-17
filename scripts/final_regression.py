@@ -2173,5 +2173,32 @@ check("R-13: timing oracle collapsed (ratio < 3x)",
 _s13, _b13 = _login13("r13_body", "x")
 check("R-13: 401 body unchanged", _s13 == 401 and isinstance(_b13, dict) and _b13.get("error") == "Invalid username or password", (_s13, str(_b13)[:80]))
 
+# ================= R-14: TB health surface (additive difference field) =================
+print("-- R-14: trial-balance difference field --")
+
+# Controlled company: fresh books are balanced by construction (no entries).
+_s14, co14 = req("POST", "/api/companies", {"name": "R14 Health Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R14HEALT01A2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R-14: health company created", _s14 == 200 and co14.get("id"), (_s14, str(co14)[:120]))
+C14 = f"/api/c/{co14['id']}"
+
+# 1. Additive field present and 0 for clean books.
+_s14, tb14 = req("GET", f"{C14}/reports/trial-balance")
+check("R-14: trial-balance returns difference field", _s14 == 200 and "difference" in tb14, (_s14, list(tb14.keys()) if isinstance(tb14, dict) else tb14))
+check("R-14: difference is 0 for clean books",
+      tb14.get("difference") == 0 and tb14["totalDebit"] == tb14["totalCredit"],
+      {"diff": tb14.get("difference"), "dr": tb14.get("totalDebit"), "cr": tb14.get("totalCredit")})
+
+# 2. Injected imbalance: an asymmetric opening entry (Dr 333.33 with no credit)
+# must surface as difference == 333.33 — the display field tracks books state.
+_s14, g14raw = req("GET", f"{C14}/groups")
+g14 = {gr["name"]: gr["id"] for gr in g14raw}
+_s14, l14 = req("POST", f"{C14}/ledgers", {"name": "R14 Asymmetric", "groupId": g14["Indirect Expenses"], "openingBalance": "333.33"})
+check("R-14: asymmetric-opening ledger created", _s14 == 200 and l14.get("id"), (_s14, str(l14)[:120]))
+_s14, tb14b = req("GET", f"{C14}/reports/trial-balance")
+check("R-14: injected imbalance surfaces in difference", _s14 == 200 and abs(tb14b["difference"] - 333.33) < 0.005,
+      {"diff": tb14b.get("difference"), "dr": tb14b.get("totalDebit"), "cr": tb14b.get("totalCredit")})
+check("R-14: difference equals totalDebit - totalCredit", abs(tb14b["difference"] - (tb14b["totalDebit"] - tb14b["totalCredit"])) < 0.005, tb14b.get("difference"))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

@@ -325,6 +325,11 @@ function TrialBalanceView({ cid, data, onCsv }: { cid: string; data: any; onCsv:
           Export CSV
         </button>
       </div>
+      {Math.abs(data.difference ?? 0) > 0.004 && (
+        <div className="text-[13px] rounded border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2 m-2">
+          Difference in books: {data.difference.toLocaleString("en-IN")} — check opening balances or unposted entries.
+        </div>
+      )}
     </Card>
   );
 }

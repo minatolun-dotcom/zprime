@@ -22,6 +22,13 @@ export default function Gateway() {
     queryFn: () => get<VoucherTypeRow[]>(`/api/c/${cid}/voucher-types`),
   });
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => get<{ username: string }>("/api/auth/me") });
+  // R-14: TB health line — silent-degrade (renders nothing on error/absence),
+  // same data the Trial Balance report already computes.
+  const { data: tbHealth } = useQuery({
+    queryKey: ["tb-health", cid],
+    queryFn: () => get<{ totalDebit: number; totalCredit: number; difference: number }>(`/api/c/${cid}/reports/trial-balance`),
+    retry: false,
+  });
 
   const fyFrom = company ? fyStart(today()) : "";
   const fyTo = company ? fyEnd(today()) : "";
@@ -143,6 +150,19 @@ export default function Gateway() {
               <div>Current FY: {fyFrom} → {fyTo}</div>
             </div>
           </div>
+          {tbHealth && (
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+              <div className="text-[12px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Books Health</div>
+              {Math.abs(tbHealth.difference ?? 0) <= 0.004 ? (
+                <div className="text-[13px] text-green-700 font-medium">Trial Balance ✓ balanced</div>
+              ) : (
+                <div className="text-[13px] text-amber-700 font-medium">
+                  Trial Balance ✗ out by {Math.abs(tbHealth.difference).toLocaleString("en-IN")}
+                  <Link to={`/company/${cid}/reports/trial-balance`} className="ml-1 text-indigo-600 hover:underline font-normal">view</Link>
+                </div>
+              )}
+            </div>
+          )}
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
             <div className="text-[12px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Shortcuts</div>
             <ul className="text-[12px] text-slate-600 space-y-1.5">

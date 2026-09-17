@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-17 (R-13 RELEASED as v1.13.0 — login hardening: rate limiting + timing equalization, server-only. v1.13.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-17 (R-14 RELEASED as v1.14.0 — TB health surface: out-of-balance visibility. v1.14.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
 
 ## What zprime is
 

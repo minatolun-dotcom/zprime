@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased — R-13 login hardening (F-13-1 rate limiting + F-13-2 timing enumeration)
+## Unreleased — R-14 TB health surface (out-of-balance visibility)
+
+**Minimal additive change — no migration, no accounting-math change.**
+
+R-14 investigation re-verified the action plan's three remaining UX candidates against v1.13.0: the VoucherScreen negative-stock warning and the import per-voucher error surfacing were both superseded by R-06/R-04 (server-side guards make them convenience-only — NOT A BUG — VERIFIED; import atomicity live-probed). The one confirmed gap (F-14-1, P3): books imbalance had **no surface anywhere** — the TB report showed Dr/Cr totals side-by-side with no warning, and the Gateway had no health indicator. The only way books can go out of balance since posting-time validation exists is operator data (e.g. an asymmetric opening entry — exactly the historical B-02 class); the O-1 block's own fixture had silently carried a 10,000 imbalance in the test suite with nothing to catch it.
+
+- **`accounting.ts` `trialBalance()`:** returns additive `difference: r2(totalDebit - totalCredit)` — display-only arithmetic on already-computed totals (same class as the balance-sheet `difference`).
+- **Trial Balance report:** amber "Difference in books: X — check opening balances or unposted entries." banner when `|difference| > 0.004` — a direct copy of the existing Balance Sheet banner pattern; no other UI change.
+- **Gateway:** compact "Books Health" card — `Trial Balance ✓ balanced` / `Trial Balance ✗ out by X` with a link to the TB report; renders nothing on fetch failure (silent degrade, no regression surface).
+- **Tests:** `final_regression.py` +6 R-14 checks (578) — additive field present, 0 on clean books, injected Dr-777.77 asymmetry surfaces exactly, identity `difference == totalDebit - totalCredit` holds; new `r14_ui.js` browser suite (11 checks) — clean → no banner + balanced chip; asymmetry → banner + out-by chip + view link; counterpart opening restores balance everywhere.
+
+Verification: Python **860/860** (39+88+65+61+578+29); browser **219/219** (208 + 11 R-14) on a rebuilt image with fresh volume; typecheck server+client clean.
+
+---
+
+## v1.13.0 — R-13 login hardening (F-13-1 rate limiting + F-13-2 timing enumeration)
 
 **Server-only change — no migration, no client modification, no new dependency.**
 

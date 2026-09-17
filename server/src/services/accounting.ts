@@ -156,7 +156,10 @@ export async function trialBalance(companyId: number, period: Period) {
     .sort((a, b) => a.name.localeCompare(b.name));
   const totalDebit = r2(rows.reduce((s, r) => s + r.debit, 0));
   const totalCredit = r2(rows.reduce((s, r) => s + r.credit, 0));
-  return { rows, totalDebit, totalCredit };
+  // R-14: display-only health field (same class as the balance-sheet
+  // `difference`) so the UI can surface an out-of-balance books state.
+  // Pure arithmetic on the already-computed totals — no calculation changes.
+  return { rows, totalDebit, totalCredit, difference: r2(totalDebit - totalCredit) };
 }
 
 /** Profit & Loss with trading + net sections. */
