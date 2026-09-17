@@ -200,6 +200,22 @@ export const vouchers = pgTable("vouchers", {
   uniqueIndex("vouchers_company_type_number_uq").on(t.companyId, t.voucherTypeId, t.number),
 ]);
 
+// R-10 (B-10): server-side idempotency for voucher creation. A client-generated
+// key identifies one business event; replaying it returns the ORIGINAL voucher
+// instead of posting a duplicate. Company-scoped, one row per accepted event;
+// the key row is written in the SAME transaction as the voucher insert.
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    voucherId: integer("voucher_id").notNull().references(() => vouchers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("idempotency_keys_company_key_uq").on(t.companyId, t.key)],
+);
+
 export const voucherEntries = pgTable("voucher_entries", {
   id: serial("id").primaryKey(),
   voucherId: integer("voucher_id").notNull().references(() => vouchers.id, { onDelete: "cascade" }),

@@ -35,6 +35,14 @@ export default function VoucherScreen() {
   const [inv, setInv] = useState<InvRow[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // R-10 (B-10): ref mirror of `saving` — the Ctrl+A hotkey closure must read
+  // the live value, not the one captured at effect registration time.
+  const savingRef = useRef(false);
+  // R-10: one idempotency key per NEW voucher form (stable across save
+  // attempts/retries, so a double-accept or network retry replays the original
+  // voucher server-side instead of posting a duplicate). Edit saves are
+  // naturally idempotent (PUT) and carry no key.
+  const idemKeyRef = useRef(isEdit ? null : crypto.randomUUID());
   const [detailed, setDetailed] = useState(true);
   // R-02: a cancelled voucher opened from Day Book is displayed read-only.
   const [cancelledView, setCancelledView] = useState(false);
@@ -198,6 +206,7 @@ export default function VoucherScreen() {
 
   // ---- save ----
   const save = async () => {
+    if (savingRef.current) return; // R-10: single-shot save (hotkey path)
     setError("");
     if (cancelledView) { setError("This voucher is cancelled and cannot be altered. Uncancel it from the Day Book first."); return; }
     if (Math.abs(diff) > 0.004) { setError(`Voucher does not balance — difference ${diff.toFixed(2)}`); return; }
@@ -262,9 +271,10 @@ export default function VoucherScreen() {
     };
 
     setSaving(true);
+    savingRef.current = true;
     try {
       if (isEdit) await put(`/api/c/${cid}/vouchers/${voucherId}`, payload);
-      else await post(`/api/c/${cid}/vouchers`, payload);
+      else await post(`/api/c/${cid}/vouchers`, { ...payload, idempotencyKey: idemKeyRef.current ?? undefined });
       qc.invalidateQueries({ queryKey: ["vouchers"] });
       qc.invalidateQueries({ queryKey: ["daybook"] });
       nav(`/company/${cid}/daybook`);
@@ -272,6 +282,7 @@ export default function VoucherScreen() {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 

@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.10.0
+
+- **Commit:** `v1.10.0^{}` — resolve with `git rev-parse v1.10.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.10.0` (annotated; `v1.10.0^{}` = the release commit, verified at release)
+- **Major purpose:** Voucher submission idempotency (R-10, B-10 P2) — duplicate submissions no longer double-post. Additive migration `0005` creates `idempotency_keys` (`UNIQUE(company_id, key)` → `voucher_id`, FKs cascade with company/voucher). `POST /vouchers` accepts an optional client key (body `idempotencyKey` or `X-Idempotency-Key` header, header wins, ≤200 chars): a replay returns the ORIGINAL voucher; the key row is written in the SAME transaction as the voucher insert; the unique index is the concurrency authority (the 23505 loser returns the winner's voucher, not 409, and falls through to the existing numbering-collision handling when the collision is the voucher-number index). Key is company-scoped via `cid()`; identity only from the verified JWT. Client (`VoucherScreen`): one UUID per new voucher form (stable across save attempts/retries; edit saves are PUT and carry no key) + `savingRef` single-shot guard covering the Ctrl+A hotkey path (the old `saving`-state disable only covered the button). No key = current behavior (fully backward compatible; manual-number race semantics unchanged).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 813/813 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 531 (+12 dedicated R-10 checks: legacy no-key double POST unchanged, keyed replay → same voucher/number, header ≡ body key, different key → new voucher, 3 concurrent same-key → exactly one voucher, key company-scoped, replay-after-cancel returns the cancelled voucher faithfully, TB balanced / no silent dup), attack-the-fixes 29)
+  - 208/208 browser checks (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10 — double-Ctrl+A through the real UI posts exactly one voucher) on a fresh volume with migrations 0000→0005 (fresh-install verified)
+  - typecheck (server + client) clean
+  - accounting mathematics untouched: idempotency decides WHETHER a duplicate is written, never HOW anything calculates
+- **Important fixes:** P2 closed — one double-accept no longer inflates AR/AP/stock/GSTR-1 figures (TB stays balanced, so nothing else would catch it).
+- **Immutable status:** 🔒 IMMUTABLE — `v1.10.0` is the current production baseline.
+
+---
+
 ## v1.9.0 ⚠ BREAKING
 
 - **Commit:** `v1.9.0^{}` — resolve with `git rev-parse v1.9.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

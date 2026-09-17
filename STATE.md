@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-16 (R-09 fail-fast deployment secrets RELEASED as v1.9.0 — BREAKING. Current phase: IDLE. See RELEASES.md, CHANGELOG.md and CONTINUE.md.)
+**Last updated:** 2026-09-16 (**v1.10.0 RELEASED** — R-10 duplicate-submission idempotency (B-10). Release commit + annotated tag `v1.10.0` created; v1.10.0 is the current immutable baseline. See RELEASES.md, CHANGELOG.md, CONTINUE.md.)
 
 ## What zprime is
 

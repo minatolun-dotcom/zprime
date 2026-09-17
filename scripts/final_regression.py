@@ -1806,5 +1806,115 @@ _pg9 = _sp9.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-t
     "SELECT count(*) FROM users"], capture_output=True, text=True)
 check("R-09: users table non-empty (seeding path pre-validated)", _pg9.stdout.strip() not in ("", "0"), _pg9.stdout.strip())
 
+# ================= R-10: duplicate-submission idempotency (B-10) =================
+print("-- R-10: duplicate-submission idempotency --")
+import json as _json10
+
+# a fresh company so key state is deterministic
+s, c10 = req("POST", "/api/companies", {"name": "R10 Suite Co", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R10: company created", s == 200 and c10.get("id"), (s, str(c10)[:120]))
+C10 = f"/api/c/{c10['id']}"
+
+s, led10 = req("GET", f"{C10}/ledgers")
+_cash10 = next(l for l in led10 if l["name"] == "Cash")
+D10 = _cash10["id"]
+s, g10 = req("GET", f"{C10}/groups")
+_sd = next(g for g in g10 if g["name"] == "Sundry Debtors")
+s, d10 = req("POST", f"{C10}/ledgers", {"name": "R10 Debtor", "groupId": _sd["id"], "openingBalance": 0, "billWise": True})
+DEB10 = d10["id"]
+s, ts10 = req("GET", f"{C10}/voucher-types")
+PAY10 = next(t for t in ts10 if t["name"] == "Payment")["id"]
+SAL10 = next(t for t in ts10 if t["name"] == "Sales")["id"]
+s, sl10 = req("POST", f"{C10}/ledgers", {"name": "R10 Sales", "groupId": next(g for g in g10 if g["name"] == "Sales Accounts")["id"], "openingBalance": 0})
+SLED10 = sl10["id"]
+
+def _pay10(key=None, amount=2500):
+    body = {"voucherTypeId": PAY10, "date": "2026-09-10", "narration": "R10 idem payment",
+            "partyLedgerId": DEB10,
+            "entries": [
+                {"ledgerId": DEB10, "amount": amount, "bills": [{"billType": "on_account", "billName": "On Account", "amount": amount, "dueDate": None}]},
+                {"ledgerId": D10, "amount": -amount, "bills": []}],
+            "inventoryEntries": []}
+    if key: body["idempotencyKey"] = key
+    return body
+
+# 1. no key -> legacy behavior (current suite pattern is unaffected)
+s, v10a = req("POST", f"{C10}/vouchers", _pay10())
+s, v10b = req("POST", f"{C10}/vouchers", _pay10())
+check("R10: no-key legacy double POST still creates two vouchers", s == 200 and v10a["id"] != v10b["id"], (s, v10a.get("id"), v10b.get("id")))
+
+# 2. same key twice -> same voucher returned, ONE posting
+k1 = "suite-r10-key-1"
+s1, v10c = req("POST", f"{C10}/vouchers", _pay10(k1))
+s2, v10d = req("POST", f"{C10}/vouchers", _pay10(k1))
+check("R10: keyed replay returns the SAME voucher", s1 == 200 and s2 == 200 and v10c["id"] == v10d["id"], (s1, s2, v10c.get("id"), v10d.get("id")))
+check("R10: keyed replay does not draw a second number", v10c["number"] == v10d["number"], (v10c.get("number"), v10d.get("number")))
+
+# 3. header key equivalent to body key (one-off opener with an explicit header;
+#    the shared `req` cannot carry extra headers and the cookie jar is reusable)
+import urllib.request as _ur10
+_op10 = _ur10.build_opener(_ur10.HTTPCookieProcessor(jar))
+_r10 = _ur10.Request(BASE + f"{C10}/vouchers", data=_json10.dumps(_pay10()).encode(),
+                     method="POST", headers={"Content-Type": "application/json", "X-Idempotency-Key": k1})
+try:
+    with _op10.open(_r10) as _resp10:
+        _t10 = _resp10.read().decode(); s, v10e = _resp10.status, _json10.loads(_t10)
+except urllib.error.HTTPError as _e10:
+    _t10 = _e10.read().decode()
+    try: s, v10e = _e10.code, _json10.loads(_t10)
+    except Exception: s, v10e = _e10.code, {"raw": _t10}
+check("R10: header key replays the same voucher", s == 200 and v10e["id"] == v10c["id"], (s, v10e.get("id") if isinstance(v10e, dict) else v10e, v10c.get("id")))
+
+# 4. different key -> new voucher
+s, v10f = req("POST", f"{C10}/vouchers", _pay10("suite-r10-key-2"))
+check("R10: different key creates a different voucher", s == 200 and v10f["id"] != v10c["id"], (s, v10f.get("id")))
+
+# 5. concurrent same-key POSTs -> exactly one voucher
+_conc10: list = []
+def _fire10():
+    _s, _v = req("POST", f"{C10}/vouchers", _pay10("suite-r10-concurrent"))
+    _conc10.append((_s, _v.get("id") if isinstance(_v, dict) else None))
+import threading as _th10
+_threads10 = [_th10.Thread(target=_fire10) for _ in range(3)]
+[t.start() for t in _threads10]; [t.join() for t in _threads10]
+_ok10 = [x for x in _conc10 if x[0] == 200]
+check("R10: all concurrent same-key POSTs succeed", len(_ok10) == 3, _conc10)
+check("R10: concurrent same-key POSTs yield exactly ONE voucher id", len({x[1] for x in _ok10}) == 1, _conc10)
+
+# 6. company scoping: same key value in ANOTHER company creates its own voucher
+s, c10b = req("POST", "/api/companies", {"name": "R10 Suite Co B", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+C10B = f"/api/c/{c10b['id']}"
+s, led10b = req("GET", f"{C10B}/ledgers")
+_cashB = next(l for l in led10b if l["name"] == "Cash"); DB_ = _cashB["id"]
+s, tb10 = req("GET", f"{C10B}/reports/trial-balance")
+s, v10g = req("POST", f"{C10B}/vouchers", {"voucherTypeId": next(t["id"] for t in req("GET", f"{C10B}/voucher-types")[1] if t["name"] == "Journal"),
+                                            "date": "2026-09-10", "narration": "R10 other co",
+                                            "entries": [{"ledgerId": DB_, "amount": 10, "bills": []}, {"ledgerId": DB_, "amount": -10, "bills": []}],
+                                            "inventoryEntries": [], "idempotencyKey": k1})
+check("R10: key is company-scoped (same key, other company -> new voucher)", s == 200 and v10g.get("id") not in (None, v10c["id"]), (s, v10g.get("id")))
+
+# 7. replay after cancel returns the cancelled voucher faithfully
+s, _ = req("POST", f"{C10}/vouchers/{v10c['id']}/cancel", {"reason": "R10 replay-after-cancel"})
+s, v10h = req("POST", f"{C10}/vouchers", _pay10(k1))
+check("R10: replay after cancel returns the cancelled voucher (no resurrection)", s == 200 and v10h["id"] == v10c["id"] and v10h["isCancelled"] is True, (s, v10h.get("id"), v10h.get("isCancelled")))
+
+# 8. accounting impact of the duplicate path: TB balanced and only the counted
+#    postings exist (legacy 2 + keyed 1 + other-co 1 in its own company)
+s, tb10 = req("GET", f"{C10}/reports/trial-balance")
+check("R10: TB stays balanced", tb10["totalDebit"] == tb10["totalCredit"], (tb10["totalDebit"], tb10["totalCredit"]))
+s, cnt10 = req("GET", f"{C10}/vouchers")
+_npay = sum(1 for v in cnt10 if v["typeName"] == "Payment")
+check("R10: exactly the expected payment count (no silent dup)", _npay == 5, ("payments", _npay))
+
+# cleanup
+_sql(f"DELETE FROM bill_allocations WHERE entry_id IN (SELECT id FROM voucher_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c10['id']}))")
+_sql(f"DELETE FROM voucher_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c10['id']})")
+_sql(f"DELETE FROM inventory_entries WHERE voucher_id IN (SELECT id FROM vouchers WHERE company_id={c10['id']})")
+_sql(f"DELETE FROM idempotency_keys WHERE company_id={c10['id']} OR company_id={c10b['id']}")
+_sql(f"DELETE FROM vouchers WHERE company_id={c10['id']} OR company_id={c10b['id']}")
+_sql(f"DELETE FROM ledgers WHERE company_id={c10['id']} OR company_id={c10b['id']}")
+_sql(f"DELETE FROM user_companies WHERE company_id={c10['id']} OR company_id={c10b['id']}")
+_sql(f"DELETE FROM companies WHERE id={c10['id']} OR id={c10b['id']}")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

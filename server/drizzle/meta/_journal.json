@@ -36,6 +36,13 @@
       "when": 1789386400000,
       "tag": "0004_r06_negative_stock_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789472800000,
+      "tag": "0005_r10_idempotency_keys",
+      "breakpoints": true
     }
   ]
 }

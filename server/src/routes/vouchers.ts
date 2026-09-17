@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
-  stockItems, godowns, tdsSections, voucherCounters, payslips, companies,
+  stockItems, godowns, tdsSections, voucherCounters, payslips, companies, idempotencyKeys,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
@@ -533,14 +533,56 @@ export default async function voucherRoutes(app: FastifyInstance) {
     if (!parsed.success) throw bad("Invalid voucher: " + parsed.error.issues[0]?.message);
     const input = parsed.data;
     const manual = !!input.number?.trim();
+    // R-10 (B-10): optional client-generated idempotency key. One key = one
+    // business event: a replay (double-accept, network retry) returns the
+    // ORIGINAL voucher instead of posting a duplicate. The key is scoped to the
+    // company via cid(), read only from the verified-JWT request — never from
+    // user-supplied identity. Recorded in the SAME transaction as the voucher
+    // insert; the unique index is the concurrency authority (same pattern as
+    // the voucher-number unique index).
+    const headerKey = req.headers["x-idempotency-key"];
+    const rawKey = typeof headerKey === "string" && headerKey.trim() ? headerKey.trim() : input.idempotencyKey?.trim();
+    const idemKey = rawKey && rawKey.length <= 200 ? rawKey : undefined;
+    if (idemKey) {
+      const [existing] = await db
+        .select({ voucherId: idempotencyKeys.voucherId })
+        .from(idempotencyKeys)
+        .where(and(eq(idempotencyKeys.companyId, c), eq(idempotencyKeys.key, idemKey)));
+      if (existing) {
+        const [v] = await db.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, existing.voucherId)));
+        if (v) return v;
+        // Key row survived but its voucher is gone (should not happen outside
+        // manual DB surgery): fall through and treat this as a fresh event.
+      }
+    }
     // A transaction rollback undoes the counter draw, so a retry inside the next
     // transaction would redraw the same colliding number. On a unique-index
     // collision for automatic numbering, burn numbers OUTSIDE the transaction
     // so the next attempt advances past the stale counter value.
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        return await db.transaction(async (tx) => insertVoucherTx(tx, c, input, "manual"));
+        return await db.transaction(async (tx) => {
+          const v = await insertVoucherTx(tx, c, input, "manual");
+          if (idemKey) {
+            await tx.insert(idempotencyKeys).values({ companyId: c, key: idemKey, voucherId: v.id });
+          }
+          return v;
+        });
       } catch (err: any) {
+        // R-10: two concurrent requests with the same key race on the unique
+        // index; the loser must return the winner's voucher, not 409.
+        if (idemKey && pgCode(err) === "23505") {
+          const [existing] = await db
+            .select({ voucherId: idempotencyKeys.voucherId })
+            .from(idempotencyKeys)
+            .where(and(eq(idempotencyKeys.companyId, c), eq(idempotencyKeys.key, idemKey)));
+          if (existing) {
+            const [v] = await db.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, existing.voucherId)));
+            if (v) return v;
+          }
+          // Index violation from the voucher-number index (not the key index):
+          // fall through to the existing numbering-collision handling below.
+        }
         if (!manual && pgCode(err) === "23505") {
           try {
             await db.transaction(async (tx) => {

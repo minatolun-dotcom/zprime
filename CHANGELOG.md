@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased — R-09 fail-fast deployment secrets (B-08) — BREAKING
+## Unreleased — R-10 duplicate-submission idempotency (B-10)
+
+**813/813 automated checks passed (Python: 39+88+65+61+531+29), 208/208 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07 + 10 R-10), zero failures.**
+
+### R-10 — Duplicate-submission idempotency: B-10 (CONFIRMED P2 → IMPLEMENTED, full scope approved)
+
+**Root cause (investigation, live-reproduced on v1.9.0):** `POST /vouchers` had zero idempotency machinery. A double-accept or network retry posted a second complete, balanced voucher — sequentially (2× identical Payment → vouchers no=1, no=2) and concurrently (3 simultaneous identical POSTs → 3 vouchers, auto-numbering happily serving duplicates). A client-accurate bill-wise Sales duplicate inflated **Receivables 3,000 → 6,000** with two open bills; TB stays balanced throughout, so no report ever flags it. The client's only guard was the disabled Accept **button** — the primary keyboard-first `Ctrl+A` path called `save()` unguarded (and its hotkey closure captured a stale `saving` value). The plan's INV2 probe never graduated into a suite: zero coverage.
+
+**Fix (approved full scope):**
+- **Migration `0005_r10_idempotency_keys.sql` (additive):** `idempotency_keys` table — `company_id` FK (CASCADE), `key` FK→voucher (`CASCADE`), `created_at`, `UNIQUE(company_id, key)`, both lookup directions indexed. Hand-authored SQL + snapshot + journal entry per the established repo convention.
+- **`vouchers.ts` POST:** optional client-generated `idempotencyKey` (body or `X-Idempotency-Key` header, ≤200 chars). One key = one business event: the lookup runs **before** the insert; record + voucher insert share **one transaction**; on a same-key unique-index race the loser resolves the winner's voucher and returns it (no 409). Replay returns the **original** voucher, including after cancellation — the replier sees exactly what the first request posted. No key = byte-identical legacy behavior (fully backward compatible).
+- **`VoucherScreen.tsx`:** a UUID is generated when a *new* voucher form opens (retry-safe: re-submits reuse it; edits carry none) and sent with every save; a `savingRef` guard makes the `Ctrl+A` hotkey path single-shot (fixes the stale-closure hole).
+- **`final_regression.py` +12 R-10 checks:** same-key replay returns the original voucher id; concurrent same-key POSTs → one voucher; keys are company-scoped (same key in another company posts fresh); keyless legacy unchanged; no-key edits unaffected; replay-after-cancel returns the cancelled voucher faithfully.
+- **`r10_ui.js` (new browser suite, 10 checks):** double-accept (Ctrl+A ×2) through the real UI → exactly one voucher, exactly one POST fired (client guard observed), no error banner; a fresh form legitimately posts the second voucher (no over-protection); TB balanced.
+
+## v1.9.0 — R-09 fail-fast deployment secrets (B-08) — BREAKING
 
 **801/801 automated checks passed (Python: 39+88+65+61+519+29), 198/198 browser checks (153 baseline + 12 R-03 + 9 R-04 + 12 R-05 + 12 R-07), zero failures.**
 

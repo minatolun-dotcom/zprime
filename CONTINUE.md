@@ -1,29 +1,32 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-16 — R-09 released as v1.9.0 (fail-fast deployment secrets, BREAKING: default-secret deployments refuse to boot). Process state: IDLE.
+**Last updated:** 2026-09-16 — **v1.10.0 RELEASED** (R-10 B-10 duplicate-submission idempotency). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.6.0
-- **Current HEAD:** `caadf983aba600ffc5abd976f2e5281df890cf97` (= tag `v1.6.0`; see RELEASES.md)
-- **Current phase:** `IDLE` — no active R-item — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. R-09 (B-08, full fail-fast) is complete and released as v1.9.0.
-- **Next permitted action:** next investigation only (B-10 duplicate-submission protection / B-12 backup-restore UX are the leading remaining candidates) — never implementation without its own investigation → review → approval cycle.
+- **Current release:** v1.10.0
+- **Current HEAD:** the v1.10.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — R-10 released; next R-item requires its own investigation → review → approval cycle
+- **Last completed task:** R-10 (B-10 duplicate-submission idempotency). Investigation: `R-10_INVESTIGATION.md`; release entry: `RELEASES.md`.
+- **What changed (approved full scope):** additive migration `0005_r10_idempotency_keys.sql` (`idempotency_keys`, UNIQUE(company_id, key)); `vouchers.ts` POST accepts optional `idempotencyKey` (body or `X-Idempotency-Key` header) — replay returns the ORIGINAL voucher, key+voucher recorded in one transaction, concurrent same-key race resolves to one voucher; `VoucherScreen.tsx` generates a UUID per new-voucher form and sends it, plus a `savingRef` guard making Ctrl+A single-shot; `final_regression.py` +12 R-10 checks; `r10_ui.js` new 10-check browser suite.
+- **Verification on the final tree:** Python **813/813** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **531** incl. 12 R-10, attack-the-fixes 29); browser **208/208** (153 + 12 + 9 + 12 + 12 + 10 R-10) on a rebuilt client with a fresh-volume stack; typecheck server+client clean; migration verified on both fresh install (6/6 applied) and the test rig (0005 forward-applied from 5).
+- **Next permitted action:** on instruction, begin the R-11 investigation (leading candidates: B-12 backup/restore UX, B-11 purchase-return/DN test coverage, VoucherScreen negative-stock warning). No implementation without investigation → review → approval.
 - **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
 - **Blocked decisions (waiting on human):** none.
 
 ## Baseline verification (must re-confirm every session)
 
 ```bash
-git rev-parse HEAD     # expect the v1.5.0 release commit (see RELEASES.md)
-git describe --tags    # expect v1.5.0
-git status --short     # expect clean
+git rev-parse HEAD     # expect the v1.10.0 release commit (see RELEASES.md)
+git describe --tags    # expect v1.10.0
+git status --short     # expect clean tree except the intentional untracked ZLEDGER_PRODUCTION_ACTION_PLAN.md
 ```
 
-- Test baseline at v1.6.0: **763/763 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 481 incl. 21 R-06 checks, attack-the-fixes 29) + **186/186 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12). Exact commands in `STATE.md` ("Verification record").
-- Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s).
+- Test baseline at v1.10.0: **813/813 automated checks** (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 531 incl. R-06/R-07/R-08/R-09/R-10 checks, attack-the-fixes 29) + **208/208 browser** (baseline 153 + R-03 UI 12 + R-04 UI 9 + R-05 UI 12 + R-07 UI 12 + R-10 UI 10). Exact commands in `STATE.md` ("Verification record").
+- Test rig: disposable Postgres `zprime-test-pg` on port 55432; suites self-host servers on ports 3100–3106; do not run two suites concurrently; kill stray `tsx server/src/index.ts` processes before running suites (zombies squat ports and cause 500s). If docker-compose suites fail with "cannot connect", check the container exited (host reboot/Docker daemon restart leaves it Exited) and `docker start zprime-test-pg` first.
+- Harness lessons (R-10): never `pkill -f <pattern>` where the pattern matches your own shell's command line — use a `[x]`-bracketed pattern or `start_new_session=True` + `os.killpg`; suite output can be block-buffered — rerun with `python3 -u` before diagnosing a "hang".
 
 ## Known intentional untracked files (do not delete; do not stage casually)
 
@@ -47,6 +50,24 @@ git status --short     # expect clean
 ---
 
 ## Session log (append at the end of every substantial session)
+
+### 2026-09-16 — R-10 implemented and verified (RELEASE_REVIEW pending)
+
+- **What was completed:** full approved scope — additive migration `server/drizzle/0005_r10_idempotency_keys.sql` + snapshot + journal (hand-authored per repo convention; forward-applied on the test rig from 5→6, fresh install 6/6); `vouchers.ts` POST idempotency (optional body/header key, pre-insert lookup, same-transaction record, 23505-race loser returns winner's voucher); `VoucherScreen.tsx` per-form UUID + `savingRef` Ctrl+A guard; `final_regression.py` +12 R-10 checks; new `scripts/acceptance/r10_ui.js` (10 checks). Probe data from the investigation was fully cleaned (verified 0 leftover companies).
+- **Tests run:** Python **813/813** (smoke 39, adversarial 88, bug-fix 65, reconcile 61, final regression **531** incl. 12 R-10, attack-the-fixes 29); browser **208/208** on rebuilt client + fresh-volume stack (153 + 12 + 9 + 12 + 12 + 10); typecheck server+client clean; `git diff --check` clean.
+- **Harness lessons:** suites fail confusingly when `zprime-test-pg` is Exited after a host/Docker-daemon restart — start it first; `pkill -f` patterns must be self-immune (`[x]` brackets); prefer `python3 -u` when diagnosing apparent suite hangs.
+- **Current state:** VERIFICATION + BROWSER_VERIFICATION complete → RELEASE_REVIEW (no commit, no tag).
+- **Next permitted action:** release review of the full diff; on your instruction, ledger docs (RELEASES/ROADMAP/STATE/CONTINUE) → release gate → commit `Release v1.10.0: duplicate-submission idempotency` + annotated tag `v1.10.0` → verify tag/HEAD/clean tree.
+- **Blocked decisions:** release go/no-go.
+
+### 2026-09-16 — R-10 investigation COMPLETE (HUMAN_REVIEW pending)
+
+- **Candidate:** B-10 (duplicate submissions double-post, P2). Verified baseline first: HEAD `f2403b1` = v1.9.0, clean tree.
+- **Code findings:** `POST /vouchers` has no idempotency mechanism (0 matches for idempoten/requestId/dedupe in server/src); client `saving` guard covers only the Accept button — `Ctrl+A` hotkey calls `save()` unguarded (and deps exclude `saving`, so a closure guard would be stale).
+- **Live reproductions (disposable companies, fully cleaned, verified 0 leftovers):** sequential exact duplicate → 2 vouchers (INV2 confirmed); 3 concurrent identical POSTs → 3 vouchers; client-accurate bill-wise duplicate (re-accept recomputes bill name) → 2nd sale posted, **Receivables 3,000 → 6,000** (two open bills). Exact resend of bill-wise sale → 409 via A-02 bill-name uniqueness (accidental, partial shield only).
+- **NOT A BUG (verified):** manual-number concurrent race (1×200 + 2×409 via unique index); transaction atomicity (no partial state); payroll duplicate-month guard; XML re-import (deliberate user action).
+- **Proposed scope (R-10_INVESTIGATION.md §9, awaiting approval):** additive `idempotency_keys` migration + optional client-generated key on POST /vouchers (replay returns original voucher) + `savingRef` hotkey guard + regression/browser tests.
+- **Working tree:** + `R-10_INVESTIGATION.md` (new), CONTINUE.md (this file). No source/test/migration changes. Probe scripts in /tmp only.
 
 ### 2026-09-16 — R-09 RELEASED as v1.9.0 (BREAKING)
 
