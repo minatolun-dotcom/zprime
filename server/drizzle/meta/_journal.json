@@ -43,6 +43,13 @@
       "when": 1789472800000,
       "tag": "0005_r10_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789476400000,
+      "tag": "0006_r17_voucher_actor",
+      "breakpoints": true
     }
   ]
 }

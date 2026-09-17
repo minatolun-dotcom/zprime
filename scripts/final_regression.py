@@ -2260,5 +2260,46 @@ check("R-15: unpaired opening surfaces honestly (TB -5000 / BS +5000)",
       abs(tb15b["difference"] - (-5000)) < 0.005 and abs(bs15b["difference"] - 5000) < 0.005,
       {"tb": tb15b["difference"], "bs": bs15b.get("difference")})
 
+# ================= R-17: audit-trail groundwork (actor provance on vouchers) =================
+print("-- R-17: created_by / updated_by stamping --")
+
+# The suite's admin is user id 1 on the fresh schema (seeded first). Stamp
+# verification uses the API response shape: createdBy/updatedBy are returned
+# by GET/POST voucher payloads (drizzle returning() exposes all columns).
+s, who = req("GET", "/api/auth/me")
+_admin_id_17 = None
+# resolve the admin's id via the users table through a fresh company member
+# (the API does not expose user ids directly; use seeded id from DB):
+_r17a = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "zprime", "-tAc",
+                 "SELECT id FROM users WHERE username='admin'"], capture_output=True, text=True)
+_admin_id_17 = int(_r17a.stdout.strip())
+check("R-17: admin id resolved", _admin_id_17 >= 1, _r17a.stdout)
+
+# 1. manual POST stamps created_by; updated_by/updated_at null on creation
+s, v17 = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Payment"], "date": "2026-06-01",
+    "entries": [{"ledgerId": rent["id"], "amount": -300}, {"ledgerId": cash["id"], "amount": 300}]})
+check("R-17: manual voucher stamped created_by = actor", s == 200 and v17.get("createdBy") == _admin_id_17,
+      {"createdBy": v17.get("createdBy"), "admin": _admin_id_17})
+check("R-17: created voucher has no updated_by/updated_at", v17.get("updatedBy") is None and v17.get("updatedAt") is None, (v17.get("updatedBy"), v17.get("updatedAt")))
+
+# 2. PUT sets updated_by/updated_at; created_by immutable. (PUT returns {id};
+# re-fetch the voucher to observe the stamped row.)
+s, _ = req("PUT", f"{C}/vouchers/{v17['id']}", {"voucherTypeId": vt["Payment"], "date": "2026-06-02",
+    "entries": [{"ledgerId": rent["id"], "amount": -310}, {"ledgerId": cash["id"], "amount": 310}]})
+s, v17e = req("GET", f"{C}/vouchers/{v17['id']}")
+check("R-17: edit stamps updated_by, preserves created_by", s == 200 and v17e.get("updatedBy") == _admin_id_17 and v17e.get("createdBy") == _admin_id_17,
+      {"updatedBy": v17e.get("updatedBy"), "createdBy": v17e.get("createdBy")})
+check("R-17: edit stamps updated_at", v17e.get("updatedAt") is not None, v17e.get("updatedAt"))
+
+# 3. cancel/uncancel actor semantics unchanged (R-02): cancel stamps cancelled_by,
+# uncancel clears it; created_by must survive the cycle untouched.
+s, _ = req("POST", f"{C}/vouchers/{v17['id']}/cancel", {"reason": "r17 probe"})
+s, v17c = req("GET", f"{C}/vouchers/{v17['id']}")
+check("R-17: cancel stamps cancelled_by (R-02 unchanged)", s == 200 and v17c.get("cancelledBy") == _admin_id_17, v17c.get("cancelledBy"))
+s, _ = req("POST", f"{C}/vouchers/{v17['id']}/uncancel")
+s, v17u = req("GET", f"{C}/vouchers/{v17['id']}")
+check("R-17: uncancel clears cancelled_by, keeps created_by", v17u.get("cancelledBy") is None and v17u.get("createdBy") == _admin_id_17,
+      {"cancelledBy": v17u.get("cancelledBy"), "createdBy": v17u.get("createdBy")})
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

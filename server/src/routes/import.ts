@@ -448,6 +448,8 @@ export default async function importRoutes(app: FastifyInstance) {
             narration: String(v.NARRATION ?? ""),
             partyLedgerId,
             source: "import",
+            // R-17: actor provance — the importing authenticated user.
+            createdBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
             chequeNumber: v.CHEQUENUMBER ? String(v.CHEQUENUMBER) : null,
             placeOfSupply: v.PLACEOFSUPPLY ? String(v.PLACEOFSUPPLY) : null,
           }).returning();

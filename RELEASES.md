@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.17.0
+
+- **Commit:** `v1.17.0^{}` — resolve with `git rev-parse v1.17.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.17.0` (annotated; `v1.17.0^{}` = the release commit, verified at release)
+- **Major purpose:** Voucher actor provance — audit-trail groundwork (R-17, P3 feature item). Additive migration `0006_r17_voucher_actor.sql`: `vouchers.created_by` + `updated_by` (FK → users, `ON DELETE SET NULL`, nullable) + `updated_at`; existing rows keep NULL — no fabricated backfill (pre-R-17 actor values are unknowable; honesty over cosmetics). Propagation at all three voucher write sites from the verified JWT identity (`req.userId`, never client-supplied): `insertVoucherTx` stamps `created_by` (manual POST via new actor parameter); the XML import's own insert stamps the importing user; `PUT /vouchers/:id` stamps `updated_by` + `updated_at` with `created_by` immutable. Cancel/uncancel R-02 semantics untouched; R-10 idempotent replay records no actor event. Master tables deliberately deferred (no per-row history surface to anchor them; generic-CRUD site makes them a ~15-line later addition). No audit-events table, no history UI — groundwork only. No client change, no accounting-math change.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 875/875 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 593 (+7 dedicated R-17 checks: manual stamping, no updated_* on creation, edit stamps updated_* preserving created_by, updated_at stamped, cancel/uncancel actor cycle unchanged, admin id resolution), attack-the-fixes 29)
+  - 219/219 browser checks on a rebuilt image with fresh volume (7/7 migrations — fresh install with 0006 verified)
+  - typecheck clean (client untouched)
+  - upgrade-safe: additive nullable columns; fresh-install and upgrade paths both verified
+- **Important fixes:** the future audit feature (WHO entered/edited each voucher) now has its identity plumbing in place without another schema campaign; Day Book-level provance is queryable today.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.17.0` is the current production baseline.
+
+---
+
 ## v1.16.0
 
 - **Commit:** `v1.16.0^{}` — resolve with `git rev-parse v1.16.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

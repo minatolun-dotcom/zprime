@@ -186,6 +186,11 @@ export const vouchers = pgTable("vouchers", {
   // null). Populated from the authenticated session when available.
   cancelledBy: integer("cancelled_by").references(() => users.id, { onDelete: "set null" }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  // R-17: audit-trail groundwork — actor provance, stamped server-side from
+  // the verified JWT identity on every write path (manual, import, edit).
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
   cancelReason: text("cancel_reason"),
   source: text("source").notNull().default("manual"), // manual | import | payroll
   chequeNumber: text("cheque_number"),

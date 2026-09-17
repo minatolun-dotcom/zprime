@@ -422,7 +422,9 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
   }
 }
 
-async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string) {
+// R-17: actor provance — `actor` is the authenticated user's id (verified
+// JWT), stamped as created_by on every voucher insert (manual + import).
+async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number) {
   const type = await assertTypeTx(tx, companyId, input.voucherTypeId);
   await assertLedgersTx(tx, companyId, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
   await assertRefsTx(tx, companyId, input);
@@ -444,6 +446,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       narration: input.narration ?? "",
       partyLedgerId: input.partyLedgerId ?? null,
       source,
+      createdBy: typeof actor === "number" && actor > 0 ? actor : null,
       chequeNumber: input.chequeNumber ?? null,
       chequeDate: input.chequeDate ?? null,
       placeOfSupply: input.placeOfSupply ?? null,
@@ -562,7 +565,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         return await db.transaction(async (tx) => {
-          const v = await insertVoucherTx(tx, c, input, "manual");
+          const v = await insertVoucherTx(tx, c, input, "manual", req.userId);
           if (idemKey) {
             await tx.insert(idempotencyKeys).values({ companyId: c, key: idemKey, voucherId: v.id });
           }
@@ -647,6 +650,9 @@ export default async function voucherRoutes(app: FastifyInstance) {
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
             placeOfSupply: input.placeOfSupply ?? null,
+            // R-17: actor provance on edit — created_by stays untouched.
+            updatedBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
+            updatedAt: new Date(),
           })
           .where(eq(vouchers.id, id));
 

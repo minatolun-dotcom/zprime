@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-17 (R-16 RELEASED as v1.16.0 — deployment self-healing (compose-only) + RELEASE CANDIDATE status adopted per READINESS_REVIEW.md. v1.16.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-17 (R-17 RELEASED as v1.17.0 — voucher actor provance, audit groundwork. v1.17.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
 
 ## Product status
 

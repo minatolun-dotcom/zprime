@@ -1,31 +1,33 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-17 — R-16 RELEASED as v1.16.0 (deployment self-healing, compose-only) + RELEASE CANDIDATE adopted. Process state: IDLE.
+**Last updated:** 2026-09-17 — R-17 RELEASED as v1.17.0 (voucher actor provance, audit groundwork). Process state: IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.16.0 (resolve with `git rev-parse v1.16.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.16.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.16.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-16 (F-R1 deployment self-healing) + RELEASE CANDIDATE adoption. Review: `READINESS_REVIEW.md`.
-- **What changed (approved compose-only scope):** `docker-compose.yml` `restart: unless-stopped` on `app` + `db`; README deployment note (restart policy + first-boot race self-healing + operator-kill semantics). **RELEASE CANDIDATE** adopted in STATE.md per READINESS_REVIEW.md.
-- **Verification:** fresh-volume boot healthy (6/6 migrations); self-healing proven live (app-initiated crash → auto-restart → health 200, RestartCount incremented; `docker kill` honored as operator intent per Docker semantics); Python **868/868**; browser baseline + R-14 re-run green on the rebuilt stack.
+- **Current release:** v1.17.0 (resolve with `git rev-parse v1.17.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.17.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.17.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-17 (audit-trail groundwork). Investigation: `R-17_INVESTIGATION.md`.
+- **What changed (approved full scope):** migration `0006_r17_voucher_actor.sql` (additive: `vouchers.created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at`; no fabricated backfill) + snapshot/journal; propagation at all three write sites (`insertVoucherTx` actor param for manual POST, import's own insert stamps the importing user, PUT stamps updated_by/updated_at with created_by immutable); `final_regression.py` +7 R-17 checks → 593. No client change; masters deferred (documented).
+- **Verification:** Python **875/875** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **593** incl. 7 R-17, attack-the-fixes 29); browser **219/219** on a rebuilt image + fresh volume (7/7 migrations); typecheck clean.
 - **What changed (approved test-only scope):** `final_regression.py` +8 R-15 checks → 586: paired openings → TB 0; interstate sale → GSTR-3B net.igst 900 and GSTR-1 netIgst 900 (openings excluded, period-only return semantics); IGST duty-ledger position −5,000 → −5,900 (book position carries opening); unpaired opening → TB −5,000 / BS +5,000 surfaced honestly. No source, migration, or client changes.
 - **Investigation findings (live-probed on v1.14.0):** GST returns are period-only by design (derived purely from voucher entries; openings never enter the query) — GSTR-3B net 900 with a Cr-5000 IGST opening present; the duty ledger carries the true position (−5,000 → −5,900); unpaired openings surface honestly as TB/BS difference (R-14 card). No false invariant anywhere → F-15-1/F-15-2 NOT A BUG — VERIFIED. Proposed R-15: test-hardening only, ~6 checks locking this semantics (no source changes) → 866; alternatively a formal readiness review.
 - **Investigation findings (summary):** F-14-1 TB had no out-of-balance surface anywhere — SELECTED, P3. F-14-2 negative-stock warning: NOT A BUG — VERIFIED (R-06 server guard). F-14-3 import error surfacing: NOT A BUG — VERIFIED (R-04 atomic import, live-probed). F-14-4 opening-stock helper: documented limitation (F-07-2 Model A).
 - **What changed (approved full scope):** `accounting.ts` `trialBalance()` returns additive `difference` field (display-only); TB report gains the amber out-of-balance banner (copy of the existing BS pattern); Gateway gains a compact "Books Health" card (silent-degrade). `final_regression.py` +6 R-14 checks → 578; new `r14_ui.js` (11 checks: clean → balanced chip + no banner; Dr-777.77 asymmetry → banner + out-by chip + view link; counterpart opening restores balance). No migration, no accounting-math change.
 - **What changed (approved full scope):** new `server/src/lib/loginGuard.ts` (in-memory sliding-window limiter: 10 failures/10 min per source-IP+username → 429 + Retry-After until oldest failure ages out; success resets); `auth.ts` lockout check before user lookup + dummy-scrypt timing equalization (unknown-user path now performs one scrypt — the 20.7× enumeration oracle is collapsed); `final_regression.py` +14 R-13 checks → 572; README login-throttling + timing-equalization notes. No migration, no client change, no new dependency.
-- **Verification:** Python **868/868** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **586** incl. 8 R-15, attack-the-fixes 29); browser **219/219** unchanged (zero client changes).
-- **Next permitted action:** on "continue zprime" → begin the R-17 investigation. Remaining known scope: audit-trail groundwork (explicitly postponed, needs product decision), RCM/e-invoice/e-way/GSTR-9/TCS (postponed), or any new defect/feature target the human names. There is no pre-selected candidate — ask if the human gives no direction.
+- **Verification:** Python **875/875** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **593** incl. 7 R-17, attack-the-fixes 29); browser **219/219** on a rebuilt image + fresh volume (7/7 migrations); typecheck clean.
+- **Next permitted action:** on "continue zprime" → begin the R-18 investigation. Remaining known scope: full audit feature (events table + history UI — the natural continuation of R-17's groundwork, needs product decision on scope), GST compliance family (RCM/e-invoice/e-way/GSTR-9/TCS — postponed), master-table actor columns (deferred with rationale), or a target the human names. Ask for direction if none given.
+- **Investigation findings:** three voucher insert/update sites need actor stamping — `insertVoucherTx` (manual), the import path's OWN insert (import.ts:448, does not reuse insertVoucherTx), and `PUT /vouchers/:id`; cancel/uncancel already actor-stamped (R-02). Proposed scope (vouchers only, masters deferred — no per-row history to anchor them): additive migration 0006 (`created_by`/`updated_by` FK→users ON DELETE SET NULL, optional `updated_at`, no backfill of fabricated actors), ~6 lines centralized propagation, optional Day Book display, ~5 regression checks → 873. No audit-events table, no history UI.
+- **Next permitted action (R-17, historical):** superseded — v1.17.0 released; see the current-state block above.
 - **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
-- **Blocked decisions (waiting on human):** none.
+- **Blocked decisions (waiting on human):** release go/no-go for v1.17.0.
 - **What changed (R-10, historical):** additive migration `0005_r10_idempotency_keys.sql` (`idempotency_keys`, UNIQUE(company_id, key)); `vouchers.ts` POST accepts optional `idempotencyKey` (body or `X-Idempotency-Key` header) — replay returns the ORIGINAL voucher, key+voucher recorded in one transaction, concurrent same-key race resolves to one voucher; `VoucherScreen.tsx` generates a UUID per new-voucher form and sends it, plus a `savingRef` guard making Ctrl+A single-shot; `final_regression.py` +12 R-10 checks; `r10_ui.js` new 10-check browser suite.
 - **Verification on the final tree:** Python **813/813** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **531** incl. 12 R-10, attack-the-fixes 29); browser **208/208** (153 + 12 + 9 + 12 + 12 + 10 R-10) on a rebuilt client with a fresh-volume stack; typecheck server+client clean; migration verified on both fresh install (6/6 applied) and the test rig (0005 forward-applied from 5).
 - **Next permitted action (historical, R-10):** superseded — see the current-state block above.
 - **Environment note (permanent):** the verification stack requires `.env` at repo root (never committed; `.env.example` is the template) — create it before `docker compose up`.
-- **Blocked decisions (waiting on human):** none.
+- **Blocked decisions (waiting on human):** release go/no-go for v1.17.0.
 
 ## Baseline verification (must re-confirm every session)
 

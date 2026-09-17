@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased — R-16 deployment self-healing (F-R1) + RELEASE CANDIDATE status
+## Unreleased — R-17 audit-trail groundwork (voucher actor provance)
+
+**Additive schema change + server-only propagation — no client change, no accounting-math change.**
+
+R-17 implements the approved groundwork for the future audit feature: actor provance on vouchers — who entered and who last edited each voucher, stamped server-side from the verified JWT identity (`req.userId`), never from client-supplied fields. Master tables are deliberately deferred (no per-row history surface exists to anchor them; the generic CRUD site makes them a ~15-line later addition).
+
+- **Migration `0006_r17_voucher_actor.sql` (additive):** `vouchers.created_by` + `vouchers.updated_by` (FK → users, `ON DELETE SET NULL`) + `vouchers.updated_at`; existing rows keep NULL — no fabricated backfill (pre-R-17 actor values are unknowable; honesty over cosmetics). Drizzle snapshot + journal per the established convention.
+- **Propagation (all voucher write paths):** `insertVoucherTx` stamps `created_by` from a new actor parameter (manual POST path); the XML import's own insert stamps `created_by` with the importing user; `PUT /vouchers/:id` stamps `updated_by` + `updated_at` (created_by immutable); cancel/uncancel semantics unchanged (R-02's `cancelled_by` already handled); R-10 idempotent replay correctly records no new actor event.
+- **Tests:** `final_regression.py` +7 R-17 checks (593) — manual stamping, no updated_* on creation, edit stamps updated_by/updated_at while preserving created_by, cancel/uncancel actor cycle unchanged, admin id resolution; fresh volume applies 7/7 migrations.
+
+Verification: Python **875/875** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **593** incl. 7 R-17, attack-the-fixes 29); browser **219/219** on a rebuilt image with fresh volume; typecheck server clean, client untouched.
+
+---
+
+## v1.16.0 — R-16 deployment self-healing (F-R1) + RELEASE CANDIDATE status
 
 **Compose-only change — no application code, no migration, no client modifications.**
 

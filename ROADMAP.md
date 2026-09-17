@@ -23,6 +23,7 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.14.0 | **R-14** | TB health surface (F-14-1: additive `difference` field on trialBalance, TB report out-of-balance banner, Gateway Books Health card; negative-stock warning + import error surfacing verified NOT A BUG — superseded by R-06/R-04; +6 Python +11 browser checks → 860/219) |
 | v1.15.0 | **R-15** | Opening-GST semantics regression lock (test-only: opening-GST candidate verified NOT A BUG — returns period-only, ledger carries position, unpaired openings surface honestly; +8 checks → 868) |
 | v1.16.0 | **R-16** | Deployment self-healing (F-R1: `restart: unless-stopped` on app+db, README note; compose-only) + **RELEASE CANDIDATE** status adopted per READINESS_REVIEW.md |
+| v1.17.0 | **R-17** | Voucher actor provance — audit groundwork (migration 0006: created_by/updated_by/updated_at, no fabricated backfill; stamping at manual/import/edit write sites from verified JWT identity; masters deferred; +7 checks → 875) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
