@@ -2087,5 +2087,91 @@ _d12gone = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", 
                     "SELECT 1 FROM pg_database WHERE datname='r12_roundtrip'"], capture_output=True, text=True)
 check("R-12: scratch database dropped (clean rig)", _d12gone.stdout.strip() == "", _d12gone.stdout)
 
+# ================= R-13: login hardening (F-13-1 limiter + F-13-2 timing) =================
+print("-- R-13: login hardening --")
+
+# Dedicated cookie jar; the suite's shared admin session is NOT used here and
+# the seeded admin's guard pair is deliberately NOT burned -- lockout fixtures
+# use dedicated users provisioned through the owner-only members API.
+_r13jar = http.cookiejar.CookieJar()
+_r13op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_r13jar))
+
+def _r13(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json"} if body is not None else {}
+    r = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
+    try:
+        with _r13op.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except Exception as e:
+        return -1, {"error": str(e)}
+
+def _login13(username, password):
+    return _r13("POST", "/api/auth/login", {"username": username, "password": password})
+
+# 1. Provision guard fixtures (owner session on the separate jar).
+_s13, _ = _login13("admin", "admin123")
+check("R-13: admin login (guard session)", _s13 == 200, _s13)
+_s13, c13 = _r13("POST", "/api/companies", {"name": "R13 Guard Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R13GUARD01A2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R-13: guard company created", _s13 == 200 and c13.get("id"), (_s13, str(c13)[:120]))
+_s13, m13 = _r13("POST", f"/api/companies/{c13['id']}/members",
+    {"username": "r13alice", "password": "r13alice", "role": "accountant"})
+check("R-13: guard user created", _s13 == 200 and m13.get("userId"), (_s13, str(m13)[:120]))
+
+# 2. Failures under the threshold stay plain 401 (9 < 10).
+_s13 = [_login13("r13alice", f"w{i}")[0] for i in range(9)]
+check("R-13: 9 failures (under threshold) all 401", _s13 == [401] * 9, _s13)
+
+# 3. Threshold is exactly 10: past it, even the CORRECT password gets 429
+# (a locked pair must not be bypassable by knowing the password).
+for i in range(10):
+    _login13("r13alice", f"b{i}")
+_s13, _b13 = _login13("r13alice", "b-final")
+check("R-13: failures past threshold return 429", _s13 == 429, (_s13, str(_b13)[:80]))
+_s13, _b13 = _login13("r13alice", "r13alice")
+check("R-13: correct password during lockout -> 429 (no bypass)", _s13 == 429, (_s13, str(_b13)[:80]))
+
+# 4. Per-(ip, username) isolation: a locked name never blocks another name.
+_s13, _b13 = _login13("r13_isolated", "x")
+check("R-13: different username unaffected by lockout", _s13 == 401, (_s13, str(_b13)[:80]))
+
+# 5. Successful login RESETS the pair (r13alice stays locked for the window --
+# that is the documented behavior already asserted in check 3).
+_s13, m13b = _r13("POST", f"/api/companies/{c13['id']}/members",
+    {"username": "r13bob", "password": "r13bob", "role": "accountant"})
+check("R-13: admin session unaffected by lockouts (second user created)", _s13 == 200 and m13b.get("userId"), (_s13, str(m13b)[:120]))
+for i in range(4):
+    _login13("r13bob", f"f{i}")             # 4 failures
+_s13, _b13 = _login13("r13bob", "r13bob")   # SUCCESS -> resets the pair
+check("R-13: successful login accepted mid-sequence", _s13 == 200, _s13)
+_s13 = [_login13("r13bob", f"g{i}")[0] for i in range(9)]
+check("R-13: counter was reset (9 fresh failures still 401)", _s13 == [401] * 9, _s13)
+_s13, _b13 = _login13("r13bob", "r13bob")
+check("R-13: user still usable after the reset cycle", _s13 == 200, _s13)
+
+# 6. Timing equalization (F-13-2): the unknown-user path now performs one
+# scrypt, so it must be in the same latency class as the known-user failure
+# path (v1.12.0 measured 2.1 ms vs 43.0 ms -- a 20.7x enumeration oracle).
+def _timed13(username):
+    t0 = time.perf_counter()
+    _login13(username, "definitely-wrong")
+    return time.perf_counter() - t0
+_known = sum(_timed13("r13bob") for _ in range(4)) / 4
+_unknown = sum(_timed13("r13_ghost") for _ in range(4)) / 4
+check("R-13: unknown-user latency now performs scrypt (>= 10ms)",
+      _unknown >= 0.010, {"known_ms": round(_known * 1000, 1), "unknown_ms": round(_unknown * 1000, 1)})
+check("R-13: timing oracle collapsed (ratio < 3x)",
+      _unknown <= max(_known * 3, 0.05), {"known_ms": round(_known * 1000, 1), "unknown_ms": round(_unknown * 1000, 1)})
+
+# 7. Uniform 401 body preserved (no textual enumeration introduced).
+_s13, _b13 = _login13("r13_body", "x")
+check("R-13: 401 body unchanged", _s13 == 401 and isinstance(_b13, dict) and _b13.get("error") == "Invalid username or password", (_s13, str(_b13)[:80]))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased — R-12 backup/restore runbook + round-trip guard (B-12)
+## Unreleased — R-13 login hardening (F-13-1 rate limiting + F-13-2 timing enumeration)
+
+**Server-only change — no migration, no client modification, no new dependency.**
+
+R-13 investigation (live-reproduced on v1.12.0): F-13-1 — no rate limiting/lockout on `POST /api/auth/login` (25 failed logins → 25 instant 401s; P3, P2 for internet-exposed deployments); F-13-2 — timing side-channel enables username enumeration (valid-user-wrong-password 43.0 ms vs unknown-user 2.1 ms, a 20.7× oracle, because `scryptSync` was skipped when the user did not exist). Fixes:
+
+- **`server/src/lib/loginGuard.ts` (new):** in-memory sliding-window limiter keyed by source IP + exact username — 10 failures in 10 minutes locks the pair until the oldest failure ages out (`429 Too Many Login Attempts` + `Retry-After`); a successful login resets the pair. Single-process by design; state resets on restart (documented).
+- **`server/src/routes/auth.ts`:** lockout check **before** any user lookup (a locked pair learns nothing about account existence); **dummy-scrypt timing equalization** — the unknown-user path now performs one scrypt, collapsing the latency oracle; failures record, success resets; 401 body unchanged.
+- **`final_regression.py` +14 R-13 checks (572):** threshold semantics (9 fails → all 401; past 10 → 429), correct-password-during-lockout refused (no bypass), per-(ip, username) isolation, full reset cycle via successful login, unknown-user latency now ≥10 ms with ratio <3× (oracle collapsed), uniform 401 body.
+- **README:** login-throttling note (policy, 429 semantics, in-memory state, reverse-proxy guidance) + timing-equalization note.
+
+Verification: Python **854/854** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **572** incl. 14 R-13, attack-the-fixes 29); browser **208/208** on a rebuilt image with fresh volume (6/6 migrations, fresh install); typecheck server+client clean.
+
+---
+
+## v1.12.0 — R-12 backup/restore runbook + round-trip guard (B-12)
 
 **Docs + test-only change — no source, migration, or client modifications.**
 

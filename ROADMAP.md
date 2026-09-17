@@ -19,6 +19,7 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
 | v1.11.0 | **R-11** | Purchase-side settlement regression coverage (B-11, test-only: creditor-side adversarial mirror of BUG-002 + bill-wise DN settling a purchase bill + advance-consumption + AP/GSTR-3B assertions → 834 checks; no source changes) |
 | v1.12.0 | **R-12** | Backup/restore runbook and round-trip guard (B-12, docs/test-only: README verified restore sequence with the stop-app → drop/recreate prerequisite, +6 pg_dump→restore→verify round-trip checks → 840 checks; no source changes) |
+| v1.13.0 | **R-13** | Login hardening (F-13-1 rate limiting: in-memory loginGuard, 10 failures/10 min per IP+username → 429 + Retry-After, success resets; F-13-2 dummy-scrypt timing equalization collapsing the 20.7× username-enumeration oracle; +14 checks → 854; server-only) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation

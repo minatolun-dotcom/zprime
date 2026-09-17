@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.13.0
+
+- **Commit:** `v1.13.0^{}` — resolve with `git rev-parse v1.13.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.13.0` (annotated; `v1.13.0^{}` = the release commit, verified at release)
+- **Major purpose:** Login hardening (R-13, F-13-1 P3 + F-13-2 P3, both live-reproduced on v1.12.0) — **server-only release: no migration, no client change, no new dependency.** F-13-1: no rate limiting/lockout on `POST /api/auth/login` (25 failed logins → 25 instant 401s; P3, P2 for internet-exposed deployments — R-09 made exposed deployment a supported configuration). F-13-2: timing side-channel enabled username enumeration (valid-user-wrong-password 43.0 ms vs unknown-user 2.1 ms, a 20.7× oracle, because `scryptSync` was skipped when the user did not exist). Fixes: new `server/src/lib/loginGuard.ts` — in-memory sliding-window limiter keyed by source IP + exact username, 10 failures/10 min locks the pair until the oldest failure ages out (`429` + `Retry-After`), successful login resets; `auth.ts` performs the lockout check **before** any user lookup (a locked pair learns nothing about account existence) and burns one dummy scrypt on the unknown-user path so both failure paths do identical work (oracle collapsed); uniform 401 body preserved. State is in-memory, single-process by design (documented in README + code).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 854/854 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 572 (+14 dedicated R-13 checks: threshold semantics, correct-password-during-lockout refused — no bypass, per-(ip, username) isolation, full reset cycle via successful login, unknown-user latency ≥10 ms with ratio <3× — oracle collapsed, uniform 401 body), attack-the-fixes 29)
+  - 208/208 browser checks on a rebuilt image with fresh volume (6/6 migrations, fresh install verified) — the baseline suite's many successful logins coexist with the limiter
+  - typecheck (server + client) clean
+  - no accounting code touched (login path only); no test weakened — coverage only grew
+- **Important fixes:** the last open Phase-5 hardening item that does not expand product scope — online password guessing now rate-limited, and usernames can no longer be enumerated by response timing.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.13.0` is the current production baseline.
+
+---
+
 ## v1.12.0
 
 - **Commit:** `v1.12.0^{}` — resolve with `git rev-parse v1.12.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
