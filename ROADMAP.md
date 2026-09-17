@@ -17,7 +17,8 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.8.0 | **R-08** | Cross-company master-reference validation (B-07: central `assertCompanyRefs` at the CRUD boundary for ledgers/items/pay-heads; salary-structure headId check; payroll belt-and-braces — legacy foreign-ledger row fails loudly at posting; route-level, no migration) |
 | v1.9.0 | **R-09** ⚠ | Fail-fast deployment secrets (B-08: JWT_SECRET required + insecure-value denylist at boot, ADMIN_PASSWORD required at first-boot seeding, compose `:?` interpolation — BREAKING: default-secret deployments refuse to boot) |
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
-| v1.11.0 | **R-11** | Purchase-side settlement regression coverage (B-11, test-only: creditor-side adversarial mirror of BUG-002 + bill-wise DN settling a purchase bill + advance-consumption + AP/GSTR-3B assertions → 831 checks; no source changes) |
+| v1.11.0 | **R-11** | Purchase-side settlement regression coverage (B-11, test-only: creditor-side adversarial mirror of BUG-002 + bill-wise DN settling a purchase bill + advance-consumption + AP/GSTR-3B assertions → 834 checks; no source changes) |
+| v1.12.0 | **R-12** | Backup/restore runbook and round-trip guard (B-12, docs/test-only: README verified restore sequence with the stop-app → drop/recreate prerequisite, +6 pg_dump→restore→verify round-trip checks → 840 checks; no source changes) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation

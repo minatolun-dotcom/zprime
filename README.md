@@ -76,7 +76,32 @@ python3 scripts/smoke_test.py    # 39 end-to-end checks: vouchers, reports, GST,
 
 ## Data & backups
 
-All data lives in the `pgdata` Docker volume. Backup: `docker compose exec db pg_dump -U zprime zprime > backup.sql`. Restore: `cat backup.sql | docker compose exec -T db psql -U zprime zprime`.
+All data lives in one Postgres database inside the `pgdata` Docker volume. The verified backup path is plain `pg_dump` (no product UI needed for a single-operator deployment):
+
+```bash
+# Backup
+docker compose exec db pg_dump -U zprime zprime > backup.sql
+```
+
+**Restore** (the database must be empty or recreated — restoring over an existing schema fails on `CREATE TABLE` collisions):
+
+```bash
+docker compose stop app          # 1. stop the app so nothing writes during restore
+docker compose exec db psql -U zprime -d postgres -c "DROP DATABASE zprime;"
+docker compose exec db psql -U zprime -d postgres -c "CREATE DATABASE zprime;"
+cat backup.sql | docker compose exec -T db psql -U zprime zprime   # 2. restore
+docker compose start app         # 3. start the app
+```
+
+**Verify after restore:** open the app and spot-check a report (e.g. Trial Balance), or compare row counts:
+
+```bash
+docker compose exec db psql -U zprime -d zprime -tAc "SELECT count(*) FROM vouchers; SELECT count(*) FROM companies;"
+```
+
+This exact round-trip is regression-guarded by the test suite (`R-12` block in `scripts/final_regression.py`), so schema changes that would break a plain-SQL restore are caught before release.
+
+**Whole-volume alternative:** to snapshot everything (including volume metadata), stop the stack and copy the named volume, e.g. `docker run --rm -v zprime_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/pgdata.tgz -C /data .` — restore by reversing the copy into a fresh volume. Prefer `pg_dump` for version-safe, human-readable backups.
 
 ## Notes & limits
 

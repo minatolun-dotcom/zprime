@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — R-11 purchase-side settlement coverage (B-11)
+## Unreleased — R-12 backup/restore runbook + round-trip guard (B-12)
+
+**Docs + test-only change — no source, migration, or client modifications.**
+
+B-12 (P4, reclassified from P2 by R-12 investigation): the documented `pg_dump` path is live-verified working (full drop-and-restore round-trip, identical data, healthy app); no in-product backup surface is warranted for the single-operator self-hosted model. Real gaps closed:
+
+- **README "Data & backups" → verified runbook:** backup command, restore procedure with the previously undocumented **stop-app → drop/recreate-DB prerequisite** (restoring over a live schema fails on `CREATE TABLE` collisions), a verify-after-restore step, and the whole-volume snapshot alternative.
+- **`final_regression.py` +6 R-12 checks** (`final_regression: 558`): the exact runbook shape is regression-guarded in the test rig — `pg_dump` → restore into a scratch database with `ON_ERROR_STOP` → company/voucher row counts match source → scratch dropped. Future schema/migration drift that would break a plain-SQL restore for operators is now caught before release.
+
+## v1.11.0 — R-11 purchase-side settlement coverage (B-11)
 
 **Test-only change — no source, migration, or client modifications.**
 

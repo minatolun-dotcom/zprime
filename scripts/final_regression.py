@@ -2045,5 +2045,47 @@ _sql(f"DELETE FROM ledgers WHERE company_id={c11['id']}")
 _sql(f"DELETE FROM user_companies WHERE company_id={c11['id']}")
 _sql(f"DELETE FROM companies WHERE id={c11['id']}")
 
+# ================= R-12: backup/restore round-trip (B-12, ops runbook guard) =================
+# B-12/F-12-2: the documented pg_dump -> psql restore path (README "Data &
+# backups") must keep working as the schema evolves. Prove the exact runbook
+# shape in the test rig: dump -> restore into a SCRATCH database -> row counts
+# match -> drop scratch. Catches drift (ownership/extension/constraint changes)
+# that would silently break a plain-SQL restore for operators.
+print("-- R-12: backup/restore round-trip (runbook guard) --")
+
+# 1. take a dump of the test-rig database (same command the runbook documents)
+_d12 = _sp.run(["docker", "exec", "zprime-test-pg", "pg_dump", "-U", "zprime", "zprime"],
+               capture_output=True)
+check("R-12: pg_dump succeeds", _d12.returncode == 0 and len(_d12.stdout) > 10000,
+      (_d12.returncode, len(_d12.stdout)))
+
+# 2. restore into a scratch database from that dump (psql -d scratch)
+_sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+         "DROP DATABASE IF EXISTS r12_roundtrip;"], capture_output=True)
+_c12 = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+                "CREATE DATABASE r12_roundtrip;"], capture_output=True)
+check("R-12: scratch database created", _c12.returncode == 0, _c12.stderr.decode()[:200])
+_r12 = _sp.run(["docker", "exec", "-i", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip",
+                "-v", "ON_ERROR_STOP=1"], input=_d12.stdout, capture_output=True)
+check("R-12: plain-SQL restore applies with ON_ERROR_STOP (no drift)", _r12.returncode == 0,
+      _r12.stderr.decode()[-300:])
+
+# 3. row counts match between the live and restored databases
+_nsrc = _sql("SELECT count(*) FROM companies")
+_nrst = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
+                 "SELECT count(*) FROM companies"], capture_output=True, text=True).stdout.strip()
+check("R-12: restored company count matches source", _nrst == _nsrc, (_nsrc, _nrst))
+_vsrc = _sql("SELECT count(*) FROM vouchers")
+_vrst = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
+                 "SELECT count(*) FROM vouchers"], capture_output=True, text=True).stdout.strip()
+check("R-12: restored voucher count matches source", _vrst == _vsrc, (_vsrc, _vrst))
+
+# 4. drop scratch
+_sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+         "DROP DATABASE r12_roundtrip;"], capture_output=True)
+_d12gone = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-tAc",
+                    "SELECT 1 FROM pg_database WHERE datname='r12_roundtrip'"], capture_output=True, text=True)
+check("R-12: scratch database dropped (clean rig)", _d12gone.stdout.strip() == "", _d12gone.stdout)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

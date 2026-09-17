@@ -4,13 +4,28 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.12.0
+
+- **Commit:** `v1.12.0^{}` — resolve with `git rev-parse v1.12.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.12.0` (annotated; `v1.12.0^{}` = the release commit, verified at release)
+- **Major purpose:** Backup/restore runbook and round-trip guard (R-12, B-12 P4 reclassified from P2) — **docs/test-only release: no source, migration, or client changes.** B-12 claimed "no backup/restore in product"; the investigation live-verified the documented `pg_dump` → drop → restore → verify path end-to-end (39 vouchers / 9 companies identical after restore, app healthy) in both the live stack and the disposable test rig, and found the only real gap: the README restore procedure omitted the stop-app → drop/recreate prerequisite (restoring over a live schema fails on `CREATE TABLE` collisions). README "Data & backups" rewritten as a verified runbook (backup command, restore sequence, row-count verification step, volume-snapshot alternative with tradeoff). `final_regression.py` +6 R-12 checks (558): the exact runbook shape guarded in the test rig — dump succeeds, scratch DB created, plain-SQL restore applies with `ON_ERROR_STOP` (drift catcher: future schema/migration changes that break plain-SQL restore now fail the battery, not an operator's restore), restored company + voucher counts match source, scratch DB dropped.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 840/840 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 558 (+6 dedicated R-12 checks), attack-the-fixes 29) — totals corrected at this release: the v1.11.0 entry below recorded 831, but the component sum is 834 (39+88+65+61+552+29); the error originated in the v1.10.0-era bookkeeping and propagated. Suite counts were always measured correctly; only the advertised totals were wrong
+  - 208/208 browser checks unchanged (zero client changes)
+  - no assertion weakened anywhere — coverage only grew
+  - F-12-3 (in-product backup endpoint) explicitly out of scope with its global-admin prerequisite documented in the investigation; no backup UI/endpoint built
+- **Important fixes:** P4 closed — the only data-safety path an operator has is now documented correctly and regression-guarded against schema drift.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.12.0` is the current production baseline.
+
+---
+
 ## v1.11.0
 
 - **Commit:** `v1.11.0^{}` — resolve with `git rev-parse v1.11.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
 - **Tag:** `v1.11.0` (annotated; `v1.11.0^{}` = the release commit, verified at release)
 - **Major purpose:** Purchase-side settlement regression coverage (R-11, B-11 P3 reclassified from P2) — **test-only release: no source, migration, or client changes.** B-11 confirmed the creditor-side mirror of the bill-wise machinery had zero coverage. `final_regression.py` +21 R-11 checks (creditor-side adversarial mirror of BUG-002, Debit Note settling a purchase bill via mixed-sign `against_ref`, DN over-settlement rejection, payment settling the DN-reduced remainder, advance-to-creditor consumed by a later purchase's credit entry (direction-strict pattern), one voucher settling two open bills via opposing entries, AP assertions at every stage, GSTR-3B ITC reversal, TB identity) → 552; `reconcile.py` +3 checks (61): bill-wise DN-2 woven into the hand-computed scenario with all downstream independent expectations recomputed (TB 7,64,400 / purchases 42,000 / profit 1,26,000 / Sigma 19,560 / ITC 3,780 / net GST 24,840).
 - **Verification status:** VERIFIED AT RELEASE —
-  - 831/831 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 552 (+21 dedicated R-11 checks), attack-the-fixes 29)
+  - 834/834 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 552 (+21 dedicated R-11 checks), attack-the-fixes 29) [total corrected from 831 in v1.12.0 — component sum is authoritative]
   - 208/208 browser checks unchanged (zero client changes; live stack healthy on the released bundle)
   - no assertion weakened anywhere — coverage only grew
   - investigation live-probed the full supplier-side lifecycle first: all flows correct, all probe "failures" proven to be probe bugs (F-11-1/2/3 recorded as NOT A BUG — VERIFIED)
