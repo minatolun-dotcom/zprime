@@ -118,6 +118,7 @@ export default function Reports() {
       {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" />}
       {key === "gstr1" && data && <Gstr1View data={data} cid={cid} />}
       {key === "gstr3b" && data && <Gstr3bView data={data} />}
+      {key === "gstr9" && data && <Gstr9View data={data} />}
       {key === "tds" && data && <TdsView data={data} />}
       {key === "salary-register" && data && <SalaryRegisterView data={data} />}
       {key === "cheque-register" && data && <ChequeRegisterView data={data} />}
@@ -816,6 +817,96 @@ function ChequeRegisterView({ data }: { data: any }) {
   );
 }
 
+// ---------- GSTR-9 (annual) ----------
+function Gstr9View({ data }: { data: any }) {
+  const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  const DutyRow = ({ label, v, tol = 0.005 }: { label: string; v: { igst: number; cgst: number; sgst: number; cess?: number }; tol?: number }) => (
+    <tr className={Math.abs(v.igst) + Math.abs(v.cgst) + Math.abs(v.sgst) + Math.abs(v.cess ?? 0) > tol ? "bg-amber-50" : ""}>
+      <td>{label}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td><td className="num">{money(v.cess ?? 0)}</td>
+    </tr>
+  );
+  const dutyHead = (<tr><th></th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th><th className="w-28 text-right">CESS</th></tr>);
+  const t4 = data.table4, t8 = data.table8, t9 = data.table9, con = data.consistency;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 4 — Eligible ITC (current year)</div>
+        <table className="report-table">
+          <thead>{dutyHead}</thead>
+          <tbody>
+            <DutyRow label="A(5) — supplier-charged (all regular ITC)" v={t4.currentYearRegular} />
+            <DutyRow label="A(3) — reverse charge (RCM ITC claimed)" v={t4.currentYearRcm} />
+          </tbody>
+        </table>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 5 — ITC reversals</div>
+        <div className="px-3 py-2 text-[13px] text-slate-500">Total: {money(data.table5.total)} — {data.table5.note}</div>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Tables 6/7 — inward RCM & outward supplies</div>
+        <table className="report-table">
+          <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th><th className="w-28 text-right">CESS</th></tr></thead>
+          <tbody>
+            <tr><td>Inward liable to reverse charge (4(A)(3))</td><td className="num">{money(data.table6_7.inwardRcm.taxable)}</td><td className="num">{money(data.table6_7.inwardRcm.igst)}</td><td className="num">{money(data.table6_7.inwardRcm.cgst)}</td><td className="num">{money(data.table6_7.inwardRcm.sgst)}</td><td className="num">{money(data.table6_7.inwardRcm.cess)}</td></tr>
+            <tr><td>Outward supplies (3B outward)</td><td className="num">{money(data.table6_7.outward.taxable)}</td><td className="num">{money(data.table6_7.outward.igst)}</td><td className="num">{money(data.table6_7.outward.cgst)}</td><td className="num">{money(data.table6_7.outward.sgst)}</td><td className="num">{money(data.table6_7.outward.cess)}</td></tr>
+          </tbody>
+        </table>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 8 — ITC reconciliation (duty ledgers)</div>
+        <table className="report-table">
+          <thead>{dutyHead}</thead>
+          <tbody>
+            <DutyRow label="Opening credit balance (FY start)" v={t8.opening} />
+            <DutyRow label="+ ITC claimed this FY (Table 4 A(5))" v={t8.claimed} />
+            <DutyRow label="= Computed closing" v={t8.computedClosing} />
+            <DutyRow label="Actual duty-ledger closing" v={t8.ledgerClosing} />
+            <DutyRow label="Difference (non-zero = unclaimed/unposted)" v={t8.difference} />
+          </tbody>
+        </table>
+        <div className="px-3 py-2 text-[12px] text-slate-500">{t8.note}</div>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 9 — supplies declared</div>
+        <table className="report-table">
+          <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th></tr></thead>
+          <tbody>
+            <tr><td>B2B</td><td className="num">{money(t9.b2b.taxable)}</td><td className="num">{money(t9.b2b.igst)}</td><td className="num">{money(t9.b2b.cgst)}</td><td className="num">{money(t9.b2b.sgst)}</td></tr>
+            <tr><td>B2C</td><td className="num">{money(t9.b2c.taxable)}</td><td className="num">{money(t9.b2c.igst)}</td><td className="num">{money(t9.b2c.cgst)}</td><td className="num">{money(t9.b2c.sgst)}</td></tr>
+            <tr><td>CDNR (registered notes)</td><td className="num">{money(t9.cdnr.taxable)}</td><td className="num">{money(t9.cdnr.igst)}</td><td className="num">{money(t9.cdnr.cgst)}</td><td className="num">{money(t9.cdnr.sgst)}</td></tr>
+            <tr><td>CDNUR (unregistered notes)</td><td className="num">{money(t9.cdnur.taxable)}</td><td className="num">{money(t9.cdnur.igst)}</td><td className="num">{money(t9.cdnur.cgst)}</td><td className="num">{money(t9.cdnur.sgst)}</td></tr>
+            <tr className="font-semibold"><td>Net</td><td className="num">{money(t9.net.taxable)}</td><td className="num">{money(t9.net.igst)}</td><td className="num">{money(t9.net.cgst)}</td><td className="num">{money(t9.net.sgst)}</td></tr>
+          </tbody>
+        </table>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Consistency checks</div>
+        <table className="report-table">
+          <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th></tr></thead>
+          <tbody>
+            <tr className={(Math.abs(con.table9Vs3bOutward.taxable) + Math.abs(con.table9Vs3bOutward.igst) + Math.abs(con.table9Vs3bOutward.cgst) + Math.abs(con.table9Vs3bOutward.sgst)) > 0.005 ? "bg-amber-50" : ""}>
+              <td>Table 9 net − GSTR-3B outward (must be 0)</td><td className="num">{money(con.table9Vs3bOutward.taxable)}</td><td className="num">{money(con.table9Vs3bOutward.igst)}</td><td className="num">{money(con.table9Vs3bOutward.cgst)}</td><td className="num">{money(con.table9Vs3bOutward.sgst)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
+      <Card>
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 12 — annual HSN (outward supplies)</div>
+        <table className="report-table">
+          <thead><tr><th className="w-24">HSN</th><th className="w-20 text-right">Rate %</th><th className="w-28 text-right">Qty</th><th className="w-32 text-right">Taxable</th></tr></thead>
+          <tbody>
+            {data.table12.map((h: any) => (
+              <tr key={h.hsn}><td className="font-mono">{h.hsn}</td><td className="num">{h.rate}</td><td className="num">{h.qty}</td><td className="num">{money(h.taxable)}</td></tr>
+            ))}
+            {data.table12.length === 0 && <tr><td colSpan={4} className="text-center text-slate-400 py-4">No outward HSN data for the period</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- registry ----------
 const ENDPOINTS: Record<string, string> = {
   "balance-sheet": "balance-sheet",
@@ -831,6 +922,7 @@ const ENDPOINTS: Record<string, string> = {
   payables: "payables",
   gstr1: "gstr1",
   gstr3b: "gstr3b",
+  gstr9: "gstr9",
   tds: "tds",
   "salary-register": "salary-register",
   "cheque-register": "cheque-register",
@@ -850,6 +942,7 @@ const TITLES: Record<string, string> = {
   payables: "Bills Payable",
   gstr1: "GSTR-1",
   gstr3b: "GSTR-3B",
+  gstr9: "GSTR-9 (Annual)",
   tds: "TDS Report",
   "salary-register": "Salary Register",
   "cheque-register": "Cheque Register",

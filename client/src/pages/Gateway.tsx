@@ -75,6 +75,7 @@ export default function Gateway() {
         { label: "Payables (B/P)", to: `/company/${cid}/reports/payables` },
         { label: "GSTR-1", to: `/company/${cid}/reports/gstr1` },
         { label: "GSTR-3B", to: `/company/${cid}/reports/gstr3b` },
+        { label: "GSTR-9 (Annual)", to: `/company/${cid}/reports/gstr9` },
         { label: "TDS Report", to: `/company/${cid}/reports/tds` },
         { label: "Salary Register", to: `/company/${cid}/reports/salary-register` },
         { label: "Cheque Register", to: `/company/${cid}/reports/cheque-register` },

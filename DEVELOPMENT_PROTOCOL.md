@@ -86,9 +86,10 @@ Any state may transition back to `INVESTIGATION` or `HUMAN_REVIEW` when new evid
 
 **Meaning:** creating the release and closing the cycle.
 
-- **Agent executes:** create ONE release commit (only the approved files); create the annotated tag (`vX.Y.Z`); verify `vX.Y.Z^{}` == HEAD; verify `git status` clean; verify all previous tags unchanged; update `STATE.md` and `RELEASES.md`; update `CONTINUE.md` → phase IDLE/next investigation.
-- **Agent may not:** modify previous releases; push anywhere unless explicitly instructed; begin the next item.
-- **Exit:** state recorded → **IDLE**.
+- **Agent executes:** create ONE release commit (only the approved files); create the annotated tag (`vX.Y.Z`); verify `vX.Y.Z^{}` == HEAD; verify `git status` clean; verify all previous tags unchanged; **push the release to the remote: `git push origin main` then `git push origin --tags`** (standing release step, adopted R-26 era per human instruction); update `STATE.md` and `RELEASES.md`; update `CONTINUE.md` → phase IDLE/next investigation.
+- **Push rule:** a release is not fully published until the remote carries the release commit AND its tag. If credentials are unavailable in the session, report the push as **BLOCKED — push pending** (never skip it silently); the push is retried at the next opportunity, including by the human from their own terminal (`git push origin main --tags`).
+- **Agent may not:** modify previous releases; force-push; begin the next item.
+- **Exit:** state recorded → **IDLE** (or RELEASED with push pending when blocked).
 
 ---
 

@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — **v1.24.0 RELEASED** (R-25 e-way bill payload generation: stateless EWB-01 Part-A + optional Part-B request params, shared supplyLines projection, cid-gated ewaybill endpoint, GSTR-1 e-way actions; 1005/1005 automated + 298/298 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — **v1.25.0 RELEASED** (R-26 GSTR-9 annual return: tables 4/5/6-7/8/9/12 with Table-8 duty-ledger reconciliation and consistency cross-checks; 1019/1019 automated + 310/310 browser checks; release-process amendment adds push to RELEASED protocol). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

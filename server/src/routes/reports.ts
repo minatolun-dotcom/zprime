@@ -12,6 +12,7 @@ import { stockSummary } from "../services/stock.js";
 import { gstr1, gstr3b } from "../services/gst.js";
 import { eInvoicePayload } from "../services/einvoice.js";
 import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
+import { gstr9 } from "../services/gstr9.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -162,6 +163,15 @@ export default async function reportRoutes(app: FastifyInstance) {
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
     const p = period(req.query as any, company?.booksBeginFrom);
     return gstr3b(c, p.from, p.to);
+  });
+
+  // R-26: GSTR-9 annual return — pure projection of gstr1/gstr3b over the
+  // financial year plus duty-ledger reconciliation (Table 8). Read-only.
+  app.get("/gstr9", async (req) => {
+    const c = await cid(req);
+    const [company] = await db.select().from(companies).where(eq(companies.id, c));
+    const p = period(req.query as any, company?.booksBeginFrom);
+    return gstr9(c, p.from, p.to);
   });
 
   // TDS report: deductions by section + payable balances

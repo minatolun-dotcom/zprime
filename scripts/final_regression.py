@@ -2891,5 +2891,90 @@ check("R25: 2-digit HSN rejected", s == 200 and ew8.get("ok") is False and any("
 s2, _ = r03(sB, "GET", f"{R24}/reports/ewaybill/{sale24['id']}")
 check("R25: non-member ewaybill -> 404", s2 == 404, s2)
 
+# ============================================================================
+# R-26: GSTR-9 ANNUAL RETURN (report projection over gstr1/gstr3b + Table 8)
+# ============================================================================
+# R-24 company state: sale 10,000+IGST 1,800 (Aug), credit note 1,000+IGST 180,
+# short-HSN sale 1,000+IGST 180, receipt. NO purchases yet (the R-23 purchase
+# fixtures live in the R23 company) — so this block adds its own inward side.
+
+# own purchase (regular ITC 360) + RCM purchase (A(3) 250) in the R24 company
+s, pur24 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R24 Purchases", "groupId": groups24["Purchase Accounts"], "taxability": "taxable"})
+check("R26: purchase ledger created", s == 200 and pur24.get("id"), (s, str(pur24)[:90]))
+s, sup24 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R24 Supplier", "groupId": groups24["Sundry Creditors"], "gstin": "24R24SUP001A2B3", "gstRegistrationType": "regular", "billWise": True})
+check("R26: supplier ledger created", s == 200 and sup24.get("id"), (s, str(sup24)[:90]))
+s, gta24 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R24 GTA", "groupId": groups24["Sundry Creditors"], "gstRegistrationType": "unregistered", "billWise": True})
+check("R26: unregistered GTA created", s == 200 and gta24.get("id"), (s, str(gta24)[:90]))
+s, vpur24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Purchase"], "date": "2026-09-05", "partyLedgerId": sup24["id"],
+    "placeOfSupply": "Maharashtra",
+    "entries": [{"ledgerId": pur24["id"], "amount": 2000}, {"ledgerId": gm24["IGST"], "amount": 360}, {"ledgerId": sup24["id"], "amount": -2360}]})
+check("R26: regular purchase posted (ITC 360)", s == 200 and vpur24.get("id"), (s, str(vpur24)[:110]))
+s, vrcm24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Purchase"], "date": "2026-09-06", "isRcm": True, "partyLedgerId": gta24["id"],
+    "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": pur24["id"], "amount": 5000}, {"ledgerId": gm24["RCM Payable"], "amount": 250}, {"ledgerId": gta24["id"], "amount": -5250}]})
+check("R26: RCM purchase posted (A(3) 250)", s == 200 and vrcm24.get("id"), (s, str(vrcm24)[:110]))
+
+# 1) FY-window call
+s, g9 = r03(sA, "GET", f"{R24}/reports/gstr9?from=2026-04-01&to=2027-03-31")
+check("R26: gstr9 renders", s == 200 and g9.get("table4") is not None, (s, str(g9)[:120]))
+
+# 2) Table 4 = 3B FY aggregates (A(5) 360 from the purchase; A(3) 250 RCM)
+check("R26: Table 4 A(5) = 3B regular ITC (igst 360)", g9["table4"]["currentYearRegular"]["igst"] == 360, g9["table4"])
+check("R26: Table 4 A(3) = RCM ITC (igst 250)", g9["table4"]["currentYearRcm"]["igst"] == 250, g9["table4"])
+
+# 3) Table 5 honest zeros + note
+check("R26: Table 5 zero with limitation note", g9["table5"]["total"] == 0 and "reversal" in g9["table5"]["note"], g9["table5"])
+
+# 4) Tables 6/7 mirror 3B outward + inwardRcm for the same FY window
+s, b3fy = r03(sA, "GET", f"{R24}/reports/gstr3b?from=2026-04-01&to=2027-03-31")
+check("R26: Table 6/7 outward equals 3B outward (taxable)",
+      g9["table6_7"]["outward"]["taxable"] == b3fy.get("outward", {}).get("taxable"),
+      (g9["table6_7"]["outward"]["taxable"], b3fy.get("outward", {}).get("taxable")))
+check("R26: Table 6/7 inwardRcm equals 3B 4(A)(3) (igst)",
+      g9["table6_7"]["inwardRcm"]["igst"] == b3fy.get("inwardRcm", {}).get("igst"),
+      (g9["table6_7"]["inwardRcm"]["igst"], b3fy.get("inwardRcm", {}).get("igst")))
+
+# 5) Table 9: b2b = 10,000 + 1,000; cdnr = 1,000; net = 10,000 / igst 1,800
+check("R26: Table 9 b2b taxable 11,000", g9["table9"]["b2b"]["taxable"] == 11000, g9["table9"]["b2b"])
+check("R26: Table 9 cdnr taxable 1,000", g9["table9"]["cdnr"]["taxable"] == 1000, g9["table9"]["cdnr"])
+check("R26: Table 9 net taxable 10,000", g9["table9"]["net"]["taxable"] == 10000, g9["table9"]["net"])
+check("R26: Table 9 net igst 1,800", g9["table9"]["net"]["igst"] == 1800, g9["table9"]["net"])
+con0 = g9["consistency"]["table9Vs3bOutward"]
+check("R26: consistency Table9-vs-3B all zero",
+      all(abs(con0[k]) < 0.005 for k in ("taxable", "igst", "cgst", "sgst")), con0)
+
+# 6) Table 8: opening 0; claimed 360; ledger closing nets OUTPUT 1,800 minus
+#    input 360 = 1,440 credit; difference 1,440 − (0+360) = 1,080 (the note
+#    explains: single duty ledger per head carries output AND input duty, so
+#    the difference includes output liability, not only unclaimed ITC).
+check("R26: Table 8 opening zero (no seeds)", all(abs(g9["table8"]["opening"][k]) < 0.005 for k in ("igst", "cgst", "sgst", "cess")), g9["table8"]["opening"])
+check("R26: Table 8 claimed igst 360 (Table 4 A(5))", g9["table8"]["claimed"]["igst"] == 360, g9["table8"]["claimed"])
+check("R26: Table 8 ledger closing igst 1,440 (output 1,800 − input 360)", g9["table8"]["ledgerClosing"]["igst"] == 1440, g9["table8"]["ledgerClosing"])
+check("R26: Table 8 difference igst 1,080", g9["table8"]["difference"]["igst"] == 1080, g9["table8"]["difference"])
+
+# 7) opening invariance: an R-15-style unpaired IGST opening shifts opening
+#    AND ledger closing equally — the difference is invariant (good property).
+s, led24b = r03(sA, "GET", f"{R24}/ledgers")
+igst24 = next(l for l in (led24b or []) if l["name"] == "IGST")
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{igst24['id']}", {"name": "IGST", "groupId": igst24["groupId"], "dutyHead": "IGST", "openingBalance": "-5000"})
+s, g9b = r03(sA, "GET", f"{R24}/reports/gstr9?from=2026-04-01&to=2027-03-31")
+check("R26: unpaired opening visible in Table 8 opening (igst 5,000)", g9b["table8"]["opening"]["igst"] == 5000, g9b["table8"]["opening"])
+check("R26: Table 8 difference invariant to opening shifts (1,080)", g9b["table8"]["difference"]["igst"] == 1080, g9b["table8"]["difference"])
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{igst24['id']}", {"name": "IGST", "groupId": igst24["groupId"], "dutyHead": "IGST", "openingBalance": "0"})
+s, g9c = r03(sA, "GET", f"{R24}/reports/gstr9?from=2026-04-01&to=2027-03-31")
+check("R26: Table 8 restores after opening round-trip", g9c["table8"]["difference"]["igst"] == 1080 and g9c["table8"]["opening"]["igst"] == 0, g9c["table8"]["difference"])
+
+# 8) Table 12: annual HSN per snapshot bucket (8471: the 10,000 sale only;
+#    the short-HSN sale carries its own '84' snapshot — buckets never merge)
+h8471 = next((h for h in g9["table12"] if h["hsn"] == "8471"), None)
+check("R26: Table 12 HSN 8471 (qty 10, taxable 10,000)",
+      h8471 is not None and h8471["qty"] == 10 and h8471["taxable"] == 10000, h8471)
+check("R26: Table 12 keeps the '84' bucket separate (qty 1)",
+      any(h["hsn"] == "84" and h["qty"] == 1 for h in g9["table12"]), g9["table12"])
+
+# 9) non-member -> 404
+s2, _ = r03(sB, "GET", f"{R24}/reports/gstr9?from=2026-04-01&to=2027-03-31")
+check("R26: non-member gstr9 -> 404", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

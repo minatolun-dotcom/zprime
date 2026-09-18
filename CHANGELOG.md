@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.25.0 — R-26 GSTR-9 annual return
+
+R-26 implements the approved Option A scope: the annual return as a pure report-family projection. No migration, no accounting-math change, no new transaction semantics.
+
+- **`services/gstr9.ts`** (new): `gstr9(companyId, from, to)` over one FY window — no monthly summation. Table 4 (eligible ITC: A(5) regular from `gstr3b().itc`, A(3) RCM from `rcmItc`); Table 5 as honest zeros + stated limitation (no ITC-reversal transaction surface); Tables 6/7 mirroring 3B outward + 4(A)(3); **Table 8 ITC reconciliation** — duty-ledger opening credit position + Table-4 claims → computed closing vs **actual** ledger closing, difference surfaced row-by-row (R-15's period-only semantics become visible; the note explains that a single duty ledger per head nets output and input duty, so the difference includes output liability, not only unclaimed ITC); Table 9 (b2b/b2c/cdnr/cdnur nets with a built-in **Table-9-vs-3B cross-check**); Table 12 annual HSN (R-01 population, snapshot buckets preserved).
+- **`GET /reports/gstr9`** (cid-gated, read-only) with the standard FY period default; `Gstr9View` with amber highlighting on any non-zero difference/consistency row; Gateway Reports entry + registry.
+- **Tests:** `final_regression.py` +26 R-26 checks (755) — Table 4 = 3B FY aggregates (regular 360 / RCM 250 via own purchase fixtures), Tables 6/7 and Table 9-vs-3B cross-check zero, Table 9 net (11,000 b2b − 1,000 cdnr = 10,000 / igst 1,800), Table 8 walk (opening 0 → claimed 360 → ledger closing 1,440 = output 1,800 − input 360 → difference 1,080 with single-ledger netting), difference invariance under an R-15-style unpaired opening shift (opening and ledger closing move equally), Table 12 snapshot-bucket separation ('8471' vs '84'), non-member 404; new `scripts/acceptance/r26_ui.js` (12 browser checks: Gateway entry, FY render, amber Table-8 difference with single-ledger netting, neutral cross-check row, Table 5 limitation note).
+- Verification: Python **1019/1019** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **755** incl. 26 R-26, attack-the-fixes 29); browser **310/310** on a rebuilt image + fresh volume (11/11 migrations; run.js 153 + r03…r26 = 157 scenario checks); typecheck server + client clean.
+- **Release-process amendment (same commit):** the RELEASED protocol state now includes **pushing the release to the remote** (`git push origin main` + `--tags`); RELEASES.md ledger rule 4 records the v1.0.0–v1.24.0 backlog push as PENDING (session credentials unavailable).
+
 ## v1.24.0 — R-25 e-way bill payload generation (EWB-01)
 
 R-25 implements the approved Option A scope: stateless generate + download of the EWB-01 payload. Part-A is derived entirely from stored data; Part-B (vehicle/transporter) comes as optional request parameters — zprime persists no EWB number and no transport state (the portal is the system of record). No migration, no connectivity, no accounting-math change.

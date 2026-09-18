@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.25.0
+
+- **Commit:** `v1.25.0^{}` — resolve with `git rev-parse v1.25.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.25.0` (annotated; `v1.25.0^{}` = the release commit, verified at release)
+- **Major purpose:** GSTR-9 annual return (R-26, approved Option A — pure report-family projection; no migration, no accounting-math change, no new transaction semantics). New `services/gstr9.ts` over one FY window: Table 4 (eligible ITC — A(5) regular from `gstr3b().itc`, A(3) reverse charge from `rcmItc`), Table 5 honest zeros + limitation note (no ITC-reversal surface), Tables 6/7 (3B mirrors), **Table 8 duty-ledger ITC reconciliation** (opening credit + Table-4 claims → computed closing vs ACTUAL ledger closing, difference surfaced; note explains single-ledger output/input netting), Table 9 (b2b/b2c/cdnr/cdnur + net) with a built-in **Table-9-vs-3B consistency cross-check**, Table 12 annual HSN (R-01 population, snapshot buckets preserved). Read-only cid-gated `GET /reports/gstr9` (FY default); `Gstr9View` with amber non-zero highlighting; Gateway entry + registry. Amendments/refunds/Table-13 documented limitations. Same commit carries the release-process amendment: DEVELOPMENT_PROTOCOL RELEASED state + RELEASES.md rule 4 require `git push origin main --tags` at every release (backlog push v1.0.0–v1.24.0 PENDING).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 1019/1019 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 755 (+26 dedicated R-26 checks: Table 4 = 3B FY aggregates regular 360/RCM 250, Tables 6/7 + Table-9-vs-3B cross-check zero, Table 9 net 10,000/1,800, Table 8 walk 0→360 claimed vs 1,440 ledger closing → 1,080 difference with single-ledger netting, difference invariance under unpaired-opening shift, Table 12 snapshot-bucket separation, non-member 404), attack-the-fixes 29)
+  - 310/310 browser checks on a rebuilt image with fresh volume (11/11 migrations; run.js 153/153 exit-0 + r03…r26 = 157 scenario checks, new `r26_ui.js` 12/12: Gateway entry, FY render, amber Table-8 difference, neutral cross-check, Table 5 limitation note)
+  - typecheck clean (server + client)
+- **Important fixes:** the last parked GST report delivered; en-route test findings all honest (wrong-company fixture expectations corrected after a live probe proved the service right; UI amber expectation corrected to match single-ledger netting semantics)
+- **Immutable status:** 🔒 IMMUTABLE — `v1.25.0` is the current production baseline.
+
+---
+
 ## v1.24.0
 
 - **Commit:** `v1.24.0^{}` — resolve with `git rev-parse v1.24.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
@@ -384,4 +398,5 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 1. A new release is **appended** at the top; nothing above it is ever edited.
 2. A release requires the full `RELEASE_REVIEW` gate (`DEVELOPMENT_PROTOCOL.md`) — passing tests alone is not sufficient.
 3. Every release = one release commit + one annotated tag, verified `tag^{}` == HEAD, clean tree, all prior tags unchanged.
-4. Commit-message convention: `Release vX.Y.Z: <purpose>`; tag message: `zprime vX.Y.Z — <purpose>`.
+4. **Publishing (adopted R-26 era):** every release is pushed to the remote — `git push origin main` + `git push origin --tags`. Releases v1.0.0–v1.24.0 were tagged before this rule existed; the backlog push (main at v1.24.0 + 26 tags) is **PENDING** — credentials were unavailable to the session agent and must be supplied by the human (PAT/SSH) or pushed manually.
+5. Commit-message convention: `Release vX.Y.Z: <purpose>`; tag message: `zprime vX.Y.Z — <purpose>`.
