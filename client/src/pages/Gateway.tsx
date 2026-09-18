@@ -85,6 +85,7 @@ export default function Gateway() {
       items: [
         { label: "XML Import", to: `/company/${cid}/import`, hint: "Masters + vouchers" },
         { label: "Cheque Printing", to: `/company/${cid}/cheques` },
+        { label: "Audit Trail", to: `/company/${cid}/audit`, hint: "Voucher history" },
         { label: "Company Settings", to: `/company/${cid}/settings` },
       ],
     },

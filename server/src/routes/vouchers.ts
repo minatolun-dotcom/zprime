@@ -921,4 +921,41 @@ export default async function voucherRoutes(app: FastifyInstance) {
       .orderBy(asc(auditEvents.id));
     return events;
   });
+
+  // ---- R-20: company-wide audit timeline (read-only) ----
+  // cid()-gated: membership enforced centrally; a non-member gets the same
+  // 404 as an unknown company (no existence leak). Chronology is id DESC:
+  // events are written in the same transaction as their state change, so id
+  // is strictly monotonic while created_at (DEFAULT now()) can tie within
+  // one transaction (payroll posting, an import's event burst).
+  app.get("/audit", async (req) => {
+    const c = await cid(req);
+    const q = req.query as any;
+    const limit = Math.min(Math.max(parseInt(q.limit ?? "200", 10) || 200, 1), 1000);
+    const conds = [eq(auditEvents.companyId, c)];
+    if (q.action && ["create", "edit", "cancel", "uncancel", "delete"].includes(String(q.action))) {
+      conds.push(eq(auditEvents.action, String(q.action)));
+    }
+    const before = parseInt(q.before, 10);
+    if (Number.isFinite(before) && before > 0) conds.push(lt(auditEvents.id, before));
+    const rows = await db
+      .select({
+        id: auditEvents.id,
+        action: auditEvents.action,
+        detail: auditEvents.detail,
+        createdAt: auditEvents.createdAt,
+        actorUsername: users.username,
+        voucherId: auditEvents.voucherId,
+        voucherNumber: vouchers.number,
+        voucherTypeName: voucherTypes.name,
+      })
+      .from(auditEvents)
+      .leftJoin(users, eq(users.id, auditEvents.actorId))
+      .leftJoin(vouchers, eq(vouchers.id, auditEvents.voucherId))
+      .leftJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
+      .where(and(...conds))
+      .orderBy(desc(auditEvents.id))
+      .limit(limit);
+    return rows;
+  });
 }

@@ -2387,5 +2387,59 @@ _pay_e = _sql(f"SELECT count(*) FROM audit_events e JOIN vouchers v ON v.id = e.
 check("R-18: payroll vouchers stamped created_by + create event (1:1)",
       _pay_v not in ("", "NULL") and _pay_e == _pay_n and int(_pay_n) >= 1, {"created_by": _pay_v, "payroll": _pay_n, "events": _pay_e})
 
+# ================= R-20: company-wide audit timeline (read-only surface) =================
+print("-- R-20: company audit timeline endpoint --")
+
+# 1) newest-first chronology: the timeline's first row is the most recent
+#    event overall, and ids are strictly descending
+s, tl = req("GET", f"{C}/audit?limit=1000")
+_ids = [r["id"] for r in (tl or [])]
+check("R-20: timeline returns 200 with rows (newest first)",
+      s == 200 and len(_ids) > 0 and _ids == sorted(_ids, reverse=True),
+      {"status": s, "n": len(_ids), "first3": _ids[:3]})
+
+# 2) company isolation: only THIS company's events appear (audit_events is
+#    company-scoped; R-18's second company co18 must contribute nothing)
+_iso = _sql(f"SELECT count(*) FROM audit_events WHERE company_id<>{cid}")
+_rows_main = _sql(f"SELECT count(*) FROM audit_events WHERE company_id={cid}")
+check("R-20: timeline rows == this company's event count (isolation)",
+      _iso.isdigit() and _rows_main.isdigit() and len(tl or []) == int(_rows_main) and int(_iso) >= 0,
+      {"returned": len(tl or []), "main": _rows_main, "other": _iso})
+
+# 3) joined voucher fields: a live event carries number + type name
+_first_live = next((r for r in (tl or []) if r.get("voucherId") is not None), None)
+check("R-20: live rows carry voucher number + type name (LEFT JOINs)",
+      _first_live is not None and _first_live.get("voucherNumber") and _first_live.get("voucherTypeName"),
+      _first_live)
+
+# 4) action filter: only matching actions come back
+s, tl_c = req("GET", f"{C}/audit?action=create&limit=1000")
+_acts = {r["action"] for r in (tl_c or [])}
+check("R-20: action=create filter returns only creates", s == 200 and _acts == {"create"}, {"status": s, "actions": _acts})
+
+# 5) before-cursor: id < before strictly, and combined with the filter
+if _ids:
+    _cursor = _ids[2] if len(_ids) > 2 else _ids[0]
+    s, tl_b = req("GET", f"{C}/audit?before={_cursor}&limit=1000")
+    _bids = [r["id"] for r in (tl_b or [])]
+    check("R-20: before-cursor returns strictly older ids", s == 200 and all(i < _cursor for i in _bids), {"status": s, "cursor": _cursor, "n": len(_bids)})
+
+# 6) limit clamp: absurd limit is clamped server-side (no unbounded query)
+s, tl_l = req("GET", f"{C}/audit?limit=99999")
+check("R-20: limit is clamped (returns 200; no unbounded dump)", s == 200, s)
+
+# 7) boundary: unknown-but-well-formed company id -> 404 (no existence leak);
+#    a MALFORMED cid (negative) -> 400 at parse, matching every cid() route's
+#    established adversarial semantics (400 malformed vs 404 unknown)
+_s_unk = req("GET", "/api/c/999999/audit")[0]
+_s_neg = req("GET", "/api/c/-5/audit")[0]
+check("R-20: unknown company -> 404; malformed cid -> 400 (cid semantics)",
+      _s_unk == 404 and _s_neg == 400, {"unknown": _s_unk, "negative": _s_neg})
+
+# 8) deleted vouchers surface in the timeline: the R-18 delete probe left a
+#    detached row (voucher_id NULL) — it must appear with a snapshot detail
+_del_in_tl = any(r.get("voucherId") is None and r.get("action") == "delete" and r.get("detail") for r in (tl or []))
+check("R-20: deleted voucher event appears detached with snapshot", _del_in_tl, "no detached delete row in timeline")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

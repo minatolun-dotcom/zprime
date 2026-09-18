@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.19.0
+
+- **Commit:** `v1.19.0^{}` — resolve with `git rev-parse v1.19.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.19.0` (annotated; `v1.19.0^{}` = the release commit, verified at release)
+- **Major purpose:** Company audit timeline (R-20, approved product decision — completes the R-18 audit feature; no migration, no accounting-math change). Server: cid()-gated read-only `GET /audit` in `vouchers.ts` — `id DESC` chronology (same-transaction events tie on `created_at`; `id` is strictly monotonic), `limit` clamped 1–1000 (default 200), optional `action` enum filter, `before` id-cursor, LEFT JOIN users/vouchers/voucherTypes for actor + voucher number/type. Client: `AuditTrail.tsx` at `/company/:cid/audit` (action badges, empty state, action filter; live vouchers link to the alter surface; deleted vouchers render unlinked with their R-18 snapshot) + App.tsx route + Gateway utilities card. No new authorization concept (cid() membership inherited), no schema change.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 901/901 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 619 (+8 dedicated R-20 checks: newest-first ordering, company isolation, joined fields, action filter, before-cursor, limit clamp, cid boundary 404-unknown/400-malformed, detached delete row), attack-the-fixes 29)
+  - 240/240 browser checks on a rebuilt image with fresh volume (8/8 migrations; new `r20_ui.js` 12 checks: Gateway card → page, empty state, created/edited/deleted lifecycle rows, alter link, actor column, newest-first ordering, action filter)
+  - typecheck clean (server + client)
+- **Important fixes:** the audit feature is now user-visible company-wide — WHO did WHAT WHEN for every voucher, discoverable from the Gateway without knowing voucher ids.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.19.0` is the current production baseline.
+
+---
+
 ## v1.18.0
 
 - **Commit:** `v1.18.0^{}` — resolve with `git rev-parse v1.18.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

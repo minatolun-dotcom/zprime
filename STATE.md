@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — R-18 RELEASED as v1.18.0 (full audit feature: same-tx `audit_events` at all 7 voucher write sites, delete-surviving history, F-R18-1 payroll provance fix, audit endpoint + VoucherScreen history strip). v1.18.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — R-20 RELEASED as v1.19.0 (company audit timeline: cid-gated `GET /audit` + AuditTrail page + Gateway card; completes the R-18 audit feature). v1.19.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

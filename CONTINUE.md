@@ -1,6 +1,17 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — R-19 COMPLETE (B-12 ALREADY CLOSED — VERIFIED; disposition re-confirmed live on v1.18.0; the one approved ROADMAP correction applied). Process state: IDLE. No defect; no implementation; nothing to release — R-19's output is the investigation report + the ROADMAP row retirement.
+**Last updated:** 2026-09-18 — R-20 RELEASED as v1.19.0 (company audit timeline). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
+
+---
+
+## Current state
+
+- **Current release:** v1.19.0 (resolve with `git rev-parse v1.19.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.19.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.19.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-20 (company audit timeline — cid-gated `GET /audit`, AuditTrail page + Gateway card; completes the R-18 audit feature). Investigation: `R-20_INVESTIGATION.md`. R-19 between: B-12 re-verified ALREADY CLOSED (docs commit `2be2097`).
+- **Verification (final tree):** Python **901/901** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **619** incl. 8 R-20, attack-the-fixes 29); browser **240/240** (run.js + r03/r04/r05/r07/r10/r14/r18 + r20); typecheck server + client clean; fresh volume applies 8/8 migrations.
+- **Next permitted action:** on "continue zprime" → ask the human for R-21 direction (genuinely open candidates: masters actor columns, UI hardening pair, or the postponed GST family — each needs a product decision).
 
 ---
 
@@ -8,11 +19,12 @@
 
 - **Current release:** v1.18.0 (resolve with `git rev-parse v1.18.0^{}`; see RELEASES.md)
 - **Current HEAD:** the v1.18.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — R-19 closed with no defect; the approved ROADMAP correction is applied; the next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-19 (B-12 backup/restore candidate — ALREADY CLOSED by R-12/v1.12.0, re-verified live on v1.18.0: dump → ON_ERROR_STOP restore → 0 drift incl. 0007 schema; in-product surface stays declined per F-12-3). Investigation: `R-19_INVESTIGATION.md`.
-- **What changed (approved):** one-row ROADMAP correction only — the stale "later | Backup/restore UX (B-12 P2)" candidate row replaced with the DONE disposition. No source, test, migration, or client change; **nothing to release** (docs-only correction rides with the next release commit, or stays uncommitted until then per the human's instruction).
-- **Next permitted action:** on "continue zprime" → ask the human for R-20 direction (genuinely open candidates: company audit timeline, masters actor columns, UI hardening pair, or the postponed GST family — each needs a product decision).
-- **What changed (approved full scope):** migration `0006_r17_voucher_actor.sql` (additive: `vouchers.created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at`; no fabricated backfill) + snapshot/journal; propagation at all three write sites (`insertVoucherTx` actor param for manual POST, import's own insert stamps the importing user, PUT stamps updated_by/updated_at with created_by immutable); `final_regression.py` +7 R-17 checks → 593. No client change; masters deferred (documented).
+- **Current phase:** `HUMAN_REVIEW` — R-20 investigation complete; awaiting approval of the proposed audit-timeline scope — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** R-20 (company audit timeline). Investigation: `R-20_INVESTIGATION.md`.
+- **Investigation findings:** R-18's `audit_events` table + `(company_id, created_at)` index were designed for exactly this — no migration, no new auth tier, no accounting surface. Endpoint `GET /audit` (cid-gated, id-DESC chronology — same-tx events can tie on created_at, id is strict; limit clamp + action filter + before-cursor; LEFT JOIN vouchers/types so deleted vouchers render unlinked with their snapshot). UI: new AuditTrail page at /company/:cid/audit + one Gateway utilities card. Tests: +8 Python → 901, new r20_ui.js ~6 → 234. Proposed release v1.19.0.
+- **Blocked decisions (waiting on human):** R-20 scope approval (audit timeline).
+- **R-19 (historical, closed):** B-12 backup/restore ALREADY CLOSED by R-12/v1.12.0 — re-verified live on v1.18.0; ROADMAP row retired; docs committed as `2be2097`.
+- **What changed (R-17, historical):** migration `0006_r17_voucher_actor.sql` (additive: `vouchers.created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at`; no fabricated backfill) + snapshot/journal; propagation at all three write sites (`insertVoucherTx` actor param for manual POST, import's own insert stamps the importing user, PUT stamps updated_by/updated_at with created_by immutable); `final_regression.py` +7 R-17 checks → 593. No client change; masters deferred (documented).
 - **Verification:** Python **875/875** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **593** incl. 7 R-17, attack-the-fixes 29); browser **219/219** on a rebuilt image + fresh volume (7/7 migrations); typecheck clean.
 - **What changed (approved test-only scope):** `final_regression.py` +8 R-15 checks → 586: paired openings → TB 0; interstate sale → GSTR-3B net.igst 900 and GSTR-1 netIgst 900 (openings excluded, period-only return semantics); IGST duty-ledger position −5,000 → −5,900 (book position carries opening); unpaired opening → TB −5,000 / BS +5,000 surfaced honestly. No source, migration, or client changes.
 - **Investigation findings (live-probed on v1.14.0):** GST returns are period-only by design (derived purely from voucher entries; openings never enter the query) — GSTR-3B net 900 with a Cr-5000 IGST opening present; the duty ledger carries the true position (−5,000 → −5,900); unpaired openings surface honestly as TB/BS difference (R-14 card). No false invariant anywhere → F-15-1/F-15-2 NOT A BUG — VERIFIED. Proposed R-15: test-hardening only, ~6 checks locking this semantics (no source changes) → 866; alternatively a formal readiness review.

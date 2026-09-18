@@ -12,6 +12,7 @@ import ImportXml from "./pages/ImportXml";
 import ChequePrint from "./pages/ChequePrint";
 import Reports from "./pages/Reports";
 import CompanySettings from "./pages/CompanySettings";
+import AuditTrail from "./pages/AuditTrail";
 
 function CompanyLayout() {
   const { cid } = useParams();
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/company/:cid/payroll" element={<PayrollProcess />} />
         <Route path="/company/:cid/import" element={<ImportXml />} />
         <Route path="/company/:cid/cheques" element={<ChequePrint />} />
+        <Route path="/company/:cid/audit" element={<AuditTrail />} />
         <Route path="/company/:cid/settings" element={<CompanySettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/companies" replace />} />

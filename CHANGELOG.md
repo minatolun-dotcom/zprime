@@ -15,6 +15,20 @@ Verification: Python **893/893** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
+## Unreleased — R-20 company audit timeline
+
+**Read-only feature on the R-18 audit data layer — no migration, no accounting-math change.**
+
+R-20 completes the audit feature: a company-wide, newest-first timeline of every voucher lifecycle event.
+
+- **Server:** `GET /audit` in `vouchers.ts` — cid()-gated (non-member = standard 404, no existence leak); `id DESC` chronology (events are same-transaction with their state change, so `id` is strictly monotonic where `created_at` can tie); `limit` clamped 1–1000 (default 200), optional `action` enum filter, `before` id-cursor for cheap older-page loads; LEFT JOINs users + vouchers + voucherTypes so rows carry actor username and voucher number/type.
+- **Client:** new `AuditTrail.tsx` at `/company/:cid/audit` (Day Book conventions; action badges; live vouchers link to the alter surface; deleted vouchers render unlinked with their R-18 snapshot) + one "Audit Trail" card in the Gateway utilities group.
+- **Tests:** `final_regression.py` +8 R-20 checks (619) — newest-first ordering, company isolation (timeline rows == company event count), joined fields, action filter, before-cursor, limit clamp, cid boundary semantics (unknown 404 / malformed 400), detached delete row with snapshot; new `scripts/acceptance/r20_ui.js` (12 browser checks — Gateway card → page, empty state, created/edited/deleted lifecycle rows, alter link, actor column, ordering, filter).
+
+Verification: Python **901/901** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **619** incl. 8 R-20, attack-the-fixes 29); browser **240/240** (run.js + r03/r04/r05/r07/r10/r14/r18 + **r20** 12); typecheck server + client clean; fresh volume applies 8/8 migrations.
+
+---
+
 ## Unreleased — R-17 audit-trail groundwork (voucher actor provance)
 
 **Additive schema change + server-only propagation — no client change, no accounting-math change.**
