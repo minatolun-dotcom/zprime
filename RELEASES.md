@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.23.0
+
+- **Commit:** `v1.23.0^{}` — resolve with `git rev-parse v1.23.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.23.0` (annotated; `v1.23.0^{}` = the release commit, verified at release)
+- **Major purpose:** E-invoice payload generation (R-24, approved Option A — generate + download only; live IRP/GSP connectivity explicitly deferred pending a product decision on external services). Migration `0010_r24_party_pincode.sql` (additive `ledgers.party_pincode`, no backfill) + Party PIN Code field on the ledger form. New `services/einvoice.ts`: NIC v1.01 B2B payload re-projecting `voucherGst()` classification + `inventory_entries`/`voucher_entries` line snapshots (goods from inventory; service lines only when the voucher has no inventory), strict **all-at-once** validation naming every gap with the exact field to fix — never a half-formed payload — UQC symbol mapping with loud failure, line-taxable cross-check against `voucherGst`; Sales→INV, Credit Note→CRN (positive magnitudes); Receipt/RCM/cancelled rejected. Read-only cid-gated `GET /reports/einvoice/:voucherId` returning `{ ok, errors, payload }`. Client: "e-inv" action on GSTR-1 B2B rows + JSON download + amber validation banner + green confirmation. No posting-engine change; accounting math untouched.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 991/991 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 709 (+27 dedicated R-24 checks: payload determinism, seller/buyer blocks incl. pincode, values matching voucherGst, HSN/UQC line data, all-at-once pincode errors with no payload, unregistered rejection, Receipt rejection, CRN positive magnitudes, non-member 404), attack-the-fixes 29)
+  - 285/285 browser checks on a rebuilt image with fresh volume (11/11 migrations, `party_pincode` verified live; run.js 153/153 exit-0 + r03…r24 = 132 scenario checks, new `r24_ui.js` 16/16: PIN field on the ledger form, full sale through the voucher form, e-inv download through the REAL UI, payload contents, amber validation banner, no download on failure)
+  - typecheck clean (server + client)
+- **Important fixes:** the one schema gap for e-invoicing closed (buyer PIN); en-route fixture findings all app-correct/test-fixed (`inventoryEntries` + numeric gstRate; UI ledger defaults registration/taxability "none" and blank company address/pincode — validator correctly refused until completed, which is the designed strictness).
+- **Immutable status:** 🔒 IMMUTABLE — `v1.23.0` is the current production baseline.
+
+---
+
 ## v1.22.0
 
 - **Commit:** `v1.22.0^{}` — resolve with `git rev-parse v1.22.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

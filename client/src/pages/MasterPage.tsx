@@ -295,6 +295,7 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
     { name: "tdsSectionId", label: "TDS Section (expense)", type: "select", optionsFrom: "tds-sections" },
     { name: "partyAddress", label: "Party Address", type: "textarea", full: true },
     { name: "partyState", label: "Party State", type: "text" },
+    { name: "partyPincode", label: "Party PIN Code", type: "text", hint: "6-digit; required for e-invoice payloads" },
     { name: "partyPhone", label: "Phone", type: "text" },
     { name: "partyEmail", label: "Email", type: "text" },
   ];

@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — **v1.22.0 RELEASED** (R-23 reverse charge mechanism: `vouchers.is_rcm` migration 0009, dutyHead RCM + RCM Payable ledger seed, GSTR-3B Table 4(A)(3) inwardRcm/rcmItc, Alt+R voucher toggle + 3B view rows; 964/964 automated + 267/267 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — **v1.23.0 RELEASED** (R-24 e-invoice payload generation: migration 0010 `ledgers.party_pincode`, NIC v1.01 builder with strict all-at-once validation, cid-gated einvoice endpoint, GSTR-1 e-inv actions; 991/991 automated + 285/285 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

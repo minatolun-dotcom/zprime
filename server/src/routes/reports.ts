@@ -10,6 +10,7 @@ import {
 } from "../services/accounting.js";
 import { stockSummary } from "../services/stock.js";
 import { gstr1, gstr3b } from "../services/gst.js";
+import { eInvoicePayload } from "../services/einvoice.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -127,6 +128,16 @@ export default async function reportRoutes(app: FastifyInstance) {
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
     const p = period(req.query as any, company?.booksBeginFrom);
     return gstr1(c, p.from, p.to);
+  });
+
+  // R-24: NIC v1.01 e-invoice payload for one Sales/Credit Note voucher.
+  // Read-only generation + validation; the operator uploads the JSON to their
+  // IRP/GSP channel (approved Option A — no IRP connectivity in zprime).
+  app.get("/einvoice/:voucherId", async (req) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    return eInvoicePayload(c, vid);
   });
 
   app.get("/gstr3b", async (req) => {

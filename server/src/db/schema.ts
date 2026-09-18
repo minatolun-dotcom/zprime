@@ -101,6 +101,9 @@ export const ledgers = pgTable("ledgers", {
   // Party contact
   partyAddress: text("party_address"),
   partyState: text("party_state"),
+  // R-24: NIC v1.01 BuyerDtls mandates a PIN code; the payload validator
+  // reports its absence (never guesses). Nullable — pre-R-24 rows are honest.
+  partyPincode: text("party_pincode"),
   partyPhone: text("party_phone"),
   partyEmail: text("party_email"),
   isActive: boolean("is_active").notNull().default(true),

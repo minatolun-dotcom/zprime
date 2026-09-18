@@ -9,7 +9,7 @@ import { get } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel } from "../lib/format";
-import { csvDownload } from "../lib/csv";
+import { csvDownload, textDownload } from "../lib/csv";
 
 export default function Reports() {
   const { cid, key } = useParams();
@@ -116,7 +116,7 @@ export default function Reports() {
       {key === "stock-summary" && data && <StockSummaryView data={data} single={Boolean(itemId)} />}
       {key === "receivables" && data && <OutstandingView data={data} title="Bills Receivable" />}
       {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" />}
-      {key === "gstr1" && data && <Gstr1View data={data} />}
+      {key === "gstr1" && data && <Gstr1View data={data} cid={cid} />}
       {key === "gstr3b" && data && <Gstr3bView data={data} />}
       {key === "tds" && data && <TdsView data={data} />}
       {key === "salary-register" && data && <SalaryRegisterView data={data} />}
@@ -544,10 +544,35 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
 }
 
 // ---------- GSTR-1 ----------
-function Gstr1View({ data }: { data: any }) {
+function Gstr1View({ data, cid }: { data: any; cid?: string }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   const t = data.totals ?? {};
   const hasNotes = (data.cdnr?.length ?? 0) + (data.cdnur?.length ?? 0) > 0;
+  const [einvMsg, setEinvMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // R-24: generate + download the NIC v1.01 payload for one voucher. The
+  // server validates strictly; validation failures surface every gap at once.
+  const downloadEinvoice = async (voucherId: number, number: string) => {
+    setEinvMsg(null);
+    try {
+      const res = await get<{ ok: boolean; errors: string[]; payload?: unknown }>(
+        `/api/c/${cid}/reports/einvoice/${voucherId}`,
+      );
+      if (!res.ok) {
+        setEinvMsg({ ok: false, text: res.errors.join(" · ") });
+        return;
+      }
+      textDownload(`einvoice-${number.replace(/[^A-Za-z0-9_-]/g, "_")}.json`, JSON.stringify(res.payload, null, 2));
+      setEinvMsg({ ok: true, text: `e-invoice JSON downloaded for ${number} — upload it to your IRP/GSP portal` });
+    } catch (e: any) {
+      setEinvMsg({ ok: false, text: e?.message ?? "e-invoice generation failed" });
+    }
+  };
+  const einvCell = (v: any) =>
+    cid ? (
+      <td className="w-20">
+        <button className="link text-[12px]" onClick={() => downloadEinvoice(v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
+      </td>
+    ) : null;
   const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (
     <table className="report-table">
       <thead>
@@ -566,6 +591,11 @@ function Gstr1View({ data }: { data: any }) {
   );
   return (
     <div className="space-y-4">
+      {einvMsg && (
+        <div className={`px-3 py-2 rounded text-[13px] ${einvMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-900 border border-amber-200"}`} role="status">
+          {einvMsg.text}
+        </div>
+      )}
       {hasNotes && (
         <Card>
           <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Net outward supplies (Table 9 net of notes)</div>
@@ -589,6 +619,7 @@ function Gstr1View({ data }: { data: any }) {
               <tr key={v.voucherId}>
                 <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName}</td><td className="text-slate-500">{v.partyGstin}</td>
                 <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
+                {einvCell(v)}
               </tr>
             ))}
           </tbody>

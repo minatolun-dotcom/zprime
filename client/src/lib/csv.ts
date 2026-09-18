@@ -46,3 +46,13 @@ export function csvDownload(name: string, headers: string[], rows: (string | num
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Download any text blob (R-24: the generated e-invoice JSON). */
+export function textDownload(name: string, text: string, mime = "application/json") {
+  const url = URL.createObjectURL(new Blob([text], { type: `${mime};charset=utf-8` }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}

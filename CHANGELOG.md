@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.23.0 — R-24 e-invoice payload generation (IRP upload)
+
+R-24 implements the approved Option A scope: zprime generates and validates the NIC v1.01 e-invoice JSON for Sales/Credit Note vouchers; the operator uploads it to their chosen IRP/GSP channel. No IRP connectivity, credentials, or network code (explicitly deferred — needs a product decision on external services).
+
+- **Migration `0010_r24_party_pincode.sql`** (additive, no backfill): `ledgers.party_pincode` — the one schema gap (buyer PIN is mandatory in BuyerDtls; the seller pincode already existed). MasterPage ledger form gains the Party PIN Code field.
+- **`services/einvoice.ts`** (new): payload builder that re-projects data zprime already computes — `voucherGst()` duty classification (R-01/R-05/R-23-verified), `inventory_entries`/`voucher_entries` line snapshots, company/ledger master fields. Goods lines from inventory; service lines only when the voucher has no inventory (a pure service invoice). Strict **all-at-once** validation: every mandatory gap reported with the exact ledger/company field to fix; no half-formed payload is ever emitted. UQC symbol mapping with loud failure on unknown units. Line-taxable cross-check against `voucherGst` (defense in depth). Sales→INV, Credit Note→CRN with positive magnitudes; non-member → 404; RCM and cancelled vouchers rejected.
+- **`GET /reports/einvoice/:voucherId`** (cid-gated, read-only): returns `{ ok, errors, payload }`.
+- **Client:** "e-inv" action on GSTR-1 B2B rows; download fires the JSON as a file; amber banner lists validation gaps verbatim; green confirmation on success.
+- **Tests:** `final_regression.py` +27 R-24 checks (709) — payload determinism, seller/buyer blocks, values matching `voucherGst`, HSN/UQC line data, missing-pincode all-at-once errors, unregistered rejection, Receipt rejection, CRN positive magnitudes, non-member 404; new `scripts/acceptance/r24_ui.js` (16 browser checks: PIN field on the ledger form, full sale through the voucher form, e-inv download through the REAL UI, payload contents, amber validation banner).
+- Verification: Python **991/991** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **709** incl. 27 R-24, attack-the-fixes 29); browser **285/285** on a rebuilt image + fresh volume (11/11 migrations; run.js 153 + r03…r24 = 132 scenario checks); typecheck server + client clean.
+
+En-route fixture findings (app correct, tests fixed): the voucher API takes `inventoryEntries` (not `inventory`) and numeric GST rates; UI-created ledgers default to `gstRegistrationType`/`taxability` "none" — the validator correctly refused both until the fixtures set Regular/Taxable. No source behavior changed.
+
 ## v1.22.0 — R-23 reverse charge mechanism (RCM)
 
 **Genuine compliance gap closed — classification + reporting additive; posting engine and accounting math untouched.**

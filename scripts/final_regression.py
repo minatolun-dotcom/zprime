@@ -2714,5 +2714,109 @@ check("R23: TB balanced with RCM postings", s == 200 and tb.get("totalDebit") ==
 s2, _ = r03(sB, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
 check("R23: non-member 3B -> 404", s2 == 404, s2)
 
+# ============================================================================
+# R-24: E-INVOICE PAYLOAD GENERATION (NIC v1.01, B2B mandatory set)
+# ============================================================================
+# Own company (Option A scope: generate + download only; no IRP connectivity).
+s, c24 = r03(sA, "POST", "/api/companies", {"name": "R24 Einvoice", "state": "Maharashtra", "stateCode": "27",
+    "address": "12 MG Road", "city": "Mumbai", "pincode": "400001", "gstin": "27R24EINV01G2H3",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R24: test company created", s == 200 and c24.get("id"), (s, str(c24)[:90]))
+C24 = c24["id"]
+R24 = f"/api/c/{C24}"
+
+# Party with full e-invoice fields; pincode is the R-24 schema addition.
+s, vts24 = r03(sA, "GET", f"{R24}/voucher-types")
+vt24 = {t["name"]: t["id"] for t in (vts24 or [])}
+s, grps24 = r03(sA, "GET", f"{R24}/groups")
+groups24 = {g["name"]: g["id"] for g in (grps24 or [])}
+check("R24: reserved groups present", "Sundry Debtors" in groups24 and "Sales Accounts" in groups24, list(groups24)[:12])
+s, sales24 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R24 Sales", "groupId": groups24["Sales Accounts"], "taxability": "taxable"})
+check("R24: sales ledger created", s == 200 and sales24.get("id"), (s, str(sales24)[:90]))
+s, led24 = r03(sA, "GET", f"{R24}/ledgers")
+gm24 = {l["name"]: l["id"] for l in (led24 or [])}
+check("R24: seeded ledgers present", "IGST" in gm24 and "R24 Sales" in gm24, list(gm24)[:12])
+s, buy24 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": "29R24BUYER01J2K",
+    "gstRegistrationType": "regular", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka",
+    "partyPincode": "560001"})
+check("R24: buyer ledger with pincode created", s == 200 and buy24.get("id"), (s, str(buy24)[:110]))
+check("R24: partyPincode persisted", buy24.get("partyPincode") == "560001", buy24.get("partyPincode"))
+
+# Inter-state sale 10,000 + IGST 1,800 with an inventory line (HSN + UQC unit).
+s, units24 = r03(sA, "GET", f"{R24}/units")
+if not any(u.get("symbol") == "NOS" for u in (units24 or [])):
+    r03(sA, "POST", f"{R24}/units", {"name": "Numbers", "symbol": "NOS", "decimalPlaces": 0})
+s, units24 = r03(sA, "GET", f"{R24}/units")
+U24 = next(u["id"] for u in units24 if u["symbol"] == "NOS")
+s, sg24 = r03(sA, "GET", f"{R24}/stock-groups")
+sgid24 = (sg24 or [{}])[0].get("id")
+_item24_body = {"name": "R24 Widget", "unitId": U24, "hsnSac": "8471", "gstRate": "18",
+    "openingQty": "50", "openingRate": "900", "openingValue": "45000"}
+if sgid24: _item24_body["stockGroupId"] = sgid24
+s, item24 = r03(sA, "POST", f"{R24}/stock-items", _item24_body)
+check("R24: stock item with HSN created", s == 200 and item24.get("id"), (s, str(item24)[:100]))
+s, sale24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Sales"], "date": "2026-08-15", "partyLedgerId": buy24["id"],
+    "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales24["id"], "amount": -10000}, {"ledgerId": gm24["IGST"], "amount": -1800}, {"ledgerId": buy24["id"], "amount": 11800}],
+    "inventoryEntries": [{"itemId": item24["id"], "qty": -10, "rate": 1000, "amount": 10000, "hsnSac": "8471", "gstRate": 18}]})
+check("R24: inter-state sale posted", s == 200 and sale24.get("id"), (s, str(sale24)[:120]))
+
+# 1) happy path: payload present, deterministic, cross-checked with voucherGst
+s, ei1 = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+check("R24: payload generated (ok=true)", s == 200 and ei1.get("ok") is True, (s, str(ei1)[:200]))
+p24 = ei1.get("payload") or {}
+check("R24: version + B2B + INV", p24.get("Version") == "1.01" and p24.get("TranDtls", {}).get("SupTyp") == "B2B"
+      and p24.get("DocDtls", {}).get("Typ") == "INV", p24.get("DocDtls"))
+check("R24: doc number/date carried", p24.get("DocDtls", {}).get("No") == sale24.get("number") and p24.get("DocDtls", {}).get("Dt") == "2026-08-15", p24.get("DocDtls"))
+sd = p24.get("SellerDtls", {})
+check("R24: seller block from company master", sd.get("Gstin") == "27R24EINV01G2H3" and sd.get("Pin") == 400001 and sd.get("Stcd") == "27", sd)
+bd = p24.get("BuyerDtls", {})
+check("R24: buyer block from ledger (+pincode)", bd.get("Gstin") == "29R24BUYER01J2K" and bd.get("Pin") == 560001 and bd.get("Pos") == "29", bd)
+val = p24.get("ValDtls", {})
+check("R24: values match voucherGst (taxable 10000, igst 1800)", val.get("AssVal") == 10000 and val.get("IgstVal") == 1800, val)
+items = p24.get("ItemList", [])
+check("R24: item line HSN/UQC/qty", len(items) == 1 and items[0].get("HsnCd") == "8471" and items[0].get("Unit") == "NOS" and items[0].get("Qty") == 10, items)
+check("R24: item duty share (igst 1800 on the line)", items and items[0].get("IgstAmt") == 1800, items)
+s, ei2 = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+check("R24: payload deterministic (byte-equal JSON)", json.dumps(ei1.get("payload"), sort_keys=True) == json.dumps(ei2.get("payload"), sort_keys=True))
+
+# 2) validation: strip the buyer pincode -> all-at-once errors, no payload
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": "29R24BUYER01J2K",
+    "gstRegistrationType": "regular", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": None})
+s, ei3 = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+check("R24: missing pincode -> ok=false", s == 200 and ei3.get("ok") is False, (s, str(ei3)[:150]))
+check("R24: error names the ledger and field", any("PIN" in e and "R24 Buyer" in e for e in ei3.get("errors", [])), ei3.get("errors"))
+check("R24: no payload emitted on validation failure", ei3.get("payload") is None, ei3.get("payload"))
+
+# 3) unregistered party -> rejected (B2C out of scope)
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": None,
+    "gstRegistrationType": "unregistered", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": "560001"})
+s, ei4 = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+check("R24: unregistered buyer rejected", s == 200 and ei4.get("ok") is False and any("GSTIN" in e for e in ei4.get("errors", [])), (s, str(ei4)[:150]))
+
+# 4) non-Sales/Credit-Note types rejected
+s, pn24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Receipt"], "date": "2026-08-20", "partyLedgerId": buy24["id"],
+    "entries": [{"ledgerId": sales24["id"], "amount": 1180}, {"ledgerId": buy24["id"], "amount": -1180}]})
+check("R24: receipt fixture posted", s == 200 and pn24.get("id"), (s, str(pn24)[:110]))
+s, ei5 = r03(sA, "GET", f"{R24}/reports/einvoice/{pn24['id']}")
+check("R24: Receipt rejected (not INV/CRN)", s == 200 and ei5.get("ok") is False and any("Sales" in e or "Credit Note" in e for e in ei5.get("errors", [])), (s, str(ei5)[:150]))
+
+# 5) credit note -> CRN with POSITIVE magnitudes (re-projection of R-05 semantics)
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": "29R24BUYER01J2K",
+    "gstRegistrationType": "regular", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": "560001"})
+s, cn24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Credit Note"], "date": "2026-08-18", "partyLedgerId": buy24["id"],
+    "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales24["id"], "amount": 1000}, {"ledgerId": gm24["IGST"], "amount": 180}, {"ledgerId": buy24["id"], "amount": -1180}],
+    "inventoryEntries": [{"itemId": item24["id"], "qty": 1, "rate": 1000, "amount": 1000, "hsnSac": "8471", "gstRate": 18}]})
+check("R24: credit note posted", s == 200 and cn24.get("id"), (s, str(cn24)[:110]))
+s, ei6 = r03(sA, "GET", f"{R24}/reports/einvoice/{cn24['id']}")
+check("R24: credit note -> CRN ok", s == 200 and ei6.get("ok") is True and ei6.get("payload", {}).get("DocDtls", {}).get("Typ") == "CRN", (s, str(ei6)[:150]))
+_cn_val = ei6.get("payload", {}).get("ValDtls", {})
+check("R24: CRN values positive magnitudes (1000/180)", _cn_val.get("AssVal") == 1000 and _cn_val.get("IgstVal") == 180, _cn_val)
+
+# 6) non-member cannot generate a payload cross-company
+s2, _ = r03(sB, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+check("R24: non-member einvoice -> 404", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

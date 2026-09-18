@@ -71,6 +71,13 @@
       "when": 1789732800000,
       "tag": "0009_r23_rcm",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789819200000,
+      "tag": "0010_r24_party_pincode",
+      "breakpoints": true
     }
   ]
 }
