@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.21.0
+
+- **Commit:** `v1.21.0^{}` — resolve with `git rev-parse v1.21.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.21.0` (annotated; `v1.21.0^{}` = the release commit, verified at release)
+- **Major purpose:** Master-table actor provance (R-22, approved product decision after two documented deferrals — the R-18/R-20 audit surfaces removed the "no per-row history anchor" objection). R-17's voucher provance pattern applied to masters: additive migration `0008_r22_master_actor.sql` — `created_by`/`updated_by` (FK → users, ON DELETE SET NULL, nullable) + `updated_at` on **9 master tables** (groups, ledgers, units, stock_groups, stock_categories, godowns, stock_items, employees, pay_heads); programmatic snapshot + journal (idx 8). **No backfill** — pre-R-22 rows honestly NULL; company seeding (reserved groups, starter ledgers, voucher types, TDS sections) also stays NULL (no authenticated actor exists at seeding; fabricating one would be dishonest). Excluded: `voucher_types` + `tds_sections` (system-seeded, no user creation surface). Stamping: ONE `crud()` change covers all 11 registered kinds (POST stamps `createdBy`; PUT stamps `updatedBy`+`updatedAt` with `created_by` immutable; client-supplied actor fields stripped — identity from the verified JWT only); import's 5 master-ensure inserts stamp the importing actor. No client change, no accounting-math surface.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 931/931 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 649 (+20 dedicated R-22 checks: POST/PUT stamping, created_by immutability, actor-forgery stripping on POST + PUT, import-created ledger/item carry the importing actor, seeded rows NULL, second-member edit stamps the actual editor, fresh updated_at NULL), attack-the-fixes 29)
+  - 255/255 browser checks on a rebuilt image with fresh volume (9/9 migrations, 27 new columns verified live; run.js 153/153 exit-0 + r03/r04/r05/r07/r10/r14/r18/r20/r21 = 102 scenario checks)
+  - typecheck clean (server + client)
+- **Important fixes:** masters now carry honest creator/editor provance in a multi-member company ("who created this ledger / stock item / employee"); the deferral rationale from R-17/R-20 is retired. Test-harness hardening en route: final_regression now kills orphaned servers (new process group + pre-kill) after a stale port squatter caused a false failure.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.21.0` is the current production baseline.
+
+---
+
 ## v1.20.0
 
 - **Commit:** `v1.20.0^{}` — resolve with `git rev-parse v1.20.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

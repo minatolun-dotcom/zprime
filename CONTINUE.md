@@ -1,17 +1,18 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — R-21 RELEASED as v1.20.0 (pre-validation UX pair). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
+**Last updated:** 2026-09-18 — R-22 RELEASED as v1.21.0 (master-table actor provance). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
 
 ---
 
 ## Current state
 
-- **Current release:** v1.20.0 (resolve with `git rev-parse v1.20.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.20.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.20.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-21 (pre-validation UX pair — negative-stock advisory + import dry-run; `allowNegativeStock` exposed in company responses). Investigation: `R-21_INVESTIGATION.md`.
-- **Verification (final tree):** Python **911/911** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **629** incl. 10 R-21, attack-the-fixes 29); browser **253/253** (run.js + r03/r04/r05/r07/r10/r14/r18/r20 + r21); typecheck server + client clean; fresh volume applies 8/8 migrations.
-- **Next permitted action:** on "continue zprime" → ask the human for R-22 direction (genuinely open candidates: masters actor columns, or the postponed GST family — RCM/e-invoice/e-way/GSTR-9/TCS — each needs a product decision).
+- **Current release:** v1.21.0 (resolve with `git rev-parse v1.21.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.21.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.21.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-22 (masters actor columns — migration 0008 + crud()/import stamping). Investigation: `R-22_INVESTIGATION.md`.
+- **What changed (implemented scope):** migration `0008_r22_master_actor.sql` (additive: `created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at` on 9 master tables — groups, ledgers, units, stock_groups, stock_categories, godowns, stock_items, employees, pay_heads; NOT voucher_types/tds_sections: system-seeded; no backfill) + programmatic snapshot/journal (idx 8); `schema.ts` columns via a shared `masterActor()` helper; ONE `crud()` change covers all 11 registrations (POST stamps createdBy, PUT stamps updatedBy+updatedAt, created_by immutable, client-supplied actor fields stripped — JWT-only identity); import.ts 5 ensure* inserts stamp `importingActor`; company seeding stays NULL honestly. No client change.
+- **Verification (final tree):** Python **931/931** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **649** incl. 20 R-22, attack-the-fixes 29); browser **255/255** on a rebuilt image + fresh volume (run.js 153/153 exit-0 + r03/r04/r05/r07/r10/r14/r18/r20/r21 = 102 scenario checks); typecheck server + client clean; fresh volume applies 9/9 migrations (27 new columns verified live). Harness hardening en route: final_regression now kills orphaned servers (new process group + pre-kill) after a stale 3106 squatter caused a false failure.
+- **Blocked decisions (waiting on human):** none. Next session: ask for R-23 direction (genuinely open candidates: the postponed GST compliance family — RCM / e-invoice / e-way bill / GSTR-9 / TCS — each large and its own cycle; or hold steady).
 
 ---
 

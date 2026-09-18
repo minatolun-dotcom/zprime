@@ -129,6 +129,10 @@ export default async function importRoutes(app: FastifyInstance) {
 
     const stats = { groups: 0, ledgers: 0, units: 0, items: 0, godowns: 0, vouchers: 0, skipped: 0, errors: [] as string[] };
 
+    // R-22: master rows created by the import carry the importing actor as
+    // created_by (same rule as R-17 voucher import provance).
+    const importingActor = typeof req.userId === "number" && req.userId > 0 ? req.userId : null;
+
     /** Numeric part of "ABC00012" / "12-A" etc for counter sync. */
     function numericTail(n: string): number | null {
       const m = String(n).match(/(\d+)\s*$/);
@@ -194,7 +198,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (parentName && groupIdByName.has(parentName)) parentId = groupIdByName.get(parentName)!;
       else if (parentName) parentId = await ensureGroup(parentName, RESERVED_PRIMARY.has(parentName) ? null : null);
       const nature = guessNature(name, parentName);
-      const [row] = await tx.insert(groups).values({ companyId: c, name, parentId, nature }).returning({ id: groups.id });
+      const [row] = await tx.insert(groups).values({ companyId: c, name, parentId, nature, createdBy: importingActor }).returning({ id: groups.id });
       groupIdByName.set(name, row.id);
       stats.groups += 1;
       return row.id;
@@ -228,6 +232,7 @@ export default async function importRoutes(app: FastifyInstance) {
         // Ledgers whose vouchers carry bill allocations are bill-wise (Tally
         // implies the flag); needed so allocation validation matches the API.
         billWise,
+        createdBy: importingActor, // R-22: provance = the importing user
       }).returning({ id: ledgers.id });
       ledgerIdByName.set(key, row.id);
       stats.ledgers += 1;
@@ -238,7 +243,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (!symbol) return null;
       const key = symbol.toLowerCase();
       if (unitIdBySymbol.has(key)) return unitIdBySymbol.get(key)!;
-      const [row] = await tx.insert(units).values({ companyId: c, name: symbol, symbol, decimalPlaces: 2 }).returning({ id: units.id });
+      const [row] = await tx.insert(units).values({ companyId: c, name: symbol, symbol, decimalPlaces: 2, createdBy: importingActor }).returning({ id: units.id });
       unitIdBySymbol.set(key, row.id);
       stats.units += 1;
       return row.id;
@@ -248,7 +253,7 @@ export default async function importRoutes(app: FastifyInstance) {
       if (!name) return null;
       const key = name.toLowerCase();
       if (godownIdByName.has(key)) return godownIdByName.get(key)!;
-      const [row] = await tx.insert(godowns).values({ companyId: c, name }).returning({ id: godowns.id });
+      const [row] = await tx.insert(godowns).values({ companyId: c, name, createdBy: importingActor }).returning({ id: godowns.id });
       godownIdByName.set(key, row.id);
       stats.godowns += 1;
       return row.id;
@@ -265,6 +270,7 @@ export default async function importRoutes(app: FastifyInstance) {
         openingQty: String(r2(openingQty)),
         openingRate: String(r2(openingRate)),
         openingValue: String(r2(openingQty * openingRate)),
+        createdBy: importingActor, // R-22: provance = the importing user
       }).returning({ id: stockItems.id });
       itemIdByName.set(key, row.id);
       stats.items += 1;

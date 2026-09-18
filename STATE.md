@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — R-21 RELEASED as v1.20.0 (pre-validation UX: VoucherScreen negative-stock advisory + import dry-run Validate; `allowNegativeStock` now returned by company responses). v1.20.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — R-22 RELEASED as v1.21.0 (master-table actor provance: created_by/updated_by/updated_at on 9 master tables via additive migration 0008; crud() + import stamping, client actor fields stripped; +20 regression checks). v1.21.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

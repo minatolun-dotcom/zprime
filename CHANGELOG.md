@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — R-22 master-table actor provance
+
+**Additive schema change + server stamping — accounting-math untouched, no client change.**
+
+R-22 applies the R-17 voucher provance pattern to masters: `created_by` / `updated_by` (FK → users, ON DELETE SET NULL, nullable) plus `updated_at` on the master tables with a user-facing creation/mutation surface.
+
+- **Migration `0008_r22_master_actor.sql` (additive, no backfill):** 3 columns × 9 tables — `groups`, `ledgers`, `units`, `stock_groups`, `stock_categories`, `godowns`, `stock_items`, `employees`, `pay_heads`. Existing rows keep NULL (honest "before provance existed"); seeding reserved groups / starter ledgers / voucher types / TDS sections also stays NULL — no authenticated actor exists at seeding time and fabricating one would be dishonest. Excluded: `voucher_types` + `tds_sections` (system-seeded, no user creation surface).
+- **Stamping at the write sites:** generic `crud()` handler stamps `createdBy` on POST and `updatedBy` + `updatedAt` on PUT (created_by immutable) — one change covers all 11 registered master kinds including employees/pay-heads; XML import's 5 master-ensure sites stamp the importing actor (R-17 rule). Client-supplied `createdBy`/`updatedBy`/`updatedAt` are stripped at the boundary — actor identity comes only from the verified JWT.
+- **Tests:** `final_regression.py` +20 R-22 checks (649) — POST/PUT stamping, created_by immutability, actor-forgery stripping (POST + PUT), import-created ledger/item carry the importing actor, seeded rows NULL, second-member edit stamps the actual editor, fresh `updated_at` NULL. No client change → browser suites unchanged.
+
+Verification: Python **931/931** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **649** incl. 20 R-22, attack-the-fixes 29); browser **255/255** (run.js 153 + r03/r04/r05/r07/r10/r14/r18/r20/r21); typecheck server + client clean; fresh volume applies 9/9 migrations.
+
+---
+
 ## Unreleased — R-18 full audit feature (voucher lifecycle history)
 
 **Additive schema change + server capture + minimal viewer — accounting-math untouched.**

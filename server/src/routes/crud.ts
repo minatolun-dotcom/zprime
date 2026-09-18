@@ -36,6 +36,12 @@ function requireName(data: any): any {
 
 type Table = any;
 
+/** R-22: authenticated actor id for provance stamping (verified JWT identity).
+ *  Mirrors the R-17 voucher stamping rule exactly. */
+function actorId(req: any): number | null {
+  return typeof req.userId === "number" && req.userId > 0 ? req.userId : null;
+}
+
 /** R-08 (F-08-1): company-scope validation for master FK references.
  *  The schema-level FKs (ledgers.group_id, stock_items.unit_id, ...) are global,
  *  so without this check a POST/PUT body could silently reference another
@@ -75,6 +81,10 @@ export function crud(
     refs?: RefSpec;
   } = {}
 ) {
+  // R-22: the authenticated actor (verified JWT identity) for provance stamping.
+  // Tables without actor columns (none registered today) would reject unknown
+  // columns, so this is only added when the table carries created_by.
+  const hasActor = !!(table as any).createdBy;
   app.get(`/${name}`, async (req: any) => {
     const c = await cid(req);
     const q = (req.query as any).q;
@@ -100,6 +110,12 @@ export function crud(
   app.post(`/${name}`, async (req: any) => {
     const c = await cid(req);
     let data = capFields(trimStrings({ ...(req.body as any), companyId: c }));
+    // R-22: actor identity comes from the verified JWT only — strip any
+    // client-supplied provance fields (same trust rule as R-03/R-17).
+    delete data.createdBy;
+    delete data.updatedBy;
+    delete data.updatedAt;
+    if (hasActor) data.createdBy = actorId(req);
     if (opts.schema) {
       const parsed = opts.schema.safeParse(data);
       if (!parsed.success) throw bad(`Invalid ${name.slice(0, -1)}: ${parsed.error.issues[0]?.message}`);
@@ -122,6 +138,15 @@ export function crud(
     const c = await cid(req);
     const id = parseInt((req.params as any).id, 10);
     let data = capFields(trimStrings({ ...(req.body as any) }));
+    // R-22: created_by is immutable after creation; updated_by/updated_at come
+    // from the verified JWT, never the body (client-supplied values stripped).
+    delete data.createdBy;
+    delete data.updatedBy;
+    delete data.updatedAt;
+    if (hasActor) {
+      data.updatedBy = actorId(req);
+      data.updatedAt = new Date();
+    }
     if (opts.schema) {
       const parsed = opts.schema.safeParse({ ...data, id: undefined });
       if (!parsed.success) throw bad(`Invalid ${name.slice(0, -1)}: ${parsed.error.issues[0]?.message}`);

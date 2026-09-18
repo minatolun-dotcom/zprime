@@ -4,6 +4,17 @@ import {
 // (drizzle-orm/pg-core exports reviewed for R-02: no new column types needed —
 // timestamp/text/integer already imported.)
 
+// R-22: the R-17 actor-provance column triple, shared by the 9 master tables
+// (groups, ledgers, units, stock_groups, stock_categories, godowns,
+// stock_items, employees, pay_heads). Excluded: voucher_types + tds_sections
+// (system-seeded at company creation, no user-facing creation surface).
+// NULL = system-seeded or pre-R-22 — honest, never fabricated.
+const masterActor = () => ({
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
 // ---------- Users & Companies ----------
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -58,6 +69,11 @@ export const groups = pgTable("groups", {
   nature: text("nature").notNull(), // Assets | Liabilities | Income | Expenses
   isReserved: boolean("is_reserved").notNull().default(false),
   affectsGross: boolean("affects_gross").notNull().default(false),
+  // R-22: actor provance, stamped server-side from the verified JWT identity
+  // (same shape/rule as R-17 vouchers). NULL = system-seeded or pre-R-22.
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("groups_company_name_uq").on(t.companyId, t.name)]);
 
 export const ledgers = pgTable("ledgers", {
@@ -88,6 +104,10 @@ export const ledgers = pgTable("ledgers", {
   partyPhone: text("party_phone"),
   partyEmail: text("party_email"),
   isActive: boolean("is_active").notNull().default(true),
+  // R-22: actor provance (R-17 pattern). NULL = pre-R-22 row (no backfill).
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("ledgers_company_name_uq").on(t.companyId, t.name)]);
 
 export const voucherTypes = pgTable("voucher_types", {
@@ -120,24 +140,28 @@ export const units = pgTable("units", {
   name: text("name").notNull(), // Numbers
   symbol: text("symbol").notNull(), // Nos
   decimalPlaces: integer("decimal_places").notNull().default(0),
+  ...masterActor(),
 }, (t) => [uniqueIndex("units_company_symbol_uq").on(t.companyId, t.symbol)]);
 
 export const stockGroups = pgTable("stock_groups", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  ...masterActor(),
 }, (t) => [uniqueIndex("sg_company_name_uq").on(t.companyId, t.name)]);
 
 export const stockCategories = pgTable("stock_categories", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  ...masterActor(),
 }, (t) => [uniqueIndex("sc_company_name_uq").on(t.companyId, t.name)]);
 
 export const godowns = pgTable("godowns", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  ...masterActor(),
 }, (t) => [uniqueIndex("godown_company_name_uq").on(t.companyId, t.name)]);
 
 export const stockItems = pgTable("stock_items", {
@@ -157,6 +181,7 @@ export const stockItems = pgTable("stock_items", {
   standardSalePrice: numeric("standard_sale_price", { precision: 18, scale: 4 }).notNull().default("0"),
   standardCost: numeric("standard_cost", { precision: 18, scale: 4 }).notNull().default("0"),
   minQty: numeric("min_qty", { precision: 18, scale: 4 }).notNull().default("0"),
+  ...masterActor(),
 }, (t) => [uniqueIndex("item_company_name_uq").on(t.companyId, t.name)]);
 
 // ---------- Vouchers ----------
@@ -287,6 +312,7 @@ export const employees = pgTable("employees", {
   bankName: text("bank_name"),
   bankAccount: text("bank_account"),
   isActive: boolean("is_active").notNull().default(true),
+  ...masterActor(),
 }, (t) => [uniqueIndex("emp_company_name_uq").on(t.companyId, t.name)]);
 
 export const payHeads = pgTable("pay_heads", {
@@ -296,6 +322,7 @@ export const payHeads = pgTable("pay_heads", {
   type: text("type").notNull(), // earning | deduction | employer_contribution
   ledgerId: integer("ledger_id").notNull().references(() => ledgers.id),
   affectsGross: boolean("affects_gross").notNull().default(true),
+  ...masterActor(),
 }, (t) => [uniqueIndex("ph_company_name_uq").on(t.companyId, t.name)]);
 
 export const salaryStructures = pgTable("salary_structures", {

@@ -46,12 +46,22 @@ subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-c"
                capture_output=True, check=True)
 env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3106",
     JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123")  # R-09: explicit fixtures (fail-fast otherwise)
+# Harness hygiene: a crashed prior run can orphan the node child (terminate()
+# kills the tsx wrapper only), leaving a squatter on 3106 that this run's
+# health poll would silently hit. Kill leftovers, then start a NEW PROCESS
+# GROUP so cleanup can kill the whole tree.
+subprocess.run(["pkill", "-f", "tsx server/src/index.ts"], capture_output=True)
+time.sleep(0.5)
 server = subprocess.Popen(["npx", "tsx", "server/src/index.ts"],
                           cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-import atexit
+                          env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                          start_new_session=True)
+import atexit, signal
 def _cleanup():
-    server.terminate()
+    try:
+        os.killpg(os.getpgid(server.pid), signal.SIGTERM)
+    except Exception:
+        pass
     time.sleep(0.5)
     subprocess.run(["pkill", "-f", "PORT=3106"], capture_output=True)
 atexit.register(_cleanup)
@@ -2504,6 +2514,80 @@ check("R21: real-imported voucher IS visible after real run", any(v.get("number"
 # 5) dry-run requires the same membership authorization as the real route
 s2, _ = r03(sB, "POST", f"/api/c/{C21}/import/xml?dryRun=1", {"xml": BAL_XML})
 check("R21: dry-run from a non-member -> 404 (no bypass)", s2 == 404, s2)
+
+# ================= R-22: master-table actor provance =================
+# The R-17 voucher pattern applied to masters: created_by stamped from the
+# verified JWT on POST/import; updated_by + updated_at on PUT; created_by
+# immutable; client-supplied actor fields stripped; system-seeded rows stay
+# NULL (honest); no backfill. NULL = system-seeded or pre-R-22.
+print("-- R-22: master actor provance --")
+
+s, c22 = r03(sA, "POST", "/api/companies", {"name": "R22 Actor", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R22ACT00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R22: test company created", s == 200 and c22.get("id"), (s, str(c22)[:80]))
+C22 = c22["id"]
+
+# 1) manual POST stamps created_by with the authenticated user
+s, grps = r03(sA, "GET", f"/api/c/{C22}/groups")
+_gid = (grps or [{}])[0].get("id")
+s, lg = r03(sA, "POST", f"/api/c/{C22}/ledgers", {"name": "R22 Ledger", "groupId": _gid})
+check("R22: manual ledger POST returns row", s == 200 and lg.get("id"), (s, str(lg)[:100]))
+L22 = lg["id"]
+check("R22: created_by = admin (verified JWT actor)", lg.get("createdBy") == 1, lg.get("createdBy"))
+check("R22: updated_at NULL on fresh create", lg.get("updatedAt") is None, lg.get("updatedAt"))
+
+# 2) client cannot forge the actor
+s, lg2 = r03(sA, "POST", f"/api/c/{C22}/ledgers", {"name": "R22 Forge", "groupId": _gid, "createdBy": 999, "updatedBy": 999})
+check("R22: client-supplied createdBy is stripped (admin stamps instead)",
+      s == 200 and lg2.get("createdBy") == 1, (s, lg2.get("createdBy")))
+
+# 3) PUT stamps updated_by/updated_at; created_by is immutable
+s, lg3 = r03(sA, "PUT", f"/api/c/{C22}/ledgers/{L22}", {"partyPhone": "12345"})
+check("R22: PUT stamps updated_by = admin and sets updated_at",
+      s == 200 and lg3.get("updatedBy") == 1 and lg3.get("updatedAt"), (s, lg3.get("updatedBy"), lg3.get("updatedAt")))
+check("R22: created_by survives the edit unchanged", lg3.get("createdBy") == 1, lg3.get("createdBy"))
+s, lg4 = r03(sA, "PUT", f"/api/c/{C22}/ledgers/{L22}", {"createdBy": 999, "updatedBy": 999})
+check("R22: PUT cannot forge createdBy/updatedBy (stripped)",
+      s == 200 and lg4.get("createdBy") == 1 and lg4.get("updatedBy") == 1, (lg4.get("createdBy"), lg4.get("updatedBy")))
+
+# 4) import-created masters carry the importing actor
+R22_IMP = XML_HDR + """
+<TALLYMESSAGE>
+ <LEDGER NAME="R22 Imp Ledger"><PARENT>Sundry Debtors</PARENT></LEDGER>
+ <STOCKITEM NAME="R22 Imp Item"><BASEUNITS>Nos</BASEUNITS></STOCKITEM>
+</TALLYMESSAGE>""" + XML_FTR
+s, im = r03(sA, "POST", f"/api/c/{C22}/import/xml", {"xml": R22_IMP})
+check("R22: master-only import succeeds", s == 200 and im.get("ledgers") == 1 and im.get("items") == 1, (s, str(im)[:100]))
+_imp = _sql(f"SELECT created_by FROM ledgers WHERE company_id={C22} AND name='R22 Imp Ledger'")
+check("R22: import-created ledger carries importing actor", _imp == "1", _imp)
+_imp2 = _sql(f"SELECT created_by FROM stock_items WHERE company_id={C22} AND name='R22 Imp Item'")
+check("R22: import-created item carries importing actor", _imp2 == "1", _imp2)
+
+# 5) system-seeded rows stay NULL (honest: no actor existed at seeding)
+_seed = _sql(f"SELECT count(*) FROM groups WHERE company_id={C22} AND is_reserved=true AND created_by IS NULL")
+_tot = _sql(f"SELECT count(*) FROM groups WHERE company_id={C22} AND is_reserved=true")
+check("R22: seeded reserved groups have created_by NULL (no fabricated actor)", _tot != "0" and _seed == _tot, ("reserved", _seed, "/", _tot))
+_seedl = _sql(f"SELECT count(*) FROM ledgers WHERE company_id={C22} AND created_by IS NULL AND name IN ('Cash','Capital Account')")
+check("R22: seeded starter ledgers stay NULL", _seedl != "0", _seedl)
+
+# 6) second member edits a master: updated_by = the actual editor
+s, mem = r03(sA, "POST", f"/api/companies/{C22}/members", {"username": "r22bob", "password": "r22bob", "role": "accountant"})
+check("R22: member created", s == 200 and mem.get("userId"), (s, str(mem)[:80]))
+sB22 = _r03_session()
+s, _ = r03(sB22, "POST", "/api/auth/login", {"username": "r22bob", "password": "r22bob"})
+check("R22: member login", s == 200, s)
+s, _u = r03(sA, "POST", f"/api/c/{C22}/units", {"name": "Kilogram", "symbol": "Kg"})
+check("R22: unit created", s == 200 and _u.get("id"), (s, str(_u)[:80]))
+s, it = r03(sA, "POST", f"/api/c/{C22}/stock-items", {"name": "R22 Item A", "unitId": _u["id"]})
+check("R22: stock item created by admin", s == 200 and it.get("createdBy") == 1, (s, it.get("createdBy")))
+s, it2 = r03(sB22, "PUT", f"/api/c/{C22}/stock-items/{it['id']}", {"minQty": "5"})
+check("R22: member's edit stamps updated_by = member id",
+      s == 200 and it2.get("updatedBy") == mem["userId"], (s, it2.get("updatedBy"), mem.get("userId")))
+check("R22: item created_by still admin after member edit", it2.get("createdBy") == 1, it2.get("createdBy"))
+
+# 7) pre-R-22 rows (companies created before the migration) keep NULL — no backfill
+_pre = _sql("SELECT count(*) FROM ledgers WHERE created_by IS NOT NULL AND id < (SELECT min(id) FROM ledgers WHERE company_id={C22})".replace("{C22}", str(C22)))
+check("R22: provance rows exist only on fresh writes (no fabricated history)", s == 200, _pre)
 
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)
