@@ -1,6 +1,6 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — R-18 RELEASED as v1.18.0 (full audit feature). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate — remaining scope needs a product decision).
+**Last updated:** 2026-09-18 — R-19 COMPLETE (B-12 ALREADY CLOSED — VERIFIED; disposition re-confirmed live on v1.18.0; the one approved ROADMAP correction applied). Process state: IDLE. No defect; no implementation; nothing to release — R-19's output is the investigation report + the ROADMAP row retirement.
 
 ---
 
@@ -8,10 +8,10 @@
 
 - **Current release:** v1.18.0 (resolve with `git rev-parse v1.18.0^{}`; see RELEASES.md)
 - **Current HEAD:** the v1.18.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.18.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-18 (full audit feature — `audit_events` same-tx capture at 7 sites, delete-surviving history via SET NULL + snapshot, F-R18-1 payroll created_by fix, cid-gated audit endpoint, VoucherScreen history strip). Investigation: `R-18_INVESTIGATION.md`.
-- **Verification (final tree):** Python **893/893** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **611** incl. 18 R-18, attack-the-fixes 29); browser **228/228** (run.js + r03/r04/r05/r07/r10/r14 + r18); typecheck server + client clean; fresh volume applies **8/8 migrations**.
-- **Next permitted action:** on "continue zprime" → ask the human for R-19 direction (remaining candidates: company-wide timeline/history UI, masters actor columns, backup/restore UX (B-12), or the postponed GST family — RCM/e-invoice/e-way/GSTR-9/TCS — each needs a product decision).
+- **Current phase:** `IDLE` — R-19 closed with no defect; the approved ROADMAP correction is applied; the next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-19 (B-12 backup/restore candidate — ALREADY CLOSED by R-12/v1.12.0, re-verified live on v1.18.0: dump → ON_ERROR_STOP restore → 0 drift incl. 0007 schema; in-product surface stays declined per F-12-3). Investigation: `R-19_INVESTIGATION.md`.
+- **What changed (approved):** one-row ROADMAP correction only — the stale "later | Backup/restore UX (B-12 P2)" candidate row replaced with the DONE disposition. No source, test, migration, or client change; **nothing to release** (docs-only correction rides with the next release commit, or stays uncommitted until then per the human's instruction).
+- **Next permitted action:** on "continue zprime" → ask the human for R-20 direction (genuinely open candidates: company audit timeline, masters actor columns, UI hardening pair, or the postponed GST family — each needs a product decision).
 - **What changed (approved full scope):** migration `0006_r17_voucher_actor.sql` (additive: `vouchers.created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at`; no fabricated backfill) + snapshot/journal; propagation at all three write sites (`insertVoucherTx` actor param for manual POST, import's own insert stamps the importing user, PUT stamps updated_by/updated_at with created_by immutable); `final_regression.py` +7 R-17 checks → 593. No client change; masters deferred (documented).
 - **Verification:** Python **875/875** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **593** incl. 7 R-17, attack-the-fixes 29); browser **219/219** on a rebuilt image + fresh volume (7/7 migrations); typecheck clean.
 - **What changed (approved test-only scope):** `final_regression.py` +8 R-15 checks → 586: paired openings → TB 0; interstate sale → GSTR-3B net.igst 900 and GSTR-1 netIgst 900 (openings excluded, period-only return semantics); IGST duty-ledger position −5,000 → −5,900 (book position carries opening); unpaired opening → TB −5,000 / BS +5,000 surfaced honestly. No source, migration, or client changes.

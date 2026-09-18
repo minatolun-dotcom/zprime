@@ -47,7 +47,7 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 | later | Deployment secrets hardening (B-08 P1*) | action plan | bug/ops | fail-fast on default JWT_SECRET for exposed deployments |
 | later | Duplicate-submission protection (B-10 P2) | action plan | bug | idempotency |
 | later | Purchase-return/DN test coverage (B-11 P2) | action plan | tests | coverage gap, not a demonstrated defect |
-| later | Backup/restore UX (B-12 P2) | action plan | ops | pg_dump guidance exists in README; product surface absent |
+| B-12 ✅ DONE (v1.12.0) | Backup/restore (B-12, closed as P4 ops — R-19 re-verified live on v1.18.0 incl. 0007 schema) | action plan | ops | Verified runbook in README + 6-check drift guard in final_regression (R-12); in-product surface declined (F-12-3, documented security rationale: full-DB dump needs a global-admin tier zprime deliberately lacks) |
 
 Non-bug hardening candidates (from R-04 investigation, §13/§14): graduate the audit's INV probes into permanent regression blocks; import pre-validation feedback in the UI; negative-stock warning in VoucherScreen.
 
