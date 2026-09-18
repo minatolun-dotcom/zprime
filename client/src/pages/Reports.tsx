@@ -549,28 +549,32 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
   const t = data.totals ?? {};
   const hasNotes = (data.cdnr?.length ?? 0) + (data.cdnur?.length ?? 0) > 0;
   const [einvMsg, setEinvMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  // R-24: generate + download the NIC v1.01 payload for one voucher. The
-  // server validates strictly; validation failures surface every gap at once.
-  const downloadEinvoice = async (voucherId: number, number: string) => {
+  // R-24/R-25: generate + download compliance payloads for one voucher. The
+  // server validates strictly; validation failures surface every gap at once;
+  // non-blocking advisories (e-way threshold, HSN depth) show as warnings.
+  const downloadPayload = async (kind: "einvoice" | "ewaybill", voucherId: number, number: string) => {
     setEinvMsg(null);
     try {
-      const res = await get<{ ok: boolean; errors: string[]; payload?: unknown }>(
-        `/api/c/${cid}/reports/einvoice/${voucherId}`,
+      const res = await get<{ ok: boolean; errors: string[]; warnings?: string[]; payload?: unknown }>(
+        `/api/c/${cid}/reports/${kind}/${voucherId}`,
       );
       if (!res.ok) {
         setEinvMsg({ ok: false, text: res.errors.join(" · ") });
         return;
       }
-      textDownload(`einvoice-${number.replace(/[^A-Za-z0-9_-]/g, "_")}.json`, JSON.stringify(res.payload, null, 2));
-      setEinvMsg({ ok: true, text: `e-invoice JSON downloaded for ${number} — upload it to your IRP/GSP portal` });
+      textDownload(`${kind}-${number.replace(/[^A-Za-z0-9_-]/g, "_")}.json`, JSON.stringify(res.payload, null, 2));
+      const warn = res.warnings?.length ? ` ⚠ ${res.warnings.join(" · ")}` : "";
+      setEinvMsg({ ok: true, text: `${kind === "einvoice" ? "e-invoice" : "e-way bill"} JSON downloaded for ${number} — upload it to your portal${warn}` });
     } catch (e: any) {
-      setEinvMsg({ ok: false, text: e?.message ?? "e-invoice generation failed" });
+      setEinvMsg({ ok: false, text: e?.message ?? "payload generation failed" });
     }
   };
   const einvCell = (v: any) =>
     cid ? (
-      <td className="w-20">
-        <button className="link text-[12px]" onClick={() => downloadEinvoice(v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
+      <td className="w-24">
+        <button className="link text-[12px]" onClick={() => downloadPayload("einvoice", v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
+        {" "}
+        <button className="link text-[12px]" onClick={() => downloadPayload("ewaybill", v.voucherId, v.number)} title="Generate EWB-01 e-way bill JSON">e-way</button>
       </td>
     ) : null;
   const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (

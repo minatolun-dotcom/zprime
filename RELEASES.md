@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.24.0
+
+- **Commit:** `v1.24.0^{}` — resolve with `git rev-parse v1.24.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.24.0` (annotated; `v1.24.0^{}` = the release commit, verified at release)
+- **Major purpose:** E-way bill payload generation (R-25, approved Option A — **stateless** generate + download; live EWB API + EWB-number/vehicle-update persistence explicitly deferred pending a product decision on external services). New `services/ewaybill.ts`: EWB-01 **Part-A** re-projecting `voucherGst()` duty + the shared `supplyLines()` projection (extracted from `einvoice.ts` — one source of truth for both payload services; the R-24 byte-identical-payload check guards the refactor); strict all-at-once validation; HSN-depth enforcement (fail < 4 digits, advise < 6); sub-₹50,000 consignment-value advisory (informs, never blocks); **Part-B as optional query params** (vehicleNo/transMode/transDocNo/transDocDate/transporterName — vehicle only on road; no persisted transport state, the portal is the system of record). Sales→INV, Credit Note→CRN; Receipt/other types rejected. Read-only cid-gated `GET /reports/ewaybill/:voucherId` returning `{ ok, errors, warnings, payload }`. Client: "e-way" beside "e-inv" on GSTR-1 B2B rows, JSON download, advisories on the success banner. **No migration, no accounting-math change.**
+- **Verification status:** VERIFIED AT RELEASE —
+  - 1005/1005 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 729 (+28 dedicated R-25 checks: Part-A fields/states/values vs voucherGst, Part-A-only omits vehicle block, sub-threshold warning, Part-B params reflected, vehicle-on-rail + unknown-mode rejections, determinism, e-invoice/e-way totals agreement, CRN mapping, Receipt rejection, 2-digit HSN rejection via a snapshot-carrying voucher, non-member 404), attack-the-fixes 29)
+  - 298/298 browser checks on a rebuilt image with fresh volume (11/11 migrations; run.js 153/153 exit-0 + r03…r25 = 145 scenario checks, new `r25_ui.js` 13/13: e-way beside e-inv, download through the REAL UI, Part-A fields, advisory visible, no-download-on-failure)
+  - typecheck clean (server + client)
+- **Important fixes:** the consignment paper gap closed alongside R-24's tax-document artefacts; en-route finding app-correct (line HSN snapshot wins over later item-master edits — R-01 snapshot discipline verified)
+- **Immutable status:** 🔒 IMMUTABLE — `v1.24.0` is the current production baseline.
+
+---
+
 ## v1.23.0
 
 - **Commit:** `v1.23.0^{}` — resolve with `git rev-parse v1.23.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

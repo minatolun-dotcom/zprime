@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.24.0 — R-25 e-way bill payload generation (EWB-01)
+
+R-25 implements the approved Option A scope: stateless generate + download of the EWB-01 payload. Part-A is derived entirely from stored data; Part-B (vehicle/transporter) comes as optional request parameters — zprime persists no EWB number and no transport state (the portal is the system of record). No migration, no connectivity, no accounting-math change.
+
+- **`services/ewaybill.ts`** (new): Part-A builder re-projecting `voucherGst()` duty + the shared line projection; strict all-at-once validation (same posture as R-24); HSN-depth enforcement (fail < 4 digits, advise < 6); sub-₹50,000 consignment-value advisory (informs, never blocks); Part-B passthrough with sanity (vehicle only on road mode; mode ∈ road/rail/air/ship). Sales→INV, Credit Note→CRN; Receipt/other types rejected; non-member → 404.
+- **Shared-projection refactor:** the goods/service line extractor moved out of `einvoice.ts` to the exported `supplyLines()` (plus `EINV_DOC_TYPES` + `stateCode()` helpers) — one source of truth for both payload services; the R-24 byte-identical-payload regression check guards the refactor (verified unchanged).
+- **`GET /reports/ewaybill/:voucherId`** (cid-gated, read-only): returns `{ ok, errors, warnings, payload }`.
+- **Client:** "e-way" action beside R-24's "e-inv" on GSTR-1 B2B rows; JSON download; success banner carries advisories; amber banner lists validation gaps verbatim.
+- **Tests:** `final_regression.py` +28 R-25 checks (729) — Part-A fields/states/values vs voucherGst, Part-A-only omits vehicle block, sub-threshold warning, Part-B params reflected, vehicle-on-rail + unknown-mode rejections, determinism, e-invoice/e-way totals agreement, CRN mapping, Receipt rejection, 2-digit HSN rejection (via its own snapshot-carrying voucher — the original sale's line snapshot correctly wins over item-master edits), non-member 404; new `scripts/acceptance/r25_ui.js` (13 browser checks: e-way beside e-inv, download through the REAL UI, Part-A fields, advisory visible, no-download-on-failure).
+- Verification: Python **1005/1005** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **729** incl. 28 R-25, attack-the-fixes 29); browser **298/298** on a rebuilt image + fresh volume (11/11 migrations; run.js 153 + r03…r25 = 145 scenario checks); typecheck server + client clean.
+
 ## v1.23.0 — R-24 e-invoice payload generation (IRP upload)
 
 R-24 implements the approved Option A scope: zprime generates and validates the NIC v1.01 e-invoice JSON for Sales/Credit Note vouchers; the operator uploads it to their chosen IRP/GSP channel. No IRP connectivity, credentials, or network code (explicitly deferred — needs a product decision on external services).

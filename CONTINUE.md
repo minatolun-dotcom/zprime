@@ -1,15 +1,20 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — **v1.23.0 RELEASED** (R-24 e-invoice payload generation). Phase IDLE; next session asks for R-25 direction.
+**Last updated:** 2026-09-18 — **v1.24.0 RELEASED** (R-25 e-way bill payload generation). Phase IDLE; next session asks for R-26 direction.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.23.0 (resolve with `git rev-parse v1.23.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.23.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.23.0 released; the next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-24 (e-invoice payload generation — migration 0010 `ledgers.party_pincode`, `services/einvoice.ts` NIC v1.01 builder with strict all-at-once validation + UQC mapping, cid-gated `GET /reports/einvoice/:voucherId`, GSTR-1 e-inv download actions + validation banner; generate+download only, IRP connectivity deliberately deferred). Investigation: `R-24_INVESTIGATION.md`.
+- **Current release:** v1.24.0 (resolve with `git rev-parse v1.24.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.24.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.24.0 released; the next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-25 (e-way bill payload generation — stateless EWB-01 Part-A from voucherGst + shared supplyLines projection, Part-B as optional request params with no persisted transport state, HSN-depth enforcement + sub-₹50k advisory, cid-gated ewaybill endpoint, GSTR-1 e-way actions; no migration, generate+download only, EWB connectivity deliberately deferred). Investigation: `R-25_INVESTIGATION.md`.
+- **Verification (final tree):** Python **1005/1005** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **729** incl. 28 R-25, attack-the-fixes 29); browser **298/298** (run.js + r03/r04/r05/r07/r10/r14/r18/r20/r21/r23/r24/r25); typecheck server + client clean; fresh volume applies 11/11 migrations.
+- **Next permitted action:** on "continue zprime" → ask the human for R-26 direction (genuinely open: GSTR-9, TCS, or live IRP/EWB connectivity as separate product decisions; or hold steady).
+- **What changed (implemented scope):** `services/ewaybill.ts` — EWB-01 Part-A re-projecting `voucherGst()` + shared `supplyLines()` (exported from einvoice.ts alongside `EINV_DOC_TYPES`/`stateCode`; behavior-preserving refactor, R-24 byte-identical check still green), strict all-at-once validation, HSN-depth enforcement, sub-₹50k advisory; Part-B as optional query params (vehicleNo/transMode/transDocNo/transDocDate/transporterName — vehicle only on road; no persisted transport state); `GET /reports/ewaybill/:voucherId` (cid-gated, read-only) returning `{ ok, errors, warnings, payload }`; client — "e-way" beside "e-inv" on GSTR-1 B2B rows, JSON download, advisories on the success banner, amber validation banner. No migration, no accounting-math change.
+- **Verification (final tree):** Python **1005/1005** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **729** incl. 28 R-25, attack-the-fixes 29); browser **298/298** on a rebuilt image + fresh volume (11/11 migrations; run.js 153/153 exit-0 + r03…r25 = 145 scenario checks, r25 13/13); typecheck server + client clean; `git diff --check` clean.
+- **Next permitted action:** on instruction — finalize ledger docs (RELEASES/ROADMAP/STATE/CONTINUE), release gate on the final tree, commit `Release v1.24.0: e-way bill payload generation (Part-A/Part-B)`, annotated tag `v1.24.0`, integrity + immutability verification.
 - **Verification (final tree):** Python **991/991** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **709** incl. 27 R-24, attack-the-fixes 29); browser **285/285** (run.js + r03/r04/r05/r07/r10/r14/r18/r20/r21/r23/r24); typecheck server + client clean; fresh volume applies 11/11 migrations.
 - **Next permitted action:** on "continue zprime" → ask the human for R-25 direction (genuinely open: e-way bill, GSTR-9, TCS, or live IRP/GSP connectivity as a separate product decision; or hold steady).
 - **What changed (implemented scope):** migration `0010_r24_party_pincode.sql` (additive `ledgers.party_pincode`, no backfill; snapshot idx 10) + `schema.ts partyPincode` + MasterPage Party PIN Code field; `services/einvoice.ts` — NIC v1.01 payload re-projecting `voucherGst()` classification + line snapshots, goods-from-inventory / services-only-when-no-inventory split, strict all-at-once validation naming every gap (never a half-formed payload), UQC mapping, line-taxable cross-check, Sales→INV / Credit Note→CRN positive magnitudes, RCM + cancelled rejected; `GET /reports/einvoice/:voucherId` (cid-gated, read-only) returning `{ ok, errors, payload }`; client — "e-inv" action on GSTR-1 B2B rows, JSON download, amber validation banner, green confirmation. No posting-engine change; accounting math untouched.

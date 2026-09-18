@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — **v1.23.0 RELEASED** (R-24 e-invoice payload generation: migration 0010 `ledgers.party_pincode`, NIC v1.01 builder with strict all-at-once validation, cid-gated einvoice endpoint, GSTR-1 e-inv actions; 991/991 automated + 285/285 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — **v1.24.0 RELEASED** (R-25 e-way bill payload generation: stateless EWB-01 Part-A + optional Part-B request params, shared supplyLines projection, cid-gated ewaybill endpoint, GSTR-1 e-way actions; 1005/1005 automated + 298/298 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

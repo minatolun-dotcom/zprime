@@ -44,6 +44,16 @@ const STATE_CODES: Record<string, string> = {
   "Andhra Pradesh": "37", Ladakh: "38",
 };
 
+/** R-25: state-name → code resolution shared by both payload services. */
+export function stateCode(name: string | null | undefined): string | null {
+  if (!name) return null;
+  return STATE_CODES[name] ?? null;
+}
+
+// R-25: supplier-side document mapping shared by the e-invoice and e-way-bill
+// services (both ride on the documents the SUPPLIER raises).
+export const EINV_DOC_TYPES: Record<string, string> = { "Sales": "INV", "Credit Note": "CRN" };
+
 export interface EinvoiceResult {
   /** true when the payload was generated; false when validation failed */
   ok: boolean;
@@ -51,6 +61,53 @@ export interface EinvoiceResult {
   errors: string[];
   /** the NIC v1.01 JSON payload (present only when ok) */
   payload?: Record<string, unknown>;
+}
+
+export interface GoodsLine { hsn: string; qty: number; rate: number; taxable: number; ratePct: number; uqc: string; desc: string; }
+
+/** Shared R-24/R-25 line projection. Goods from inventory_entries; service
+ *  lines from voucher_entries ONLY when the voucher carries no inventory (a
+ *  pure service invoice — its income-ledger line IS the supply). On a goods
+ *  voucher the income line duplicates the inventory amounts and must not be
+ *  reported as a service. Sales rows store stock-out as negative qty; payloads
+ *  carry positive quantities. Validation gaps are appended to `errors`. */
+export async function supplyLines(voucherId: number, errors: string[]): Promise<GoodsLine[]> {
+  const lines: GoodsLine[] = [];
+  const goods = await db
+    .select({
+      qty: inventoryEntries.qty, rate: inventoryEntries.rate, amount: inventoryEntries.amount,
+      hsnSac: inventoryEntries.hsnSac, gstRate: inventoryEntries.gstRate,
+      itemHsn: stockItems.hsnSac, itemGstRate: stockItems.gstRate, unit: units.symbol,
+      itemName: stockItems.name,
+    })
+    .from(inventoryEntries)
+    .innerJoin(stockItems, eq(stockItems.id, inventoryEntries.itemId))
+    .innerJoin(units, eq(units.id, stockItems.unitId))
+    .where(eq(inventoryEntries.voucherId, voucherId));
+
+  let serviceLines: { amount: string; gstRate: string | null; hsnSac: string | null }[] = [];
+  if (goods.length === 0) {
+    serviceLines = await db
+      .select({ amount: voucherEntries.amount, gstRate: voucherEntries.gstRate, hsnSac: voucherEntries.hsnSac })
+      .from(voucherEntries)
+      .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+      .where(and(eq(voucherEntries.voucherId, voucherId), eq(ledgers.taxability, "taxable")));
+  }
+
+  for (const g of goods) {
+    const qty = Math.abs(num(g.qty));
+    const hsn = g.hsnSac ?? g.itemHsn;
+    if (!hsn) { errors.push(`Item "${g.itemName}" has no HSN/SAC — set it on the stock item or the voucher line`); continue; }
+    const uqc = UQC[(g.unit ?? "").toUpperCase()];
+    if (!uqc) { errors.push(`Unit "${g.unit}" is not a valid NIC UQC — rename the unit (e.g. NOS, PCS, KGS) on "${g.itemName}"`); continue; }
+    const ratePct = g.gstRate != null ? num(g.gstRate) : num(g.itemGstRate ?? 0);
+    lines.push({ hsn, qty, rate: num(g.rate), taxable: Math.abs(num(g.amount)), ratePct, uqc, desc: g.itemName });
+  }
+  for (const s of serviceLines) {
+    if (!s.hsnSac) { errors.push(`A taxable service line has no HSN/SAC snapshot — re-enter the line with HSN/SAC`); continue; }
+    lines.push({ hsn: s.hsnSac, qty: 1, rate: 0, taxable: Math.abs(num(s.amount)), ratePct: s.gstRate != null ? num(s.gstRate) : 0, uqc: "NOS", desc: "Services" });
+  }
+  return lines;
 }
 
 /** Build the NIC v1.01 e-invoice JSON for one Sales/Credit Note voucher. */
@@ -72,8 +129,7 @@ export async function eInvoicePayload(companyId: number, voucherId: number): Pro
   // Scheme scope: e-invoicing applies to documents raised by the SUPPLIER.
   // Debit Notes belong to the recipient's side of a B2B exchange; NIC does
   // not accept DBN from the supplier for the approved scope.
-  const typeMap: Record<string, string> = { "Sales": "INV", "Credit Note": "CRN" };
-  const docType = typeMap[row.typeName];
+  const docType = EINV_DOC_TYPES[row.typeName];
   if (!docType) {
     return { ok: false, errors: [`E-invoice applies to Sales and Credit Note vouchers; this is a ${row.typeName}`] };
   }
@@ -105,47 +161,9 @@ export async function eInvoicePayload(companyId: number, voucherId: number): Pro
   const gst = (await voucherGst(companyId, v.date, v.date, "outward")).find((g) => g.voucherId === v.id);
   if (!gst) return { ok: false, errors: ["Voucher is not a GST-classified outward supply (Sales/Credit Note)"] };
 
-  // Lines: goods from inventory_entries; service lines from voucher_entries
-  // ONLY when the voucher carries no inventory (a pure service invoice — its
-  // income-ledger line IS the supply). On a goods voucher the income line
-  // duplicates the inventory amounts and must not be reported as a service.
-  const goods = await db
-    .select({
-      qty: inventoryEntries.qty, rate: inventoryEntries.rate, amount: inventoryEntries.amount,
-      hsnSac: inventoryEntries.hsnSac, gstRate: inventoryEntries.gstRate,
-      itemHsn: stockItems.hsnSac, itemGstRate: stockItems.gstRate, unit: units.symbol,
-      itemName: stockItems.name,
-    })
-    .from(inventoryEntries)
-    .innerJoin(stockItems, eq(stockItems.id, inventoryEntries.itemId))
-    .innerJoin(units, eq(units.id, stockItems.unitId))
-    .where(eq(inventoryEntries.voucherId, v.id));
-
-  let serviceLines: { amount: string; gstRate: string | null; hsnSac: string | null }[] = [];
-  if (goods.length === 0) {
-    serviceLines = await db
-      .select({ amount: voucherEntries.amount, gstRate: voucherEntries.gstRate, hsnSac: voucherEntries.hsnSac })
-      .from(voucherEntries)
-      .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
-      .where(and(eq(voucherEntries.voucherId, v.id), eq(ledgers.taxability, "taxable")));
-  }
-
-  interface Line { hsn: string; qty: number; rate: number; taxable: number; ratePct: number; uqc: string; desc: string; }
-  const lines: Line[] = [];
-  for (const g of goods) {
-    // Sales rows store stock-out as negative qty; e-invoice quantities are positive.
-    const qty = Math.abs(num(g.qty));
-    const hsn = g.hsnSac ?? g.itemHsn;
-    if (!hsn) { errors.push(`Item "${g.itemName}" has no HSN/SAC — set it on the stock item or the voucher line`); continue; }
-    const uqc = UQC[(g.unit ?? "").toUpperCase()];
-    if (!uqc) { errors.push(`Unit "${g.unit}" is not a valid NIC UQC — rename the unit (e.g. NOS, PCS, KGS) on "${g.itemName}"`); continue; }
-    const ratePct = g.gstRate != null ? num(g.gstRate) : num(g.itemGstRate ?? 0);
-    lines.push({ hsn, qty, rate: num(g.rate), taxable: Math.abs(num(g.amount)), ratePct, uqc, desc: g.itemName });
-  }
-  for (const s of serviceLines) {
-    if (!s.hsnSac) { errors.push(`A taxable service line has no HSN/SAC snapshot — re-enter the line with HSN/SAC`); continue; }
-    lines.push({ hsn: s.hsnSac, qty: 1, rate: 0, taxable: Math.abs(num(s.amount)), ratePct: s.gstRate != null ? num(s.gstRate) : 0, uqc: "NOS", desc: "Services" });
-  }
+  // R-25: line projection moved to the shared supplyLines() used by both
+  // payload services — behavior here is unchanged (same queries, same errors).
+  const lines = await supplyLines(v.id, errors);
   if (lines.length === 0 && errors.length === 0) errors.push("No itemisable lines found on this voucher");
   if (errors.length > 0) return { ok: false, errors };
 
@@ -159,7 +177,7 @@ export async function eInvoicePayload(companyId: number, voucherId: number): Pro
   // Duty split per line: proportional share of the voucher-level classified
   // duty (same proportionality voucherGst itself uses for rate buckets).
   const dutyTotal = gst.igst + gst.cgst + gst.sgst + gst.cess;
-  const share = (l: Line, duty: number) => (gst.taxable !== 0 ? r2(duty * (l.taxable / Math.abs(gst.taxable))) : 0);
+  const share = (l: GoodsLine, duty: number) => (gst.taxable !== 0 ? r2(duty * (l.taxable / Math.abs(gst.taxable))) : 0);
 
   const itemList = lines.map((l, i) => {
     const lineIgst = share(l, gst.igst);

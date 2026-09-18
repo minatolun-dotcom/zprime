@@ -2818,5 +2818,78 @@ check("R24: CRN values positive magnitudes (1000/180)", _cn_val.get("AssVal") ==
 s2, _ = r03(sB, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
 check("R24: non-member einvoice -> 404", s2 == 404, s2)
 
+# ============================================================================
+# R-25: E-WAY BILL PAYLOAD GENERATION (EWB-01, Part-A + optional Part-B)
+# ============================================================================
+# Reuses the R-24 company/party/item/sale fixtures (R24 Einvoice, buyer with
+# pincode restored by check 5's PUT, item with HSN 8471, sale 10000+1800).
+
+# 1) happy path Part-A only: no transport params -> no vehicle block
+s, ew1 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24['id']}")
+check("R25: payload generated (ok=true)", s == 200 and ew1.get("ok") is True, (s, str(ew1)[:200]))
+p25 = ew1.get("payload") or {}
+check("R25: Part-A identity + doc", p25.get("userGstin") == "27R24EINV01G2H3" and p25.get("docType") == "INV"
+      and p25.get("docNo") == sale24.get("number") and p25.get("docDate") == "2026-08-15", p25.get("docType"))
+check("R25: parties + state codes", p25.get("fromGstin") == "27R24EINV01G2H3" and p25.get("fromState") == "27"
+      and p25.get("toGstin") == "29R24BUYER01J2K" and p25.get("toState") == "29",
+      (p25.get("fromState"), p25.get("toState")))
+check("R25: values match voucherGst (taxable 10000, igst 1800, total 11800)",
+      p25.get("totalValue") == 10000 and p25.get("igstValue") == 1800 and p25.get("totInvValue") == 11800,
+      (p25.get("totalValue"), p25.get("igstValue"), p25.get("totInvValue")))
+check("R25: item line HSN/UQC/qty", p25.get("itemList") and p25["itemList"][0].get("HsnCd") == "8471"
+      and p25["itemList"][0].get("Unit") == "NOS" and p25["itemList"][0].get("Qty") == 10, p25.get("itemList"))
+check("R25: Part-A only -> no vehicle block", "vehicleList" not in p25 and "transporterName" not in p25,
+      [k for k in p25 if "vehicle" in k.lower() or "transporter" in k.lower()])
+
+# 2) sub-threshold advisory: 11,800 < 50,000 -> warning present, still ok
+check("R25: sub-50k advisory warning", ew1.get("ok") is True and any("50,000" in w or "50_000" in w or "threshold" in w for w in ew1.get("warnings", [])), ew1.get("warnings"))
+
+# 3) Part-B params reflected: vehicle + road mode -> vehicleList present
+s, ew2 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24['id']}?vehicleNo=MH12AB1234&transMode=road&transDocNo=LR-77&transDocDate=2026-08-16&transporterName=R25%20Movers")
+check("R25: Part-B accepted", s == 200 and ew2.get("ok") is True, (s, str(ew2)[:150]))
+p25b = ew2.get("payload") or {}
+vl = p25b.get("vehicleList") or []
+check("R25: vehicle block carries the params", len(vl) == 1 and vl[0].get("vehicleNo") == "MH12AB1234"
+      and vl[0].get("transMode") == "1" and vl[0].get("transDocNo") == "LR-77" and vl[0].get("transDocDate") == "2026-08-16", vl)
+check("R25: transporter name carried", p25b.get("transporterName") == "R25 Movers", p25b.get("transporterName"))
+
+# 4) invalid Part-B: vehicle with non-road mode -> loud, no payload
+s, ew3 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24['id']}?vehicleNo=MH12AB1234&transMode=rail")
+check("R25: vehicle on rail rejected", s == 200 and ew3.get("ok") is False and any("road" in e for e in ew3.get("errors", [])), (s, str(ew3)[:150]))
+s, ew4 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24['id']}?transMode=camel")
+check("R25: unknown mode rejected", s == 200 and ew4.get("ok") is False and any("transMode" in e for e in ew4.get("errors", [])), (s, str(ew4)[:150]))
+
+# 5) determinism + cross-payload agreement with the e-invoice (same source data)
+s, ew5 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24['id']}")
+check("R25: payload deterministic", json.dumps(ew1.get("payload"), sort_keys=True) == json.dumps(ew5.get("payload"), sort_keys=True))
+s, ei = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
+_eiv = ei.get("payload", {}).get("ValDtls", {})
+check("R25: totals agree with e-invoice payload", _eiv.get("AssVal") == p25.get("totalValue") and _eiv.get("IgstVal") == p25.get("igstValue"),
+      (_eiv.get("AssVal"), p25.get("totalValue")))
+
+# 6) credit note -> CRN; Receipt rejected (same anchor set as R-24)
+s, ew6 = r03(sA, "GET", f"{R24}/reports/ewaybill/{cn24['id']}")
+check("R25: credit note -> CRN", s == 200 and ew6.get("ok") is True and ew6.get("payload", {}).get("docType") == "CRN", (s, str(ew6)[:150]))
+s, ew7 = r03(sA, "GET", f"{R24}/reports/ewaybill/{pn24['id']}")
+check("R25: Receipt rejected", s == 200 and ew7.get("ok") is False and any("Sales" in e or "Credit Note" in e for e in ew7.get("errors", [])), (s, str(ew7)[:150]))
+
+# 7) short HSN rejected loudly: a NEW item whose line snapshot carries a
+# 2-digit HSN (the original sale's snapshot correctly wins over item-master
+# edits, so the probe needs its own voucher)
+s, item24b = r03(sA, "POST", f"{R24}/stock-items", {"name": "R24 Short HSN", "unitId": U24, "hsnSac": "84", "gstRate": "18",
+    "openingQty": "50", "openingRate": "900", "openingValue": "45000"})
+check("R25: short-HSN item created", s == 200 and item24b.get("id"), (s, str(item24b)[:90]))
+s, sale24b = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Sales"], "date": "2026-08-25", "partyLedgerId": buy24["id"],
+    "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales24["id"], "amount": -1000}, {"ledgerId": gm24["IGST"], "amount": -180}, {"ledgerId": buy24["id"], "amount": 1180}],
+    "inventoryEntries": [{"itemId": item24b["id"], "qty": -1, "rate": 1000, "amount": 1000, "hsnSac": "84", "gstRate": 18}]})
+check("R25: short-HSN sale posted", s == 200 and sale24b.get("id"), (s, str(sale24b)[:110]))
+s, ew8 = r03(sA, "GET", f"{R24}/reports/ewaybill/{sale24b['id']}")
+check("R25: 2-digit HSN rejected", s == 200 and ew8.get("ok") is False and any("too short" in e for e in ew8.get("errors", [])), (s, str(ew8)[:160]))
+
+# 8) non-member -> 404 (authorization identical to every report route)
+s2, _ = r03(sB, "GET", f"{R24}/reports/ewaybill/{sale24['id']}")
+check("R25: non-member ewaybill -> 404", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

@@ -11,6 +11,7 @@ import {
 import { stockSummary } from "../services/stock.js";
 import { gstr1, gstr3b } from "../services/gst.js";
 import { eInvoicePayload } from "../services/einvoice.js";
+import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -138,6 +139,22 @@ export default async function reportRoutes(app: FastifyInstance) {
     const vid = parseInt((req.params as any).voucherId, 10);
     if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
     return eInvoicePayload(c, vid);
+  });
+
+  // R-25: EWB-01 e-way bill payload for one Sales/Credit Note voucher.
+  // Part-A is derived from stored data; Part-B (vehicle/transporter) comes as
+  // optional request parameters — zprime persists no transport state (approved
+  // Option A: generate + download, the portal is the system of record).
+  app.get("/ewaybill/:voucherId", async (req) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const q = req.query as any;
+    const params: EwaybillParams = {
+      vehicleNo: q.vehicleNo, transMode: q.transMode, transDocNo: q.transDocNo,
+      transDocDate: q.transDocDate, transporterName: q.transporterName,
+    };
+    return ewaybillPayload(c, vid, params);
   });
 
   app.get("/gstr3b", async (req) => {
