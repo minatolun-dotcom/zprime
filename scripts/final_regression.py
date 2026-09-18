@@ -2441,5 +2441,69 @@ check("R-20: unknown company -> 404; malformed cid -> 400 (cid semantics)",
 _del_in_tl = any(r.get("voucherId") is None and r.get("action") == "delete" and r.get("detail") for r in (tl or []))
 check("R-20: deleted voucher event appears detached with snapshot", _del_in_tl, "no detached delete row in timeline")
 
+# ================= R-21: import dry-run validation (identical path, rollback) =================
+# Fresh company: the dry-run previews BAL_XML from scratch, then the REAL run
+# imports it — so both halves see the same file with no earlier-state coupling.
+print("-- R-21: import dry-run pre-validation --")
+
+s, c21 = r03(sA, "POST", "/api/companies", {"name": "R21 DryRun", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R21DRY00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R21: dry-run test company created", s == 200 and c21.get("id"), (s, str(c21)[:80]))
+C21 = c21["id"]
+
+def imp21(xml, dry=False):
+    suffix = "?dryRun=1" if dry else ""
+    return r03(sA, "POST", f"/api/c/{C21}/import/xml{suffix}", {"xml": xml})
+
+# counts BEFORE the dry run — nothing may change
+_pre_v = _sql(f"SELECT count(*) FROM vouchers WHERE company_id={C21}")
+_pre_l = _sql(f"SELECT count(*) FROM ledgers WHERE company_id={C21}")
+_pre_i = _sql(f"SELECT count(*) FROM stock_items WHERE company_id={C21}")
+_pre_ct = _sql(f"SELECT count(*) FROM voucher_counters WHERE company_id={C21}")
+
+# 1) dry run of a VALID file: returns the would-be stats, persists NOTHING
+s, dry = imp21(BAL_XML, dry=True)
+check("R21: dry run of valid XML returns 200 + would-import stats",
+      s == 200 and dry.get("dryRun") is True and dry.get("vouchers") == 1 and dry.get("ledgers", 0) >= 1, (s, str(dry)[:120]))
+_post_v = _sql(f"SELECT count(*) FROM vouchers WHERE company_id={C21}")
+_post_l = _sql(f"SELECT count(*) FROM ledgers WHERE company_id={C21}")
+_post_i = _sql(f"SELECT count(*) FROM stock_items WHERE company_id={C21}")
+_post_ct = _sql(f"SELECT count(*) FROM voucher_counters WHERE company_id={C21}")
+check("R21: dry run persists NOTHING (vouchers/ledgers/items/counters unchanged)",
+      (_pre_v, _pre_l, _pre_i, _pre_ct) == (_post_v, _post_l, _post_i, _post_ct),
+      {"before": (_pre_v, _pre_l, _pre_i, _pre_ct), "after": (_post_v, _post_l, _post_i, _post_ct)})
+s, day = r03(sA, "GET", f"/api/c/{C21}/vouchers")
+check("R21: dry-run voucher not visible in Day Book",
+      not any(v.get("number") == "R04-S-1" for v in (day or [])), None)
+
+# 2) dry run of an UNBALANCED file: fails exactly like the real import
+s, bd = imp21(unbalanced, dry=True)
+check("R21: dry run of unbalanced XML rejected with the real error", s == 400 and "R04-UB-1" in str(bd), (s, str(bd)[:110]))
+
+# 3) dry run with an OVERSELL: names the item, nothing persisted
+OVERSELL_XML = XML_HDR + """
+<TALLYMESSAGE>
+ <STOCKITEM NAME="R04 OS Item"><BASEUNITS>Nos</BASEUNITS><OPENINGBALANCE> 1 Nos</OPENINGBALANCE></STOCKITEM>
+ <VOUCHER VCHTYPE="Delivery Note" ACTION="Create"><DATE>20260720</DATE><VOUCHERTYPENAME>Delivery Note</VOUCHERTYPENAME><VOUCHERNUMBER>R21-DN-1</VOUCHERNUMBER>
+  <ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>R04 OS Item</STOCKITEMNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><QTY> -9 Nos</QTY><RATE>10.00/Nos</RATE><AMOUNT>90.00</AMOUNT></ALLINVENTORYENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>90.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+  <ALLLEDGERENTRIES.LIST><LEDGERNAME>R21 Suspense</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-90.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+ </VOUCHER>
+</TALLYMESSAGE>""" + XML_FTR
+s, bo = imp21(OVERSELL_XML, dry=True)
+check("R21: dry-run oversell rejected, item named", s == 400 and "R04 OS Item" in str(bo), (s, str(bo)[:130]))
+_osi = _sql(f"SELECT count(*) FROM stock_items WHERE company_id={C21} AND name='R04 OS Item'")
+check("R21: oversell dry-run still persisted nothing", _osi == "0", _osi)
+
+# 4) the REAL import right after dry runs is unaffected (same file the dry run previewed)
+s, real = imp21(BAL_XML)
+check("R21: real import after dry run succeeds (path untouched)", s == 200 and real.get("vouchers") == 1 and not real.get("dryRun"), (s, str(real)[:110]))
+s, day = r03(sA, "GET", f"/api/c/{C21}/vouchers")
+check("R21: real-imported voucher IS visible after real run", any(v.get("number") == "R04-S-1" for v in (day or [])), None)
+
+# 5) dry-run requires the same membership authorization as the real route
+s2, _ = r03(sB, "POST", f"/api/c/{C21}/import/xml?dryRun=1", {"xml": BAL_XML})
+check("R21: dry-run from a non-member -> 404 (no bypass)", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

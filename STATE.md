@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — R-20 RELEASED as v1.19.0 (company audit timeline: cid-gated `GET /audit` + AuditTrail page + Gateway card; completes the R-18 audit feature). v1.19.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — R-21 RELEASED as v1.20.0 (pre-validation UX: VoucherScreen negative-stock advisory + import dry-run Validate; `allowNegativeStock` now returned by company responses). v1.20.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

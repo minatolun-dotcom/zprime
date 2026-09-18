@@ -29,6 +29,20 @@ Verification: Python **901/901** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
+## Unreleased — R-21 pre-validation UX (negative-stock advisory + import dry run)
+
+**Advisory/visibility layer over existing server guarantees — no migration, no accounting-math change, guards untouched.**
+
+R-21 implements the two diagnosed UX companions to B-01/B-03 (R-04 §15):
+
+- **VoucherScreen negative-stock advisory:** an amber strip under the inventory grid, live while typing — computed from the same chronological source the R-06 guard uses (`GET /reports/stock-summary?to=<voucher date>`, `closingQty` per item) plus the client deltas with the type's flow sign (STOCK_FLOW; Stock Journal source/target kinds honored). Names the item, available qty, voucher date, and the Company Settings escape hatch. Silent-degrade on fetch failure; **suppressed when the company opted into `allowNegativeStock`**; the server guard remains the sole authority at save. Companies-list/detail responses now include `allowNegativeStock` (previously missing, which made suppression impossible).
+- **Import dry-run validation:** `POST /xml?dryRun=1` runs the IDENTICAL single-transaction import path — every parser, `validateEntries`, `assertStockAvailabilityTx`, reference, bill-allocation and duplicate check — then throws a sentinel before returning so the transaction rolls back EVERYTHING (masters, vouchers, counters, audit events). Returns the same stats table with `dryRun: true`. Client: a **Validate (dry run)** button beside **Start Import** and a blue "nothing was imported" result banner. No new endpoint, no new auth surface (same cid() gate; non-member dry-run → 404); the real-import path is untouched when the flag is absent.
+- **Tests:** `final_regression.py` +10 R-21 checks (629) — dry-run returns would-import stats and persists nothing (vouchers/ledgers/items/counters unchanged, Day Book empty), unbalanced/oversell XML rejected with the real errors while persisting nothing, real import after dry runs unaffected, non-member dry-run 404. New `scripts/acceptance/r21_ui.js` (13 browser checks — warning appears when overselling via UI, names item/qty/setting, clears on correction, suppressed on opted-in company; Validate → nothing-imported banner + Day Book unchanged; Start Import → voucher appears).
+
+Verification: Python **911/911** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **629** incl. 10 R-21, attack-the-fixes 29); browser **253/253** (run.js + r03/r04/r05/r07/r10/r14/r18/r20 + **r21** 13); typecheck server + client clean; fresh volume applies 8/8 migrations.
+
+---
+
 ## Unreleased — R-17 audit-trail groundwork (voucher actor provance)
 
 **Additive schema change + server-only propagation — no client change, no accounting-math change.**

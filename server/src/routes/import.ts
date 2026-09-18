@@ -78,6 +78,12 @@ function asList(x: any): any[] {
 const MSG_TAG = ["TALLY", "MESSAGE"].join("");
 
 export default async function importRoutes(app: FastifyInstance) {
+  // R-21: dry-run sentinel — thrown from inside the transaction AFTER the
+  // full validation pass so the whole import (masters, vouchers, counters,
+  // audit events) rolls back; the route catch recognizes it and returns the
+  // stats as the validation preview. Never a real error.
+  const DRY_RUN_DONE = Symbol("dry-run-done");
+
   app.post("/xml", async (req, reply) => {
     try {
       // R-04 (B-05): the WHOLE import — masters, vouchers, numbering sync — runs
@@ -85,6 +91,8 @@ export default async function importRoutes(app: FastifyInstance) {
       // partial import can never corrupt the company's books.
       return await db.transaction(async (tx) => runImport(tx, req));
     } catch (err: any) {
+      // R-21: dry-run completion is success — same stats shape as a real run.
+      if (err === DRY_RUN_DONE) return { ...((req as any)._dryRunStats ?? {}), dryRun: true };
       throw pgFriendly(err);
     }
   });
@@ -504,6 +512,16 @@ export default async function importRoutes(app: FastifyInstance) {
 
     // Keep automatic numbering clear of every imported number.
     await syncCounters([...touchedTypeIds]);
+
+    // R-21: dry-run — the identical code path ran end-to-end (every parser,
+    // every validateEntries / assertStockAvailabilityTx / reference / duplicate
+    // check); throw the sentinel so the transaction rolls back EVERYTHING and
+    // the operator gets the would-be result without persisting a single row.
+    // Query flag (not body): works identically for multipart and JSON posts.
+    if ((req.query as any)?.dryRun === "1" || (req.query as any)?.dryRun === "true") {
+      (req as any)._dryRunStats = stats;
+      throw DRY_RUN_DONE;
+    }
 
     return stats;
   }

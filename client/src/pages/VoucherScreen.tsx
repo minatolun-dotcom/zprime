@@ -58,6 +58,21 @@ export default function VoucherScreen() {
   const ledgerInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const { data: allLedgers } = useQuery({ queryKey: ["all-ledgers", cid], queryFn: () => get<any[]>(`/api/c/${cid}/ledgers`) });
+  // R-21: client-advisory negative-stock warning. Availability per item as of
+  // the voucher date — the same chronological source the server guard uses —
+  // so the operator sees the oversell while typing instead of at Ctrl+A.
+  // Silent-degrade: the strip is a hint; the R-06 server guard remains the
+  // authority and catches everything at save.
+  const { data: stockAsOf } = useQuery({
+    queryKey: ["stock-as-of", cid, date],
+    queryFn: () => get<any[]>(`/api/c/${cid}/reports/stock-summary?to=${date}`),
+    retry: false,
+  });
+  const { data: companyPrefs } = useQuery({
+    queryKey: ["company-prefs", cid],
+    queryFn: () => get<any>(`/api/companies/${cid}`),
+    retry: false,
+  });
   const { data: allItems } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`) });
   const { data: godowns } = useQuery({ queryKey: ["godowns", cid], queryFn: () => get<any[]>(`/api/c/${cid}/godowns`) });
   const { data: tdsSections } = useQuery({ queryKey: ["tds-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tds-sections`) });
@@ -121,6 +136,35 @@ export default function VoucherScreen() {
   const totalDr = r2(entries.reduce((s, e) => s + Math.max(e.amount, 0), 0));
   const totalCr = r2(entries.reduce((s, e) => s + Math.max(-e.amount, 0), 0));
   const diff = r2(totalDr - totalCr);
+
+  // R-21: compute the would-be quantity per outward item (client deltas on top
+  // of the as-of-date running qty). Physical rows are absolute counts — skip.
+  // Suppressed entirely when the company opted into negative stock.
+  const stockWarning = (() => {
+    if (companyPrefs?.allowNegativeStock || !stockAsOf || !Array.isArray(stockAsOf) || stockAsOf.length === 0) return null;
+    const avail = new Map<number, number>(stockAsOf.map((s: any) => [s.itemId ?? s.id, num(s.closingQty ?? s.runningQty)]));
+    const deltas = new Map<number, number>();
+    let offender: { name: string; avail: number } | null = null;
+    for (const r of inv) {
+      if (!r.itemId || isPhysical) continue;
+      // The UI takes |qty| and the flow sign is applied at save (STOCK_FLOW;
+      // Stock Journal kind source=target side). Mirror that signed delta here.
+      const raw = num(r.qty);
+      if (Math.abs(raw) < 1e-9) continue;
+      const q = r.kind === "source" ? -Math.abs(raw) : r.kind === "target" ? Math.abs(raw) : raw * sign;
+      deltas.set(r.itemId, r2((deltas.get(r.itemId) ?? 0) + q));
+    }
+    for (const [itemId, d] of deltas) {
+      if (d >= 0) continue;
+      const wouldBe = r2((avail.get(itemId) ?? 0) + d);
+      if (wouldBe < -1e-9) {
+        const it = allItems?.find((x: any) => x.id === itemId);
+        offender = { name: it?.name ?? String(itemId), avail: avail.get(itemId) ?? 0 };
+        break;
+      }
+    }
+    return offender;
+  })();
 
   // ---- GST helper ----
   const companyStateCode = company?.gstin?.slice(0, 2) ?? company?.stateCode ?? "";
@@ -437,6 +481,11 @@ export default function VoucherScreen() {
                     ))}
                   </tbody>
                 </table>
+                {stockWarning && (
+                  <div className="mt-2 px-3 py-1.5 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[12px]">
+                    Insufficient stock: "{stockWarning.name}" — only {stockWarning.avail} available on {date}. Save will be rejected unless "Allow Negative Stock" is enabled in Company Settings.
+                  </div>
+                )}
                 <button className="btn-ghost mt-1 text-[12px]" onClick={() => setInv([...inv, newInvRow()])}>+ Add Item</button>
               </div>
             )}

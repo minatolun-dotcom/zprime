@@ -14,24 +14,28 @@ export default function ImportXml() {
   const [pasteMode, setPasteMode] = useState(false);
   const [xmlText, setXmlText] = useState("");
 
-  const doImport = async () => {
+  // R-21: `dryRun` runs the IDENTICAL server validation pass (parsers, Dr=Cr,
+  // references, stock availability, duplicates) and rolls back at the end —
+  // the operator previews the result without persisting a single row.
+  const doImport = async (dryRun = false) => {
     setBusy(true);
     setError("");
     setResult(null);
     try {
       let res: any;
+      const suffix = dryRun ? "?dryRun=1" : "";
       if (pasteMode) {
-        res = await api(`/api/c/${cid}/import/xml`, { method: "POST", body: JSON.stringify({ xml: xmlText }) });
+        res = await api(`/api/c/${cid}/import/xml${suffix}`, { method: "POST", body: JSON.stringify({ xml: xmlText }) });
       } else {
         const file = fileRef.current?.files?.[0];
         if (!file) throw new Error("Choose an XML file first");
         const fd = new FormData();
         fd.append("file", file);
-        res = await api(`/api/c/${cid}/import/xml`, { method: "POST", body: fd });
+        res = await api(`/api/c/${cid}/import/xml${suffix}`, { method: "POST", body: fd });
       }
       setResult(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      setError(err instanceof Error ? err.message : dryRun ? "Validation failed" : "Import failed");
     } finally {
       setBusy(false);
     }
@@ -56,9 +60,14 @@ export default function ImportXml() {
           <textarea rows={8} className="w-full font-mono text-[11px]" placeholder="Paste the contents of your XML export (ENVELOPE → BODY → IMPORTDATA → REQUESTDATA…)" value={xmlText} onChange={(e) => setXmlText(e.target.value)} />
         )}
 
-        <button className="btn-primary mt-3" disabled={busy} onClick={doImport}>
-          {busy ? "Importing…" : "Start Import"}
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button className="btn btn-ghost text-[12px]" disabled={busy} onClick={() => doImport(true)}>
+            {busy ? "Validating…" : "Validate (dry run)"}
+          </button>
+          <button className="btn btn-primary text-[12px]" disabled={busy} onClick={() => doImport(false)}>
+            {busy ? "Importing…" : "Start Import"}
+          </button>
+        </div>
 
         <div className="mt-4 text-[12px] text-slate-500 leading-relaxed">
           <b>How it works:</b> export your masters (groups, ledgers, stock items, units, godowns) and/or vouchers
@@ -71,7 +80,12 @@ export default function ImportXml() {
 
       {result && (
         <Card className="p-4 max-w-2xl mt-4">
-          <div className="text-[13px] font-semibold mb-2 text-green-700">Import complete</div>
+          {result.dryRun && (
+            <div className="mb-3 px-3 py-2 rounded bg-blue-50 border border-blue-200 text-blue-700 text-[12px]">
+              Dry run complete — nothing was imported. Fix any warnings below, then Start Import.
+            </div>
+          )}
+          <div className={`text-[13px] font-semibold mb-2 ${result.dryRun ? "text-blue-700" : "text-green-700"}`}>{result.dryRun ? "Validation result (would import)" : "Import complete"}</div>
           <table className="report-table">
             <tbody>
               <tr><td>Groups created</td><td className="num">{result.groups}</td></tr>

@@ -1,17 +1,17 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — R-20 RELEASED as v1.19.0 (company audit timeline). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
+**Last updated:** 2026-09-18 — R-21 RELEASED as v1.20.0 (pre-validation UX pair). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
 
 ---
 
 ## Current state
 
-- **Current release:** v1.19.0 (resolve with `git rev-parse v1.19.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.19.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.19.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-20 (company audit timeline — cid-gated `GET /audit`, AuditTrail page + Gateway card; completes the R-18 audit feature). Investigation: `R-20_INVESTIGATION.md`. R-19 between: B-12 re-verified ALREADY CLOSED (docs commit `2be2097`).
-- **Verification (final tree):** Python **901/901** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **619** incl. 8 R-20, attack-the-fixes 29); browser **240/240** (run.js + r03/r04/r05/r07/r10/r14/r18 + r20); typecheck server + client clean; fresh volume applies 8/8 migrations.
-- **Next permitted action:** on "continue zprime" → ask the human for R-21 direction (genuinely open candidates: masters actor columns, UI hardening pair, or the postponed GST family — each needs a product decision).
+- **Current release:** v1.20.0 (resolve with `git rev-parse v1.20.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.20.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.20.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-21 (pre-validation UX pair — negative-stock advisory + import dry-run; `allowNegativeStock` exposed in company responses). Investigation: `R-21_INVESTIGATION.md`.
+- **Verification (final tree):** Python **911/911** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **629** incl. 10 R-21, attack-the-fixes 29); browser **253/253** (run.js + r03/r04/r05/r07/r10/r14/r18/r20 + r21); typecheck server + client clean; fresh volume applies 8/8 migrations.
+- **Next permitted action:** on "continue zprime" → ask the human for R-22 direction (genuinely open candidates: masters actor columns, or the postponed GST family — RCM/e-invoice/e-way/GSTR-9/TCS — each needs a product decision).
 
 ---
 

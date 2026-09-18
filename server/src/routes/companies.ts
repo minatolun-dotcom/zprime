@@ -114,7 +114,8 @@ export default async function companyRoutes(app: FastifyInstance) {
         city: companies.city, state: companies.state, stateCode: companies.stateCode, pincode: companies.pincode,
         phone: companies.phone, email: companies.email, gstin: companies.gstin,
         financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom,
-        createdAt: companies.createdAt, role: userCompanies.role })
+        createdAt: companies.createdAt, role: userCompanies.role,
+        allowNegativeStock: companies.allowNegativeStock })
       .from(companies)
       .innerJoin(userCompanies, and(eq(userCompanies.companyId, companies.id), eq(userCompanies.userId, req.userId as number)))
       .orderBy(asc(companies.name));
@@ -128,7 +129,8 @@ export default async function companyRoutes(app: FastifyInstance) {
       .select({ id: companies.id, name: companies.name, mailingName: companies.mailingName, address: companies.address,
         city: companies.city, state: companies.state, stateCode: companies.stateCode, pincode: companies.pincode,
         phone: companies.phone, email: companies.email, gstin: companies.gstin,
-        financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom, createdAt: companies.createdAt })
+        financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom, createdAt: companies.createdAt,
+        allowNegativeStock: companies.allowNegativeStock })
       .from(companies)
       .innerJoin(userCompanies, and(eq(userCompanies.companyId, companies.id), eq(userCompanies.userId, req.userId as number)))
       .where(eq(companies.id, id))

@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.20.0
+
+- **Commit:** `v1.20.0^{}` — resolve with `git rev-parse v1.20.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.20.0` (annotated; `v1.20.0^{}` = the release commit, verified at release)
+- **Major purpose:** Pre-validation UX (R-21, approved scope) — the two UX companions to B-01/B-03 diagnosed in R-04 §15. (A) VoucherScreen negative-stock advisory: amber strip live while typing, computed from the same chronological source the R-06 guard uses (`/reports/stock-summary?to=<date>` closingQty + client deltas with the type's flow sign, STOCK_FLOW and SJ source/target kinds mirrored); names item/available qty/date/settings escape hatch; suppressed on `allowNegativeStock` opt-in, silent-degrade on fetch failure; the R-06 server guard remains the sole authority. Required additive fix: companies list/detail now return `allowNegativeStock` (previously missing — suppression was impossible; caught live by the browser suite). (B) Import dry-run: `POST /xml?dryRun=1` runs the IDENTICAL single-transaction import path (every parser, validateEntries, assertStockAvailabilityTx, reference/bill/duplicate checks) then throws a sentinel → full rollback → same stats table + `dryRun: true`; client gains Validate (dry run) button + "nothing was imported" banner. No migration, no accounting-math change, no new auth surface (same cid() gate; non-member → 404).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 911/911 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 629 (+10 dedicated R-21 checks: dry-run stats with nothing persisted (vouchers/ledgers/items/counters unchanged, Day Book empty), unbalanced/oversell XML rejected with real errors while persisting nothing, real import after dry runs unaffected, non-member dry-run 404), attack-the-fixes 29)
+  - 253/253 browser checks on a rebuilt image with fresh volume (8/8 migrations; new `r21_ui.js` 13 checks: warning appears on UI oversell, names item/qty/setting, clears on correction, suppressed on opted-in company; Validate → nothing-imported banner + Day Book unchanged; Start Import → voucher appears)
+  - typecheck clean (server + client)
+- **Important fixes:** operators now see the oversell while typing (not at a failed save) and can validate an XML import before committing it; `allowNegativeStock` exposed in company responses (R-06 follow-up).
+- **Immutable status:** 🔒 IMMUTABLE — `v1.20.0` is the current production baseline.
+
+---
+
 ## v1.19.0
 
 - **Commit:** `v1.19.0^{}` — resolve with `git rev-parse v1.19.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
