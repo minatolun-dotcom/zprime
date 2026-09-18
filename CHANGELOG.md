@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased — R-22 master-table actor provance
+## v1.22.0 — R-23 reverse charge mechanism (RCM)
+
+**Genuine compliance gap closed — classification + reporting additive; posting engine and accounting math untouched.**
+
+R-23 implements the approved full scope: reverse charge becomes expressible and correctly classified in GSTR-3B. Investigation (`R-23_INVESTIGATION.md`) had verified zero RCM concept existed (`grep` → nothing); a self-assessed duty line would have silently landed in the regular ITC bucket, understating net cash payable.
+
+- **Migration `0009_r23_rcm.sql` (additive, no backfill):** `vouchers.is_rcm` boolean `DEFAULT false` — every existing voucher is honestly regular-charge. RCM is marked **per-transaction, not per-supplier** (one supplier can mix regular goods + RCM services, e.g. GTA).
+- **Duty ledger:** `dutyHead` vocabulary gains `"RCM"`; company creation seeds an "RCM Payable" starter ledger (idempotent for new companies; existing companies opt in by adding the ledger with Duty Head = RCM). Self-assessed duty posts as an ordinary gateway line on that ledger — the TDS `dutyHead` pattern; no posting-engine change.
+- **GSTR-3B Table 4:** `gstr3b()` gains additive `inwardRcm` (4(A)(3) taxable + duty, Purchase/Debit Note with R-05 sign logic) and `rcmItc` sections; RCM vouchers are **excluded** from regular ITC; net continues to reconcile to the ledgers (RCM nets to nil there — asserted, not assumed). Existing output keys identical → all prior suites unaffected.
+- **Client:** Alt+R / panel "Reverse Charge (RCM)" toggle on Purchase + Debit Note voucher forms with an amber strip and Day Book RCM badge; GSTR-3B view renders the 4(A)(3) + RCM ITC rows; Ledger form Duty Head select gains RCM. Sales shows no RCM control (outward RCM e-commerce ops out of scope, documented).
+- **Tests:** `final_regression.py` +33 R-23 checks (682) — per-transaction flag persistence, 4(A)(3) + RCM-ITC values, regular ITC exclusion, net-cash-nil reconciliation, RCM ledger position −250, isRcm strips on edit/uncancel, forgery stripping; new `scripts/acceptance/r23_ui.js` (14 browser checks: toggle, strip, badge, 3B rows, net 0, no Sales control).
+
+Verification: Python **964/964** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **682** incl. 33 R-23, attack-the-fixes 29); browser **267/267** on a rebuilt image + fresh volume (run.js 153 + r03/r04/r05/r07/r10/r14/r18/r20/r21/r23 = 114 scenario checks); typecheck server + client clean; fresh volume applies 10/10 migrations.
+
+---
+
+## v1.21.0 — R-22 master-table actor provance
 
 **Additive schema change + server stamping — accounting-math untouched, no client change.**
 
@@ -14,7 +30,7 @@ Verification: Python **931/931** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
-## Unreleased — R-18 full audit feature (voucher lifecycle history)
+## v1.18.0 — R-18 full audit feature (voucher lifecycle history)
 
 **Additive schema change + server capture + minimal viewer — accounting-math untouched.**
 
@@ -29,7 +45,7 @@ Verification: Python **893/893** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
-## Unreleased — R-20 company audit timeline
+## v1.19.0 — R-20 company audit timeline
 
 **Read-only feature on the R-18 audit data layer — no migration, no accounting-math change.**
 
@@ -43,7 +59,7 @@ Verification: Python **901/901** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
-## Unreleased — R-21 pre-validation UX (negative-stock advisory + import dry run)
+## v1.20.0 — R-21 pre-validation UX (negative-stock advisory + import dry run)
 
 **Advisory/visibility layer over existing server guarantees — no migration, no accounting-math change, guards untouched.**
 
@@ -57,7 +73,7 @@ Verification: Python **911/911** (smoke 39, adversarial 88, bug-fix 65, reconcil
 
 ---
 
-## Unreleased — R-17 audit-trail groundwork (voucher actor provance)
+## v1.17.0 — R-17 audit-trail groundwork (voucher actor provance)
 
 **Additive schema change + server-only propagation — no client change, no accounting-math change.**
 

@@ -89,6 +89,10 @@ async function seedCompanyTx(tx: any, companyId: number) {
     { name: "SGST/UTGST", groupId: groupId.get("Duties & Taxes")!, dutyHead: "SGST" },
     { name: "CESS", groupId: groupId.get("Duties & Taxes")!, dutyHead: "CESS" },
     { name: "TDS Payable", groupId: groupId.get("Duties & Taxes")!, dutyHead: "TDS" },
+    // R-23: reverse-charge self-assessment liability (s. 9(3)/9(4)). The
+    // recipient credits this ledger for tax owed directly; GSTR-3B classifies
+    // those entries into Table 4(A)(3), separate from regular supplier ITC.
+    { name: "RCM Payable", groupId: groupId.get("Duties & Taxes")!, dutyHead: "RCM" },
     { name: "Salary Payable", groupId: groupId.get("Current Liabilities")! },
   ];
   for (const l of starter) {

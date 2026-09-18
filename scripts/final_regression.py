@@ -2589,5 +2589,130 @@ check("R22: item created_by still admin after member edit", it2.get("createdBy")
 _pre = _sql("SELECT count(*) FROM ledgers WHERE created_by IS NOT NULL AND id < (SELECT min(id) FROM ledgers WHERE company_id={C22})".replace("{C22}", str(C22)))
 check("R22: provance rows exist only on fresh writes (no fabricated history)", s == 200, _pre)
 
+# ================= R-23: reverse charge mechanism (RCM) =================
+# The recipient self-accounts GST on reverse-charge inward (s. 9(3)/9(4)):
+# the voucher posts NO supplier-charged duty; the recipient credits an
+# RCM duty ledger (dutyHead='RCM'). GSTR-3B must classify that liability
+# into Table 4(A)(3) — SEPARATE from regular supplier ITC — and report the
+# ITC claimed on it as its own line. Non-RCM books: zero rcm keys, all
+# existing keys/behavior identical. Posted duty heads remain the accounting
+# truth (A-07 rule) — RCM is ADDITIONAL classification, never a replacement.
+print("-- R-23: reverse charge (RCM) --")
+
+s, c23 = r03(sA, "POST", "/api/companies", {"name": "R23 RCM", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R23RCM00A1B2", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R23: test company created", s == 200 and c23.get("id"), (s, str(c23)[:80]))
+C23 = c23["id"]
+
+# 1) seeded RCM Payable ledger exists (migration backfill + seed both cover it)
+s, led23 = r03(sA, "GET", f"/api/c/{C23}/ledgers")
+lm23 = {l["name"]: l for l in (led23 or [])}
+rcm_led = lm23.get("RCM Payable")
+R23 = f"/api/c/{C23}"  # R-23 uses its own r03() session pair below (like R21/22 use sA/sB)
+s, vts23 = r03(sA, "GET", f"{R23}/voucher-types")
+vt23 = {v["name"]: v["id"] for v in (vts23 or [])}
+check("R23: RCM Payable starter ledger seeded with dutyHead=RCM",
+      rcm_led is not None and rcm_led.get("dutyHead") == "RCM", rcm_led and rcm_led.get("dutyHead"))
+
+s, grps23 = r03(sA, "GET", f"/api/c/{C23}/groups")
+gm23 = {gr["name"]: gr["id"] for gr in (grps23 or [])}
+s, rc23 = r03(sA, "POST", f"/api/c/{C23}/ledgers", {"name": "R23 GTA Charges", "groupId": gm23["Direct Expenses"], "taxability": "taxable", "gstRate": "5"})
+check("R23: RCM expense ledger created", s == 200 and rc23.get("id"), (s, str(rc23)[:90]))
+s, sup23 = r03(sA, "POST", f"/api/c/{C23}/ledgers", {"name": "R23 Transporter", "groupId": gm23["Sundry Creditors"], "gstRegistrationType": "unregistered", "billWise": True})
+check("R23: unregistered transporter ledger created", s == 200 and sup23.get("id"), (s, str(sup23)[:90]))
+
+# 2) RCM purchase: self-assess IGST 250 on 5000 taxable (5% interstate).
+# Books: Dr GTA 5000, Dr RCM Payable 250, Cr Transporter 5250 — balanced.
+s, vrcm = r03(sA, "POST", f"/api/c/{C23}/vouchers", {"voucherTypeId": vt23["Purchase"], "date": "2026-08-05", "isRcm": True,
+    "partyLedgerId": sup23["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": rc23["id"], "amount": 5000}, {"ledgerId": rcm_led["id"], "amount": 250}, {"ledgerId": sup23["id"], "amount": -5250}]})
+check("R23: RCM purchase posted (self-assessed duty on RCM ledger)", s == 200 and vrcm.get("id"), (s, str(vrcm)[:110]))
+RCM_V = vrcm.get("id")
+check("R23: voucher persists isRcm=true", vrcm.get("isRcm") is True, vrcm.get("isRcm"))
+
+# 3) GSTR-3B: liability lands in 4(A)(3); regular ITC untouched; net excludes RCM
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+check("R23: 3B fetch", s == 200 and isinstance(b3, dict), s)
+ir, rit = b3.get("inwardRcm", {}), b3.get("rcmItc", {})
+eq("R23: 3B 4(A)(3) RCM taxable = 5000", ir.get("taxable"), 5000)
+eq("R23: 3B 4(A)(3) RCM IGST = 250", ir.get("igst"), 250)
+eq("R23: RCM ITC claimed IGST = 250", rit.get("igst"), 250)
+eq("R23: regular ITC ignores RCM voucher (igst 0)", b3.get("itc", {}).get("igst"), 0)
+eq("R23: net excludes RCM (cash effect nil) — igst 0", b3.get("net", {}).get("igst"), 0)
+_eq23 = next((d for d in b3.get("inwardDetail", []) if d.get("voucherId") == RCM_V), None)
+check("R23: inward detail row flagged isRcm", _eq23 is not None and _eq23.get("isRcm") is True, _eq23)
+
+# 4) NON-RCM purchase in the same period stays regular ITC
+s, reg23 = r03(sA, "POST", f"/api/c/{C23}/ledgers", {"name": "R23 Regular Supplier", "groupId": gm23["Sundry Creditors"], "gstin": "24R23REG00C3D4", "gstRegistrationType": "regular", "billWise": True})
+s, pr23 = r03(sA, "POST", f"/api/c/{C23}/ledgers", {"name": "R23 Goods", "groupId": gm23["Purchase Accounts"], "taxability": "taxable", "gstRate": "18"})
+s, led23b = r03(sA, "GET", f"/api/c/{C23}/ledgers")
+lm23b = {l["name"]: l for l in (led23b or [])}
+L23igst = lm23b["IGST"]["id"]
+s, vreg = r03(sA, "POST", f"/api/c/{C23}/vouchers", {"voucherTypeId": vt23["Purchase"], "date": "2026-08-06", "partyLedgerId": reg23["id"],
+    "entries": [{"ledgerId": pr23["id"], "amount": 2000}, {"ledgerId": L23igst, "amount": 360}, {"ledgerId": reg23["id"], "amount": -2360}]})
+check("R23: regular purchase posted", s == 200 and vreg.get("id"), (s, str(vreg)[:100]))
+check("R23: regular voucher defaults isRcm=false", vreg.get("isRcm") is False, vreg.get("isRcm"))
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    eq("R23: regular ITC IGST = 360 (supplier-charged, unchanged bucket)", b3.get("itc", {}).get("igst"), 360)
+    eq("R23: 4(A)(3) still exactly the RCM voucher only (igst 250)", b3.get("inwardRcm", {}).get("igst"), 250)
+    # net = outward 0 - regular ITC 360 → -360 (RCM never in net; ledger nets nil)
+    eq("R23: net IGST = -360 (regular ITC only)", b3.get("net", {}).get("igst"), -360)
+
+# 5) flip the flag on edit: regular → RCM and back
+s, vflip = r03(sA, "PUT", f"/api/c/{C23}/vouchers/{vreg['id']}", {"voucherTypeId": vt23["Purchase"], "date": "2026-08-06", "isRcm": True,
+    "partyLedgerId": reg23["id"], "entries": [{"ledgerId": pr23["id"], "amount": 2000}, {"ledgerId": L23igst, "amount": 360}, {"ledgerId": reg23["id"], "amount": -2360}]})
+check("R23: edit sets isRcm=true", s == 200, (s, str(vflip)[:80]))
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    eq("R23: after flip, 4(A)(3) IGST = 610 (250+360)", b3.get("inwardRcm", {}).get("igst"), 610)
+    eq("R23: after flip, regular ITC IGST = 0", b3.get("itc", {}).get("igst"), 0)
+s, vunflip = r03(sA, "PUT", f"/api/c/{C23}/vouchers/{vreg['id']}", {"voucherTypeId": vt23["Purchase"], "date": "2026-08-06", "isRcm": False,
+    "partyLedgerId": reg23["id"], "entries": [{"ledgerId": pr23["id"], "amount": 2000}, {"ledgerId": L23igst, "amount": 360}, {"ledgerId": reg23["id"], "amount": -2360}]})
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    check("R23: flip-back restores buckets exactly (250 / 360)",
+          b3.get("inwardRcm", {}).get("igst") == 250 and b3.get("itc", {}).get("igst") == 360,
+          (b3.get("inwardRcm", {}).get("igst"), b3.get("itc", {}).get("igst")))
+
+# 6) RCM debit note REVERSES the 4(A)(3) liability (R-05 sign logic flows through)
+s, dn23 = r03(sA, "POST", f"/api/c/{C23}/vouchers", {"voucherTypeId": vt23["Debit Note"], "date": "2026-08-10", "isRcm": True,
+    "partyLedgerId": sup23["id"],
+    "entries": [{"ledgerId": rc23["id"], "amount": -1000}, {"ledgerId": rcm_led["id"], "amount": -50}, {"ledgerId": sup23["id"], "amount": 1050}]})
+check("R23: RCM debit note posted", s == 200 and dn23.get("id"), (s, str(dn23)[:100]))
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    eq("R23: DN reverses 4(A)(3): taxable 4000", b3.get("inwardRcm", {}).get("taxable"), 4000)
+    eq("R23: DN reverses 4(A)(3): igst 200", b3.get("inwardRcm", {}).get("igst"), 200)
+    eq("R23: RCM ITC mirrors the reversal (igst 200)", b3.get("rcmItc", {}).get("igst"), 200)
+
+# 7) cancellation pulls the RCM voucher out of 4(A)(3) entirely
+s, _ = r03(sA, "POST", f"/api/c/{C23}/vouchers/{RCM_V}/cancel", {"reason": "R23 cancel probe"})
+check("R23: RCM voucher cancelled", s == 200, s)
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    # the purchase (250) is out; only the DN reversal (-50) remains → net -50
+    eq("R23: cancelled purchase excluded — 4(A)(3) igst = -50 (DN reversal only)", b3.get("inwardRcm", {}).get("igst"), -50)
+    eq("R23: rcmItc mirrors the net (-50)", b3.get("rcmItc", {}).get("igst"), -50)
+s, _ = r03(sA, "POST", f"/api/c/{C23}/vouchers/{RCM_V}/uncancel", {})
+s, b3 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+if s == 200:
+    eq("R23: uncancel restores net 4(A)(3) (250 − 50 = 200)", b3.get("inwardRcm", {}).get("igst"), 200)
+
+# 8) GSTR-1 untouched by RCM inward (RCM is never an outward supply)
+s, g1 = r03(sA, "GET", f"/api/c/{C23}/reports/gstr1?from=2026-08-01&to=2026-08-31")
+check("R23: GSTR-1 unaffected by RCM inward (no b2b rows)",
+      s == 200 and len(g1.get("b2b", [])) == 0 and len(g1.get("b2c", [])) == 0,
+      (s, len(g1.get("b2b", [])) if isinstance(g1, dict) else g1))
+
+# 9) books reconciliation: RCM duty ledger closing == ITC-claimed − liability = 0 net cash
+s, tb = r03(sA, "GET", f"/api/c/{C23}/reports/trial-balance?from=2026-08-01&to=2026-08-31")
+check("R23: TB balanced with RCM postings", s == 200 and tb.get("totalDebit") == tb.get("totalCredit"),
+      (tb.get("totalDebit"), tb.get("totalCredit")))
+
+# 10) non-member cannot reach RCM reports or flag a voucher cross-company
+s2, _ = r03(sB, "GET", f"/api/c/{C23}/reports/gstr3b?from=2026-08-01&to=2026-08-31")
+check("R23: non-member 3B -> 404", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

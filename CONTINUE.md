@@ -1,18 +1,24 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-18 — R-22 RELEASED as v1.21.0 (master-table actor provance). Process state: IDLE. The next R-item requires its own investigation → review → approval cycle (no pre-selected candidate).
+**Last updated:** 2026-09-18 — **v1.22.0 RELEASED** (R-23 reverse charge). Phase IDLE; next session asks for R-24 direction.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.21.0 (resolve with `git rev-parse v1.21.0^{}`; see RELEASES.md)
-- **Current HEAD:** the v1.21.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
-- **Current phase:** `IDLE` — v1.21.0 released; next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
-- **Current task:** none. Last: R-22 (masters actor columns — migration 0008 + crud()/import stamping). Investigation: `R-22_INVESTIGATION.md`.
+- **Current release:** v1.22.0 (resolve with `git rev-parse v1.22.0^{}`; see RELEASES.md)
+- **Current HEAD:** the v1.22.0 release commit (see RELEASES.md / `git rev-parse HEAD`)
+- **Current phase:** `IDLE` — v1.22.0 released; the next R-item requires its own investigation → review → approval cycle — see `DEVELOPMENT_PROTOCOL.md`
+- **Current task:** none. Last: R-23 (RCM reverse charge — migration 0009 `vouchers.is_rcm`, RCM Payable ledger seed, GSTR-3B Table 4(A)(3) inwardRcm/rcmItc with regular-ITC exclusion, Alt+R toggle/badge/3B rows/duty-head option; no posting-engine change). Investigation: `R-23_INVESTIGATION.md`.
+- **Verification (final tree):** Python **964/964** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **682** incl. 33 R-23, attack-the-fixes 29); browser **267/267** (run.js + r03/r04/r05/r07/r10/r14/r18/r20/r21/r23); typecheck server + client clean; fresh volume applies 10/10 migrations.
+- **Next permitted action:** on "continue zprime" → ask the human for R-24 direction (genuinely open: the postponed GST compliance family — e-invoice / e-way bill / GSTR-9 / TCS — each large, each its own cycle; or hold steady).
+- **What changed (implemented scope):** migration `0009_r23_rcm.sql` (additive: `vouchers.is_rcm` boolean DEFAULT false, no backfill; snapshot idx 9) + `schema.ts isRcm`; `companies.ts` seeds the "RCM Payable" duty ledger at company creation; `voucherSchema` + create/edit/uncancel persist `isRcm` (client-supplied actor/flag trust rules unchanged — isRcm is a legitimate user choice, actor identity stays JWT-only); `gst.ts` — `voucherGst()` computes `rcmTaxable/rcmIgst/rcmCgst/rcmSgst` and `gstr3b()` gains additive `inwardRcm` (4(A)(3)) + `rcmItc` sections with regular-ITC exclusion; client — Alt+R + panel toggle on Purchase/Debit Note with amber strip, Day Book RCM badge, 3B view rows, MasterPage dutyHead RCM option. No posting-engine change; accounting math untouched.
+- **Verification (final tree):** Python **964/964** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **682** incl. 33 R-23, attack-the-fixes 29); browser **267/267** on a rebuilt image + fresh volume (run.js 153/153 exit-0 + r03…r23 = 114 scenario checks, r23 14/14); typecheck server + client clean; fresh volume applies 10/10 migrations (`is_rcm` verified live); `git diff --check` clean. Suite en route: r23_ui's Day Book matcher fixed (innerText concatenates the inline badge → "PurchaseRCM"); app was correct. Rig note: after a Docker-daemon restart `zprime-test-pg` must be recreated per README's `docker run` line — it was found removed this session and was recreated.
+- **Diff shape:** 13 modified files + 4 new (migration, snapshot, r23_ui.js, investigation) — +281/−12 at last stat, all scoped to R-23; CHANGELOG heading drift fixed en route (R-17…R-22 sections were still labeled "Unreleased" — corrected to their release versions v1.17.0–v1.21.0).
+- **Blocked decisions (waiting on human):** release instruction for v1.22.0. Next R-item: ask for direction (GST family remainder: e-invoice / e-way bill / GSTR-9 / TCS — each large, its own cycle).
 - **What changed (implemented scope):** migration `0008_r22_master_actor.sql` (additive: `created_by`/`updated_by` FK→users ON DELETE SET NULL + `updated_at` on 9 master tables — groups, ledgers, units, stock_groups, stock_categories, godowns, stock_items, employees, pay_heads; NOT voucher_types/tds_sections: system-seeded; no backfill) + programmatic snapshot/journal (idx 8); `schema.ts` columns via a shared `masterActor()` helper; ONE `crud()` change covers all 11 registrations (POST stamps createdBy, PUT stamps updatedBy+updatedAt, created_by immutable, client-supplied actor fields stripped — JWT-only identity); import.ts 5 ensure* inserts stamp `importingActor`; company seeding stays NULL honestly. No client change.
 - **Verification (final tree):** Python **931/931** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **649** incl. 20 R-22, attack-the-fixes 29); browser **255/255** on a rebuilt image + fresh volume (run.js 153/153 exit-0 + r03/r04/r05/r07/r10/r14/r18/r20/r21 = 102 scenario checks); typecheck server + client clean; fresh volume applies 9/9 migrations (27 new columns verified live). Harness hardening en route: final_regression now kills orphaned servers (new process group + pre-kill) after a stale 3106 squatter caused a false failure.
-- **Blocked decisions (waiting on human):** none. Next session: ask for R-23 direction (genuinely open candidates: the postponed GST compliance family — RCM / e-invoice / e-way bill / GSTR-9 / TCS — each large and its own cycle; or hold steady).
+- **Blocked decisions (waiting on human):** none. Next session: ask for R-24 direction (genuinely open candidates: the postponed GST compliance family — e-invoice / e-way bill / GSTR-9 / TCS — each large and its own cycle; or hold steady).
 
 ---
 

@@ -205,6 +205,12 @@ export const vouchers = pgTable("vouchers", {
   refDate: date("ref_date"),
   narration: text("narration").notNull().default(""),
   partyLedgerId: integer("party_ledger_id"),
+  // R-23: reverse charge — the RECIPIENT self-accounts the GST on this inward
+  // (s. 9(3)/9(4)). Marked per-transaction, not per-supplier (one supplier can
+  // mix regular goods and RCM services). Default false: every existing voucher
+  // is honestly regular-charge; RCM vouchers post their self-assessed duty on
+  // a dutyHead='RCM' ledger, which the GSTR-3B classifies into Table 4(A)(3).
+  isRcm: boolean("is_rcm").notNull().default(false),
   isCancelled: boolean("is_cancelled").notNull().default(false),
   // R-02 cancellation metadata (Model A: mark + exclude). R-03: now a real FK
   // to users.id — deleted users do not block voucher history (ON DELETE set

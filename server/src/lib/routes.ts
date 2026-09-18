@@ -112,6 +112,10 @@ export const voucherSchema = z.object({
   chequeNumber: shortText(50).nullable().optional(),
   chequeDate: calendarDate("chequeDate must be a valid calendar date").nullable().optional(),
   placeOfSupply: shortText(100).nullable().optional(),
+  // R-23: reverse charge — the recipient self-accounts the GST on this inward
+  // (s. 9(3)/9(4)). Server truth only; client-supplied values beyond the
+  // boolean are meaningless. Import path does not set it (later scope).
+  isRcm: z.boolean().optional().default(false),
   // R-10 (B-10): optional client-generated idempotency key. One key = one
   // business event; replaying it returns the original voucher. Also accepted
   // via the X-Idempotency-Key header (header wins). Server caps length and

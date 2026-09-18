@@ -21,6 +21,9 @@ export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
       else if (e.altKey && /^[0-9]$/.test(k)) combo = `Alt+F${k}`;
       else if (k === "Escape") combo = "Escape";
       else if (k === "Enter" && e.altKey) combo = "Alt+Enter";
+      // R-23: single-letter Alt chords (Alt+R reverse-charge toggle). Only when
+      // no modifier beyond Alt — avoids swallowing AltGr international layouts.
+      else if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[a-z]$/i.test(k)) combo = `Alt+${k.toUpperCase()}`;
       if (combo && ref.current[combo]) {
         e.preventDefault();
         ref.current[combo](e);

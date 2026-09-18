@@ -460,6 +460,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       refDate: input.refDate ?? null,
       narration: input.narration ?? "",
       partyLedgerId: input.partyLedgerId ?? null,
+      isRcm: input.isRcm ?? false, // R-23: reverse charge flag (see schema note)
       source,
       createdBy: typeof actor === "number" && actor > 0 ? actor : null,
       chequeNumber: input.chequeNumber ?? null,
@@ -490,6 +491,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         partyName: ledgers.name,
         typeId: voucherTypes.id, typeName: voucherTypes.name, shortCode: voucherTypes.shortCode,
         isCancelled: vouchers.isCancelled, source: vouchers.source,
+        isRcm: vouchers.isRcm, // R-23: Day Book badge + report drill-down context
         amount: sql<number>`coalesce((select sum(amount) from voucher_entries e where e.voucher_id = ${vouchers.id} and e.amount > 0), 0)::float8`,
       })
       .from(vouchers)
@@ -663,6 +665,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
             refDate: input.refDate ?? null,
             narration: input.narration ?? "",
             partyLedgerId: input.partyLedgerId ?? null,
+            isRcm: input.isRcm ?? false, // R-23: editable — flips with the voucher's true nature
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
             placeOfSupply: input.placeOfSupply ?? null,

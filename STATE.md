@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — R-22 RELEASED as v1.21.0 (master-table actor provance: created_by/updated_by/updated_at on 9 master tables via additive migration 0008; crud() + import stamping, client actor fields stripped; +20 regression checks). v1.21.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — **v1.22.0 RELEASED** (R-23 reverse charge mechanism: `vouchers.is_rcm` migration 0009, dutyHead RCM + RCM Payable ledger seed, GSTR-3B Table 4(A)(3) inwardRcm/rcmItc, Alt+R voucher toggle + 3B view rows; 964/964 automated + 267/267 browser checks). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

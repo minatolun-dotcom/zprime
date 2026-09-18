@@ -654,8 +654,26 @@ function Gstr3bView({ data }: { data: any }) {
         </table>
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">4. Eligible ITC</div>
         <table className="report-table">
-          <tbody><Row label="ITC available" a={0} b={data.itc.igst} c={data.itc.cgst} d={data.itc.sgst} e={data.itc.cess} /></tbody>
+          <tbody><Row label="ITC available (other than RCM)" a={0} b={data.itc.igst} c={data.itc.cgst} d={data.itc.sgst} e={data.itc.cess} /></tbody>
         </table>
+        {/* R-23: reverse charge — Table 4(A)(3) liability + the ITC claimed on it.
+            Hidden when all-zero (non-RCM books keep the classic compact view). */}
+        {(data.inwardRcm?.taxable || data.inwardRcm?.igst || data.inwardRcm?.cgst || data.inwardRcm?.sgst || data.inwardRcm?.cess
+          || data.rcmItc?.igst || data.rcmItc?.cgst || data.rcmItc?.sgst || data.rcmItc?.cess) ? (
+          <>
+            <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">3.1.1 Supplies attracting reverse charge — 4(A)(3)</div>
+            <table className="report-table">
+              <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-20 text-right">Cess</th></tr></thead>
+              <tbody>
+                <Row label="Inward supplies (RCM)" a={data.inwardRcm.taxable} b={data.inwardRcm.igst} c={data.inwardRcm.cgst} d={data.inwardRcm.sgst} e={data.inwardRcm.cess} />
+              </tbody>
+            </table>
+            <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">ITC claimed on reverse charge</div>
+            <table className="report-table">
+              <tbody><Row label="RCM ITC claimed" a={0} b={data.rcmItc.igst} c={data.rcmItc.cgst} d={data.rcmItc.sgst} e={data.rcmItc.cess} /></tbody>
+            </table>
+          </>
+        ) : null}
       </Card>
       <Card className="p-0 overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Net Tax Payable</div>

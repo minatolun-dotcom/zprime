@@ -30,6 +30,9 @@ export default function VoucherScreen() {
   const [reference, setReference] = useState("");
   const [refDate, setRefDate] = useState("");
   const [narration, setNarration] = useState("");
+  // R-23: reverse charge (s. 9(3)/9(4)) — recipient self-accounts the GST.
+  // Offered only on inward voucher types (Purchase / Debit Note).
+  const [isRcm, setIsRcm] = useState(false);
   const [party, setParty] = useState<{ id: number | null; name: string }>({ id: null, name: "" });
   const [entries, setEntries] = useState<LedgerRow[]>([{ ledgerId: null, ledgerName: "", amount: 0 }]);
   const [inv, setInv] = useState<InvRow[]>([]);
@@ -95,6 +98,7 @@ export default function VoucherScreen() {
           setReference(v.reference ?? "");
           setRefDate(v.refDate ? v.refDate.slice(0, 10) : "");
           setNarration(v.narration ?? "");
+          setIsRcm(!!v.isRcm); // R-23: restore the reverse-charge flag on alter
           const rows: LedgerRow[] = v.entries.map((e: any) => ({
             ledgerId: e.ledgerId, ledgerName: e.ledgerName, amount: num(e.amount),
             tdsSectionId: e.tdsSectionId,
@@ -286,6 +290,7 @@ export default function VoucherScreen() {
       reference: reference || null,
       refDate: refDate || null,
       narration,
+      isRcm: vType && ["Purchase", "Debit Note"].includes(vType.name) ? isRcm : false, // R-23
       partyLedgerId: hasParty && party.id ? party.id : null,
       entries: validEntries.map((e, i) => {
         const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
@@ -342,13 +347,17 @@ export default function VoucherScreen() {
     "Ctrl+A": () => save(),
     Escape: () => nav(`/company/${cid}/daybook`),
     "Alt+F1": () => setDetailed(!detailed),
-  }, [entries, inv, date, number, reference, narration, party, diff, vType]);
+    ...(vType && ["Purchase", "Debit Note"].includes(vType.name) && !cancelledView
+      ? { "Alt+R": () => setIsRcm((x) => !x) } // R-23: reverse-charge toggle
+      : {}),
+  }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView]);
 
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
     { key: "F2", label: "Date", onClick: () => (document.getElementById("v-date") as HTMLInputElement)?.focus() },
     ...(hasParty ? [{ key: "F12", label: "Ref / Party", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+G", label: "Apply GST" }] : []),
+    ...(vType && ["Purchase", "Debit Note"].includes(vType.name) ? [{ key: "Alt+R", label: isRcm ? "RCM ✓ (toggle off)" : "Reverse Charge", onClick: () => setIsRcm((x) => !x) }] : []),
     ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS" }] : []),
     { key: "Esc", label: "Quit (Day Book)", onClick: () => nav(`/company/${cid}/daybook`) },
   ];
@@ -390,7 +399,18 @@ export default function VoucherScreen() {
             <input className="w-32" value={number} onChange={(e) => setNumber(e.target.value)} />
             <span className="text-[12px] text-slate-400 ml-2">Date (F2)</span>
             <input id="v-date" type="date" className="w-36" value={date} onChange={(e) => setDate(e.target.value)} />
+            {vType && ["Purchase", "Debit Note"].includes(vType.name) && (
+              <label className="ml-auto flex items-center gap-1.5 text-[12px] cursor-pointer select-none" title="Reverse charge (s. 9(3)/9(4)) — you self-account the GST. Post the self-assessed duty on the RCM Payable ledger. (Alt+R)">
+                <input type="checkbox" checked={isRcm} onChange={(e) => setIsRcm(e.target.checked)} disabled={cancelledView} />
+                <span className={isRcm ? "font-semibold text-amber-700" : "text-slate-500"}>RCM</span>
+              </label>
+            )}
           </div>
+          {isRcm && !cancelledView && (
+            <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-amber-800 text-[11px]">
+              Reverse charge — GST is NOT charged by the supplier. Self-account the tax: Dr expense/purchase, Cr RCM Payable (IGST/CGST/SGST rates as applicable). Reported under GSTR-3B Table 4(A)(3).
+            </div>
+          )}
 
           <div className="px-4 py-3 space-y-4">
             {/* party for trading vouchers */}

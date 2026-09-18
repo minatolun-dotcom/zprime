@@ -14,6 +14,10 @@ export interface VoucherGst {
   /** R-05 (B-06): true for Credit/Debit Notes — these rows REVERSE the supply
    *  they amend, so their values are signed opposites of ordinary supplies. */
   isNote: boolean;
+  /** R-23: reverse charge (s. 9(3)/9(4)) — the recipient self-accounts this
+   *  inward's GST on a dutyHead='RCM' ledger. Duty on such vouchers is RCM
+   *  liability (3B Table 4(A)(3)), NOT regular supplier ITC. */
+  isRcm: boolean;
   rateBuckets: { rate: number; taxable: number; igst: number; cgst: number; sgst: number; cess: number }[];
 }
 
@@ -48,6 +52,7 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
       voucherId: vouchers.id, date: vouchers.date, number: vouchers.number,
       typeName: voucherTypes.name, partyName: ledgers.name, partyGstin: ledgers.gstin,
       partyState: ledgers.partyState, placeOfSupply: vouchers.placeOfSupply,
+      isRcm: vouchers.isRcm, // R-23: reverse-charge inward classification
     })
     .from(vouchers)
     .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
@@ -86,16 +91,48 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     // NEGATIVE. The previous Math.abs() folding erased the note's reversal and
     // counted it as an additional supply, overstating GSTR-1/3B.
     const isNote = v.typeName === "Credit Note" || v.typeName === "Debit Note";
+    // R-23: reverse charge applies to INWARD supplies the recipient self-accounts.
+    // An outward-typed row can never be RCM (the flag is only settable on
+    // Purchase/Debit Note), so the check is belt-and-braces here.
+    const isRcm = !!v.isRcm && kind === "inward";
     const sign = kind === "outward" ? -1 : 1; // outward duty is credit (negative), inward duty is debit (positive)
 
     const taxableRows = entries.filter((e) => !e.dutyHead && e.taxability === "taxable");
-    const dutyRows = entries.filter((e) => e.dutyHead && e.dutyHead !== "TDS");
+    let dutyRows: any[] = entries.filter((e) => e.dutyHead && e.dutyHead !== "TDS");
+
+    // R-23: duty rows posted on RCM ledgers (dutyHead='RCM') carry no statutory
+    // head — derive the IGST/CGST/SGST breakdown from the place of supply vs
+    // company state and the ledger rate snapshots, mirroring Apply-GST's own
+    // logic. The synthetic rows join the aggregation below; the posted RCM
+    // ledger remains the books' truth (A-07 rule) — this only classifies it.
+    // If POS cannot be resolved, the duty still surfaces (as IGST) and the
+    // voucher is flagged supplyMismatch by the existing advisory logic.
+    const rcmDutyRows = dutyRows.filter((e) => e.dutyHead === "RCM");
+    if (isRcm && rcmDutyRows.length > 0) {
+      const totalDuty = rcmDutyRows.reduce((s, e) => s + sign * num(e.amount), 0);
+      const posCode = stateCodeFromName(v.placeOfSupply) ?? stateCodeFromGstin(v.partyGstin);
+      const companyState = company?.stateCode ?? (company?.gstin ? company.gstin.slice(0, 2) : null);
+      const inter = posCode != null && companyState != null ? posCode !== companyState : true; // unresolvable POS → IGST (conservative) + mismatch flag
+      const head = inter ? "IGST" : "CGST"; // CGST+SGST split half/half below (GST convention for intra-state)
+      const synthetic: any[] = [];
+      if (inter) synthetic.push({ dutyHead: "IGST", amount: String(sign * totalDuty) });
+      else {
+        synthetic.push({ dutyHead: "CGST", amount: String(sign * r2(totalDuty / 2)) });
+        synthetic.push({ dutyHead: "SGST", amount: String(sign * r2(totalDuty / 2)) });
+      }
+      dutyRows = [...dutyRows.filter((e) => e.dutyHead !== "RCM"), ...synthetic];
+      void head; // (documented above — head chosen inline for clarity)
+    }
 
     const taxable = r2(sign * taxableRows.reduce((s, e) => s + num(e.amount), 0));
     const heads = new Map<string, number>();
     for (const d of dutyRows) {
       const amt = sign * num(d.amount);
-      heads.set(d.dutyHead!, r2((heads.get(d.dutyHead!) ?? 0) + amt));
+      // R-23: RCM-ledger rows were already re-mapped above (synthetic IGST or
+      // CGST+SGST); a bare RCM row here would be an OUTWARD isRcm row —
+      // impossible by the kind check — so plain mapping is safe.
+      const head = d.dutyHead!;
+      heads.set(head, r2((heads.get(head) ?? 0) + amt));
     }
     const igst = heads.get("IGST") ?? 0;
     const cgst = heads.get("CGST") ?? 0;
@@ -145,6 +182,7 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
       supplyType: interState ? "interstate" : "intrastate",
       supplyMismatch,
       isNote,
+      isRcm,
       rateBuckets: [...buckets.values()].sort((a, b) => a.rate - b.rate),
     });
   }
@@ -265,10 +303,36 @@ export async function gstr3b(companyId: number, from: string, to: string) {
   const outwardSgst = sum(outward, (v) => v.sgst);
   const outwardCess = sum(outward, (v) => v.cess);
 
-  const itcIgst = sum(inward, (v) => v.igst);
-  const itcCgst = sum(inward, (v) => v.cgst);
-  const itcSgst = sum(inward, (v) => v.sgst);
-  const itcCess = sum(inward, (v) => v.cess);
+  // R-23: reverse-charge inward (Table 4(A)(3)) is reported SEPARATELY from
+  // regular supplier-charged ITC. The RCM liability raised by the recipient
+  // and the ITC claimed on it are two different table lines — netting them
+  // silently (pre-R-23 behavior, duty landing in `itc`) hid the liability.
+  // Non-RCM books produce all-zero rcm sections and unchanged existing keys.
+  const rcmInward = inward.filter((v) => v.isRcm && !v.isNote);
+  const rcmNotes = inward.filter((v) => v.isRcm && v.isNote);
+  // R-23: the ITC line claims the NET RCM position (liability net of reversals),
+  // matching the books where the RCM ledger itself nets to the same figure.
+  const rcmItc = [...rcmInward, ...rcmNotes];
+  const regularItc = inward.filter((v) => !v.isRcm);
+
+  const itcIgst = sum(regularItc, (v) => v.igst);
+  const itcCgst = sum(regularItc, (v) => v.cgst);
+  const itcSgst = sum(regularItc, (v) => v.sgst);
+  const itcCess = sum(regularItc, (v) => v.cess);
+
+  // Debit/credit notes REVERSE their supply (R-05 sign semantics — the note's
+  // taxable/duty are already signed opposite), so summing both populations is
+  // the net 4(A)(3) position; magnitudes are taken per-row by voucherGst.
+  const rcmTaxable = r2(sum(rcmInward, (v) => v.taxable) + sum(rcmNotes, (v) => v.taxable));
+  const rcmIgst = r2(sum(rcmInward, (v) => v.igst) + sum(rcmNotes, (v) => v.igst));
+  const rcmCgst = r2(sum(rcmInward, (v) => v.cgst) + sum(rcmNotes, (v) => v.cgst));
+  const rcmSgst = r2(sum(rcmInward, (v) => v.sgst) + sum(rcmNotes, (v) => v.sgst));
+  const rcmCess = r2(sum(rcmInward, (v) => v.cess) + sum(rcmNotes, (v) => v.cess));
+
+  const rcmItcIgst = sum(rcmItc, (v) => v.igst);
+  const rcmItcCgst = sum(rcmItc, (v) => v.cgst);
+  const rcmItcSgst = sum(rcmItc, (v) => v.sgst);
+  const rcmItcCess = sum(rcmItc, (v) => v.cess);
 
   const netIgst = r2(outwardIgst - itcIgst);
   const netCgst = r2(outwardCgst - itcCgst);
@@ -278,6 +342,13 @@ export async function gstr3b(companyId: number, from: string, to: string) {
   return {
     outward: { taxable: outwardTaxable, igst: outwardIgst, cgst: outwardCgst, sgst: outwardSgst, cess: outwardCess },
     itc: { igst: itcIgst, cgst: itcCgst, sgst: itcSgst, cess: itcCess },
+    // R-23: Table 4(A)(3) reverse-charge inward + the ITC claimed on it.
+    // These are REPORT lines: on the books the RCM liability and its ITC net
+    // to nil (same duty ledgers), and `net` below intentionally continues to
+    // exclude both — cash effect nil. rcmItc keys reconcile to the RCM duty
+    // posted; a mismatch means unclaimed RCM credit (visible, not silent).
+    inwardRcm: { taxable: rcmTaxable, igst: rcmIgst, cgst: rcmCgst, sgst: rcmSgst, cess: rcmCess },
+    rcmItc: { igst: rcmItcIgst, cgst: rcmItcCgst, sgst: rcmItcSgst, cess: rcmItcCess },
     net: { igst: netIgst, cgst: netCgst, sgst: netSgst, cess: netCess, total: r2(netIgst + netCgst + netSgst + netCess) },
     outwardDetail: outward, inwardDetail: inward,
   };

@@ -28,6 +28,8 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.19.0 | **R-20** | Company audit timeline (cid-gated read-only `GET /audit`, id-DESC chronology, limit/action/before-cursor params; AuditTrail page + Gateway card; deleted vouchers unlinked with snapshot; no migration; +8+12 checks → 901/240; R-19 between: B-12 re-verified ALREADY CLOSED, ROADMAP row retired) |
 | v1.20.0 | **R-21** | Pre-validation UX (VoucherScreen negative-stock advisory from stock-summary closingQty + flow-sign deltas, suppressed on allowNegativeStock — now returned by companies list/detail; import dry-run `?dryRun=1` = identical tx path + full rollback + stats; Validate button + nothing-imported banner; guards untouched; +10+13 checks → 911/253) |
 | v1.21.0 | **R-22** | Master-table actor provance (migration 0008: created_by/updated_by/updated_at on 9 master tables, no backfill — seeded rows honestly NULL, voucher_types/tds_sections excluded as system-seeded; ONE crud() change covers all 11 registrations with client actor fields stripped; import's 5 ensure* inserts stamp the importing actor; +20 checks → 931/255) |
+| v1.22.0 | **R-23** | Reverse charge mechanism (migration 0009: `vouchers.is_rcm` per-transaction flag + RCM Payable duty-ledger seed for existing companies; voucherGst classification; GSTR-3B Table 4(A)(3) inwardRcm/rcmItc with regular-ITC exclusion; Alt+R voucher toggle, Day Book badge, 3B view rows, duty-head option; +33+14 checks → 964/267) |
+| v1.22.0 | **R-23** | Reverse charge mechanism (RCM — approved product decision, previously listed out of scope): migration 0009 `vouchers.is_rcm` per-transaction flag; dutyHead RCM + seeded RCM Payable starter ledger (TDS report pattern); GSTR-3B Table 4(A)(3) inwardRcm + rcmItc additive sections with regular-ITC exclusion and net-cash-nil reconciliation; Alt+R voucher toggle + Day Book badge + 3B view rows; no posting-engine change; +33+14 checks → 964/267 |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
@@ -58,7 +60,7 @@ Full audit trail **✅ DONE (v1.18.0)** — the "full audit trail" entry above i
 
 ## Explicitly out of scope (do not schedule)
 
-RCM, TCS, e-invoice, e-way bill, GSTR-9, batch/serial, BOM/production orders, compound units, multi-currency, period locking, SSO/2FA, invitations/email workflows, organization/workspace abstraction, subscription billing, FIFO promotion (WAVG stays canonical).
+RCM ✅ DONE (v1.22.0 — approved product decision, row retired), TCS, e-invoice, e-way bill, GSTR-9, batch/serial, BOM/production orders, compound units, multi-currency, period locking, SSO/2FA, invitations/email workflows, organization/workspace abstraction, subscription billing, FIFO promotion (WAVG stays canonical).
 
 ## Process reminder
 

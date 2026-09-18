@@ -147,6 +147,11 @@ export default function DayBook() {
                       Cancelled
                     </span>
                   )}
+                  {v.isRcm && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
+                      RCM
+                    </span>
+                  )}
                 </td>
                 <td className="font-medium">{v.number}</td>
                 <td className="text-slate-600 truncate max-w-[300px]">{v.partyName ?? v.narration}</td>

@@ -286,6 +286,7 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
     { name: "dutyHead", label: "Duty Head", type: "select", options: [
       { value: "", label: "—" }, { value: "IGST", label: "IGST" }, { value: "CGST", label: "CGST" },
       { value: "SGST", label: "SGST/UTGST" }, { value: "CESS", label: "CESS" }, { value: "TDS", label: "TDS" },
+      { value: "RCM", label: "RCM (Reverse Charge)" },
     ] },
     { name: "isBankCash", label: "Bank / Cash Account", type: "checkbox" },
     { name: "bankAccountNumber", label: "Bank A/c No.", type: "text" },

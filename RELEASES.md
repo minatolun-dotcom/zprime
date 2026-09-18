@@ -4,6 +4,20 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.22.0
+
+- **Commit:** `v1.22.0^{}` — resolve with `git rev-parse v1.22.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.22.0` (annotated; `v1.22.0^{}` = the release commit, verified at release)
+- **Major purpose:** Reverse charge mechanism (R-23, approved full scope — retired the ROADMAP "explicitly out of scope" row). RCM becomes expressible and correctly classified: additive migration `0009_r23_rcm.sql` — `vouchers.is_rcm` boolean `NOT NULL DEFAULT false` (RCM marked **per-transaction**, not per-supplier; no backfill — every existing voucher honestly regular-charge) + idempotent seed of the "RCM Payable" duty ledger (`dutyHead='RCM'`) for **existing** companies; new companies seed it at creation. `voucherSchema` gains `isRcm`; create/edit/list persist/return it. `voucherGst()` classifies RCM inward duty rows into synthetic IGST / CGST+SGST (POS vs company state; unresolvable POS → conservative IGST + existing mismatch flag); `gstr3b()` gains additive **`inwardRcm` (Table 4(A)(3))** + **`rcmItc`** sections with RCM vouchers excluded from regular ITC (previously a self-assessed line would have silently reduced net payable); RCM nets to nil on the books (asserted). Client: Alt+R + panel toggle on Purchase/Debit Note with amber guidance strip, Day Book RCM badge, GSTR-3B view rows (hidden when all-zero), Ledger form Duty Head RCM option. No posting-engine change — the gateway Dr=Cr rule and duty-ledger posting are untouched; books' truth remains the posted RCM ledger.
+- **Verification status:** VERIFIED AT RELEASE —
+  - 964/964 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 682 (+33 dedicated R-23 checks: flag persistence, 4(A)(3)+RCM-ITC values, regular-ITC exclusion, net-cash-nil reconciliation, RCM ledger position, isRcm strips on edit/uncancel, forgery stripping), attack-the-fixes 29)
+  - 267/267 browser checks on a rebuilt image with fresh volume (10/10 migrations, `is_rcm` + seed verified live; run.js 153/153 exit-0 + r03…r23 = 114 scenario checks, new `r23_ui.js` 14/14: toggle, strip, badge, 3B rows, net 0, no Sales control)
+  - typecheck clean (server + client)
+- **Important fixes:** GSTR-3B Table 4(A)(3) now exists and regular ITC no longer absorbs self-assessed RCM duty; en-route suite fix (Day Book matcher — innerText concatenates the inline badge), rig recreation after daemon restart, CHANGELOG heading drift corrected (R-17…R-22 sections were still labeled "Unreleased").
+- **Immutable status:** 🔒 IMMUTABLE — `v1.22.0` is the current production baseline.
+
+---
+
 ## v1.21.0
 
 - **Commit:** `v1.21.0^{}` — resolve with `git rev-parse v1.21.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
