@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-17 (R-17 RELEASED as v1.17.0 — voucher actor provance, audit groundwork. v1.17.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-18 — R-18 RELEASED as v1.18.0 (full audit feature: same-tx `audit_events` at all 7 voucher write sites, delete-surviving history, F-R18-1 payroll provance fix, audit endpoint + VoucherScreen history strip). v1.18.0 is the current tagged baseline; see RELEASES.md, CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

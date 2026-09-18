@@ -205,6 +205,27 @@ export const vouchers = pgTable("vouchers", {
   uniqueIndex("vouchers_company_type_number_uq").on(t.companyId, t.voucherTypeId, t.number),
 ]);
 
+// R-18: full audit feature — append-only voucher event log. One row per
+// lifecycle transition (create | edit | cancel | uncancel | delete), written
+// in the SAME transaction as the state change (an event exists iff the change
+// committed). voucherId is nullable + ON DELETE set null: a hard delete must
+// not erase its own trail — history detaches and the terminal delete event
+// (with its snapshot) survives. No backfill: pre-R-18 vouchers honestly show
+// an empty history.
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    voucherId: integer("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+    actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(), // create | edit | cancel | uncancel | delete
+    detail: text("detail"), // cancel reason; delete snapshot; NULL otherwise
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("audit_events_company_voucher_idx").on(t.companyId, t.voucherId), index("audit_events_company_created_idx").on(t.companyId, t.createdAt)],
+);
+
 // R-10 (B-10): server-side idempotency for voucher creation. A client-generated
 // key identifies one business event; replaying it returns the ORIGINAL voucher
 // instead of posting a duplicate. Company-scoped, one row per accepted event;

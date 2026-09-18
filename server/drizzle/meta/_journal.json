@@ -50,6 +50,13 @@
       "when": 1789476400000,
       "tag": "0006_r17_voucher_actor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789560000000,
+      "tag": "0007_r18_audit_events",
+      "breakpoints": true
     }
   ]
 }

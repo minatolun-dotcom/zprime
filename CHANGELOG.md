@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — R-18 full audit feature (voucher lifecycle history)
+
+**Additive schema change + server capture + minimal viewer — accounting-math untouched.**
+
+R-18 implements the approved full audit feature: a same-transaction `audit_events` log capturing WHO did WHAT to each voucher and WHEN, with a compact in-form history surface.
+
+- **Migration `0007_r18_audit_events.sql` (additive):** `audit_events` — `company_id` (FK CASCADE), `voucher_id` (nullable, FK **SET NULL** — a `delete` event must outlive the voucher it describes; CASCADE would erase the event), `actor_id` (FK SET NULL), `action` (`create|edit|cancel|uncancel|delete`), `detail`, `created_at`; indexes on `(company_id, voucher_id)` and `company_id`. No backfill — pre-R-18 transitions are unknowable; seeding events at migration time would fabricate history.
+- **Capture at all 7 write sites, same transaction** (an event exists iff the change committed — never accounting-changed/audit-lost): manual create (`vouchers.ts`), XML import (`import.ts`, importing actor), payroll create (`payroll.ts`), edit, cancel (+reason), uncancel, delete (event recorded **before** the row goes, with a debit-side snapshot of the entries in `detail`). R-10 idempotent replay records no event (no state change). **F-R18-1 folded in:** payroll's voucher insert now stamps `created_by` (R-17 gap).
+- **Viewer:** `GET /vouchers/:id/audit` (cid-gated, 404 on unknown voucher, actor usernames joined) + one compact history strip on VoucherScreen in edit mode only (silent-degrade on fetch failure — convenience, never a workflow/security surface).
+- **Tests:** `final_regression.py` +18 R-18 checks (611) — create/edit/cancel/uncancel/delete event order + actor + cancel-reason detail + delete snapshot, payroll + import + created_by provenance, replay records no event, cross-company audit 404, and a **forced-failure atomicity proof** (audit failure aborts the posting). New `scripts/acceptance/r18_ui.js` (11 browser checks: fresh voucher shows no strip; UI-entered voucher → "Created by admin" on alter; edit appends "Edited by admin" in lifecycle order; Day Book + TB balanced throughout).
+
+Verification: Python **893/893** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **611** incl. 18 R-18, attack-the-fixes 29); browser **228/228** (run.js + r03/r04/r05/r07/r10/r14 + **r18** 11); typecheck server + client clean; fresh volume applies 8/8 migrations.
+
+---
+
 ## Unreleased — R-17 audit-trail groundwork (voucher actor provance)
 
 **Additive schema change + server-only propagation — no client change, no accounting-math change.**

@@ -4,6 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.18.0
+
+- **Commit:** `v1.18.0^{}` — resolve with `git rev-parse v1.18.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
+- **Tag:** `v1.18.0` (annotated; `v1.18.0^{}` = the release commit, verified at release)
+- **Major purpose:** Full audit feature — voucher lifecycle history (R-18, approved product decision; no defect behind it). Additive migration `0007_r18_audit_events.sql`: `audit_events` append-only log (`company_id` FK CASCADE; **`voucher_id` nullable FK SET NULL — a hard delete must not erase its own trail; the terminal `delete` event survives with a one-line snapshot in `detail`**; `actor_id` FK SET NULL; `action` create|edit|cancel|uncancel|delete; `created_at`; two indexes). **No backfill** — pre-R-18 transitions are unknowable; seeding would fabricate history. Same-transaction capture at all 7 voucher write sites (an event exists iff the change committed — never accounting-changed/audit-lost): manual create, XML import (importing actor), payroll create, edit, cancel (+reason), uncancel, delete (event recorded before the row goes; Day-Book-convention debit-side snapshot). R-10 idempotent replay records no event. **F-R18-1 folded in:** payroll voucher insert now stamps `created_by` (R-17 gap). Viewer: `GET /vouchers/:id/audit` (cid-gated, actor usernames joined) + compact VoucherScreen history strip (edit mode, silent-degrade). No company-wide timeline, no masters events, no retention/export (documented out-of-scope).
+- **Verification status:** VERIFIED AT RELEASE —
+  - 893/893 automated checks (Python: smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 611 (+18 dedicated R-18 checks incl. cross-company audit 404 and a forced-failure **atomicity proof** — audit failure aborts the posting), attack-the-fixes 29)
+  - 228/228 browser checks on a rebuilt image with fresh volume (8/8 migrations — fresh install with 0007 verified; new `r18_ui.js` 11 checks: fresh voucher shows no strip; "Created by admin" on alter; edit appends "Edited by admin" in lifecycle order; Day Book + TB balanced)
+  - typecheck clean (server + client)
+  - upgrade-safe: additive new table only; fresh-install and upgrade paths both verified
+- **Important fixes:** every voucher transition now carries WHO did WHAT WHEN, provable after the fact (including after deletion); F-R18-1 payroll provance gap closed.
+- **Immutable status:** 🔒 IMMUTABLE — `v1.18.0` is the current production baseline.
+
+---
+
 ## v1.17.0
 
 - **Commit:** `v1.17.0^{}` — resolve with `git rev-parse v1.17.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)

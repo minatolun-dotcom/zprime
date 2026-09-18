@@ -5,7 +5,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { cid, bad, pgFriendly, pgCode, salaryStructureSchema } from "../lib/routes.js";
 import { r2, num, today, monthLabel } from "../lib/util.js";
 import { crud } from "./crud.js";
-import { nextNumber } from "./vouchers.js";
+import { nextNumber, recordAuditEvent } from "./vouchers.js";
 
 export default async function payrollRoutes(app: FastifyInstance) {
   crud(app, "employees", employees, { orderBy: (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "") });
@@ -133,6 +133,9 @@ export default async function payrollRoutes(app: FastifyInstance) {
       const [v] = await tx.insert(vouchers).values({
         companyId: c, voucherTypeId: payrollType.id, date, number,
         narration: `Payroll for ${monthLabel(month)}`, source: "payroll",
+        // F-R18-1: payroll vouchers previously lacked actor provance — stamp
+        // the authenticated user who ran the payroll (same rule as R-17 sites).
+        createdBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
       }).returning();
 
       for (let i = 0; i < finalEntries.length; i++) {
@@ -145,6 +148,10 @@ export default async function payrollRoutes(app: FastifyInstance) {
           lines: s.lines, gross: String(s.gross), deductions: String(s.deductions), net: String(s.net),
         });
       }
+
+      // R-18: the payroll voucher's create event — same transaction, so the
+      // event exists iff the payroll posting committed.
+      await recordAuditEvent(tx, c, v.id, req.userId, "create");
 
       return { voucherId: v.id, employees: slips.length, total: r2(slips.reduce((s, x) => s + x.net, 0)) };
       });

@@ -8,6 +8,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { cid, bad, pgFriendly } from "../lib/routes.js";
 import { r2, num } from "../lib/util.js";
+import { recordAuditEvent } from "./vouchers.js";
 import { validateEntries, assertStockAvailabilityTx } from "./vouchers.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -453,6 +454,8 @@ export default async function importRoutes(app: FastifyInstance) {
             chequeNumber: v.CHEQUENUMBER ? String(v.CHEQUENUMBER) : null,
             placeOfSupply: v.PLACEOFSUPPLY ? String(v.PLACEOFSUPPLY) : null,
           }).returning();
+          // R-18: per-voucher create event — the importing authenticated user.
+          await recordAuditEvent(tx, c, nv.id, req.userId, "create");
 
           for (let i = 0; i < entries.length; i++) {
             const e = entries[i];

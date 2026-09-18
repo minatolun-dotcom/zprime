@@ -46,6 +46,14 @@ export default function VoucherScreen() {
   const [detailed, setDetailed] = useState(true);
   // R-02: a cancelled voucher opened from Day Book is displayed read-only.
   const [cancelledView, setCancelledView] = useState(false);
+  // R-18: compact audit history (edit mode only). Silent-degrade on fetch
+  // failure — the viewer is convenience, never a security or workflow surface.
+  const { data: auditTrail } = useQuery({
+    queryKey: ["voucher-audit", cid, voucherId],
+    queryFn: () => get<any[]>(`/api/c/${cid}/vouchers/${voucherId}/audit`),
+    enabled: isEdit,
+    retry: false,
+  });
 
   const ledgerInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -316,6 +324,19 @@ export default function VoucherScreen() {
           {cancelledView && (
             <div className="px-4 py-2 bg-red-50 border-b border-red-100 text-red-700 text-[12px] font-medium rounded-t-lg">
               Cancelled voucher — displayed read-only. Its accounting, inventory and GST effects are inactive. Uncancel it from the Day Book to restore.
+            </div>
+          )}
+          {/* R-18: compact audit history — one line per lifecycle transition */}
+          {isEdit && !!auditTrail && auditTrail.length > 0 && (
+            <div className="px-4 py-1.5 border-b border-slate-100 text-[11px] text-slate-500 flex flex-wrap gap-x-3">
+              {auditTrail.map((e: any) => (
+                <span key={e.id}>
+                  {e.action === "create" ? "Created" : e.action === "edit" ? "Edited" : e.action === "cancel" ? "Cancelled" : e.action === "uncancel" ? "Uncancelled" : "Deleted"}
+                  {e.actorUsername ? ` by ${e.actorUsername}` : ""}
+                  {e.detail ? ` (${e.detail})` : ""}
+                  {" · "}{new Date(e.createdAt).toLocaleString()}
+                </span>
+              ))}
             </div>
           )}
           {/* header */}

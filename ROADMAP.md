@@ -24,6 +24,7 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.15.0 | **R-15** | Opening-GST semantics regression lock (test-only: opening-GST candidate verified NOT A BUG — returns period-only, ledger carries position, unpaired openings surface honestly; +8 checks → 868) |
 | v1.16.0 | **R-16** | Deployment self-healing (F-R1: `restart: unless-stopped` on app+db, README note; compose-only) + **RELEASE CANDIDATE** status adopted per READINESS_REVIEW.md |
 | v1.17.0 | **R-17** | Voucher actor provance — audit groundwork (migration 0006: created_by/updated_by/updated_at, no fabricated backfill; stamping at manual/import/edit write sites from verified JWT identity; masters deferred; +7 checks → 875) |
+| v1.18.0 | **R-18** | Full audit feature (migration 0007: append-only `audit_events`, same-tx capture at all 7 voucher write sites, delete-event outlives voucher via SET NULL + snapshot, no backfill; F-R18-1 payroll created_by gap closed; cid-gated audit endpoint + VoucherScreen history strip; +18+11 checks → 893/228) |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
 ## Current phase: IDLE — next item pending investigation
@@ -50,9 +51,11 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 
 Non-bug hardening candidates (from R-04 investigation, §13/§14): graduate the audit's INV probes into permanent regression blocks; import pre-validation feedback in the UI; negative-stock warning in VoucherScreen.
 
+Full audit trail **✅ DONE (v1.18.0)** — the "full audit trail" entry above is hereby retired: R-17+R-18 delivered per-voucher lifecycle history (who/what/when, delete-surviving). Still out of scope: company-wide timeline page, masters events, retention/export.
+
 ## Explicitly out of scope (do not schedule)
 
-RCM, TCS, e-invoice, e-way bill, GSTR-9, batch/serial, BOM/production orders, compound units, multi-currency, full audit trail, period locking, SSO/2FA, invitations/email workflows, organization/workspace abstraction, subscription billing, FIFO promotion (WAVG stays canonical).
+RCM, TCS, e-invoice, e-way bill, GSTR-9, batch/serial, BOM/production orders, compound units, multi-currency, period locking, SSO/2FA, invitations/email workflows, organization/workspace abstraction, subscription billing, FIFO promotion (WAVG stays canonical).
 
 ## Process reminder
 

@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
   stockItems, godowns, tdsSections, voucherCounters, payslips, companies, idempotencyKeys,
+  auditEvents, users,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
@@ -422,6 +423,20 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
   }
 }
 
+// R-18: append one audit event in the SAME transaction as the state change —
+// an event exists iff the change committed. Kept trivially small by design:
+// the hook must never be the reason a posting fails, and if it does fail, the
+// atomicity guarantee (no state change without its event) aborts the posting.
+export async function recordAuditEvent(tx: Tx, companyId: number, voucherId: number, actor: number | null | undefined, action: string, detail?: string) {
+  await tx.insert(auditEvents).values({
+    companyId,
+    voucherId,
+    actorId: typeof actor === "number" && actor > 0 ? actor : null,
+    action,
+    detail: detail ?? null,
+  });
+}
+
 // R-17: actor provance — `actor` is the authenticated user's id (verified
 // JWT), stamped as created_by on every voucher insert (manual + import).
 async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number) {
@@ -454,6 +469,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
     .returning();
 
   await writeBody(tx, v.id, input);
+  await recordAuditEvent(tx, companyId, v.id, actor, "create");
   return v;
 }
 
@@ -659,6 +675,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await tx.delete(voucherEntries).where(eq(voucherEntries.voucherId, id));
         await tx.delete(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
         await writeBody(tx, id, input);
+        await recordAuditEvent(tx, c, id, req.userId, "edit");
         return { id };
       });
     } catch (err: any) {
@@ -716,6 +733,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
             cancelledBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
           })
           .where(eq(vouchers.id, id));
+        await recordAuditEvent(tx, c, id, req.userId, "cancel", reason ?? undefined);
         return { ok: true, id, isCancelled: true };
       });
     } catch (err: any) {
@@ -783,6 +801,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
           .update(vouchers)
           .set({ isCancelled: false, cancelledAt: null, cancelReason: null, cancelledBy: null })
           .where(eq(vouchers.id, id));
+        await recordAuditEvent(tx, c, id, req.userId, "uncancel");
         return { ok: true, id, isCancelled: false };
       });
     } catch (err: any) {
@@ -853,11 +872,53 @@ export default async function voucherRoutes(app: FastifyInstance) {
           });
         }
 
+        // R-18: record the terminal event BEFORE the row goes — audit_events
+        // detaches (voucher_id set null) rather than cascading, so the trail
+        // outlives the voucher; detail carries a one-line snapshot of what was
+        // removed. Same transaction: the event exists iff the delete committed.
+        const [snap] = await tx
+          .select({ typeName: voucherTypes.name })
+          .from(voucherTypes)
+          .where(eq(voucherTypes.id, existing.voucherTypeId));
+        // Day Book amount convention: sum of the debit-side (positive) rows —
+        // a balanced voucher's net of signed entries is always zero.
+        const [amountRow] = await tx
+          .select({ amount: sql<number>`coalesce(sum(${voucherEntries.amount}), 0)::float8` })
+          .from(voucherEntries)
+          .where(and(eq(voucherEntries.voucherId, id), sql`${voucherEntries.amount} > 0`));
+        await recordAuditEvent(
+          tx, c, id, req.userId, "delete",
+          `${snap?.typeName ?? "Voucher"} ${existing.number} dated ${existing.date}, amount ${r2(num(amountRow?.amount ?? 0))}`,
+        );
         await tx.delete(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id)));
         return { ok: true };
       });
     } catch (err: any) {
       throw pgFriendly(err);
     }
+  });
+
+  // ---- R-18: read-only audit history for one voucher ----
+  // cid()-gated like every voucher route: membership is enforced centrally, so
+  // a non-member gets the same 404 as an unknown voucher (no existence leak).
+  app.get("/vouchers/:id/audit", async (req) => {
+    const c = await cid(req);
+    const id = parseInt((req.params as any).id, 10);
+    if (!Number.isFinite(id) || id <= 0) throw bad("Invalid voucher id", 404);
+    const [v] = await db.select({ id: vouchers.id }).from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id)));
+    if (!v) throw bad("Voucher not found", 404);
+    const events = await db
+      .select({
+        id: auditEvents.id,
+        action: auditEvents.action,
+        detail: auditEvents.detail,
+        createdAt: auditEvents.createdAt,
+        actorUsername: users.username,
+      })
+      .from(auditEvents)
+      .leftJoin(users, eq(users.id, auditEvents.actorId))
+      .where(and(eq(auditEvents.companyId, c), eq(auditEvents.voucherId, id)))
+      .orderBy(asc(auditEvents.id));
+    return events;
   });
 }
