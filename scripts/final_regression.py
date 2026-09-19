@@ -3185,5 +3185,132 @@ check("R28: owner removes credentials", s == 200 and delres.get("ok") is True, (
 s, empty = r03(sA, "GET", f"/api/companies/{C24}/irp-credentials")
 check("R28: credentials list empty after delete", s == 200 and empty == [], (s, str(empty)[:80]))
 
+# ============================================================================
+# R-29: EWB LIFECYCLE OPS — vehicle update (repeatable), validity extension
+# (once ever), cancellation (24h window) against the wire-format mock. Ops are
+# operations ON the accepted submission row — birth idempotency untouched —
+# with a verbatim ops ledger (irp_ewb_ops) and eager guards before any wire
+# call. The R-24 company still exists but its credentials were deleted above;
+# a fresh company + sale + EWB keeps the block self-contained.
+# ============================================================================
+print("-- R-29: EWB lifecycle ops --")
+
+s, c29 = r03(sA, "POST", "/api/companies", {"name": "R29-EWB-Ops", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R29EWB00O1P2Q", "address": "9 Ops Road", "pincode": "411001",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R29: company created", s == 200 and c29.get("id"), (s, str(c29)[:90]))
+C29 = c29["id"]; R29 = f"/api/c/{C29}"
+s, _ = r03(sA, "PUT", f"/api/companies/{C29}/irp-credentials", {"environment": "sandbox", "clientId": "r29client", "clientSecret": "r29sekret99", "gstin": "27R29EWB00O1P2Q", "username": "r29user", "password": "r29pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R29: credentials saved", s == 200, s)
+
+# fixture: buyer + item + inter-state sale (mirrors the R-24/R-28 shape)
+s, vts29 = r03(sA, "GET", f"{R29}/voucher-types")
+vt29 = {t["name"]: t["id"] for t in (vts29 or [])}
+s, grps29 = r03(sA, "GET", f"{R29}/groups")
+g29 = {g["name"]: g["id"] for g in (grps29 or [])}
+s, sales29 = r03(sA, "POST", f"{R29}/ledgers", {"name": "R29 Sales", "groupId": g29["Sales Accounts"], "taxability": "taxable"})
+s, buy29 = r03(sA, "POST", f"{R29}/ledgers", {"name": "R29 Buyer", "groupId": g29["Sundry Debtors"], "gstin": "29R29BUYER2K3L4M", "gstRegistrationType": "regular", "billWise": True, "partyAddress": "9 Ops St", "partyState": "Karnataka", "partyPincode": "560001"})
+s, units29 = r03(sA, "GET", f"{R29}/units")
+if not any(u.get("symbol") == "NOS" for u in (units29 or [])):
+    r03(sA, "POST", f"{R29}/units", {"name": "Numbers", "symbol": "NOS", "decimalPlaces": 0})
+s, units29 = r03(sA, "GET", f"{R29}/units")
+U29 = next(u["id"] for u in units29 if u["symbol"] == "NOS")
+s, item29 = r03(sA, "POST", f"{R29}/stock-items", {"name": "R29 Widget", "unitId": U29, "hsnSac": "8471", "gstRate": "18", "openingQty": "30", "openingRate": "800", "openingValue": "24000"})
+s, led29 = r03(sA, "GET", f"{R29}/ledgers")
+gm29 = {l["name"]: l["id"] for l in (led29 or [])}
+s, sale29 = r03(sA, "POST", f"{R29}/vouchers", {"voucherTypeId": vt29["Sales"], "date": "2026-09-01", "partyLedgerId": buy29["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales29["id"], "amount": -8000}, {"ledgerId": gm29["IGST"], "amount": -1440}, {"ledgerId": buy29["id"], "amount": 9440}],
+    "inventoryEntries": [{"itemId": item29["id"], "qty": -10, "rate": 800, "amount": 8000, "hsnSac": "8471", "gstRate": 18}]})
+check("R29: sale posted", s == 200 and sale29.get("id"), (s, str(sale29)[:120]))
+
+# e-invoice + EWB birth (reuse the proven R-28 flow)
+s, sub29 = r03(sA, "POST", f"{R29}/reports/einvoice/{sale29['id']}/submit")
+check("R29: e-invoice accepted", s == 200 and sub29.get("ok") is True, (s, str(sub29)[:150]))
+s, ewb29 = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/submit?vehicleNo=MH12AB1234")
+check("R29: EWB accepted", s == 200 and ewb29.get("ok") is True, (s, str(ewb29)[:150]))
+EWB29 = (ewb29.get("submission") or {}).get("ewbNo")
+check("R29: EWB number persisted", bool(EWB29), EWB29)
+
+# 1) vehicle update: happy path, repeatable
+s, veh1 = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/vehicle", {"vehicleNo": "MH14CD5678", "fromPlace": "Pune", "fromState": "27"})
+check("R29: vehicle update -> 200", s == 200 and veh1.get("ok") is True, (s, str(veh1)[:150]))
+s, veh2 = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/vehicle", {"vehicleNo": "MH16EF9012", "fromPlace": "Pune", "fromState": "27"})
+check("R29: second vehicle change allowed (NIC logs every change)", s == 200 and veh2.get("ok") is True, (s, str(veh2)[:150]))
+
+# 2) eager validation before any wire call
+s, vehBad = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/vehicle", {})
+check("R29: vehicle update without vehicleNo -> 422 eager", s == 422 and "vehicleNo" in str(vehBad.get("error", "")), (s, str(vehBad)[:150]))
+s, extBad = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/extend", {"reasonCode": "bogus"})
+check("R29: extend with bad reasonCode -> 422 eager", s == 422 and "reasonCode" in str(extBad.get("error", "")), (s, str(extBad)[:150]))
+
+# 3) extend: happy path then once-ever guard
+s, ext1 = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/extend", {"reasonCode": "transshipment", "remainFrom": "Solapur", "remainFromState": "27", "remainingDistance": 260})
+check("R29: extension accepted", s == 200 and ext1.get("ok") is True, (s, str(ext1)[:150]))
+s, extRow = r03(sA, "GET", f"{R29}/reports/submissions?voucherId={sale29['id']}")
+ewb29row = next((x for x in extRow if x.get("kind") == "ewaybill"), {})
+check("R29: extended ValidUpto persisted on submission", ewb29row.get("ewbValidUntil") == "2026-09-22 23:59:00", ewb29row.get("ewbValidUntil"))
+s, ext2 = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/extend", {"reasonCode": "others", "remainFrom": "Solapur", "remainFromState": "27", "remainingDistance": 100})
+check("R29: second extension refused eagerly (once per EWB ever)", s == 422 and "one extension" in str(ext2.get("error", "")), (s, str(ext2)[:150]))
+stats29a = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R29: refused extension made ZERO wire calls", stats29a["extendCalls"] == 1, stats29a)
+
+# 4) cancel validation: empty remark refused eagerly (no wire call, no op row)
+s, canBad = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/cancel", {"reasonCode": "duplicate", "remark": ""})
+check("R29: cancel without remark refused", s == 422 and "remark" in str(canBad.get("error", "")), (s, str(canBad)[:150]))
+
+# 5) birth control holds while the EWB is ACCEPTED (not yet cancelled)
+s, ewb29b = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/submit?vehicleNo=MH20GH3456")
+check("R29: fresh GENEWB refused while previous accepted (409 duplicate)", s == 409 and ewb29b.get("duplicate") is True, (s, str(ewb29b)[:120]))
+
+# 6) successful cancel within the window -> status 'cancelled', row retained,
+#    then a fresh EWB re-opens the (voucher, kind) slot (rebirth path)
+s, canOk = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/cancel", {"reasonCode": "data_entry_mistake", "remark": "wrong vehicle at birth"})
+check("R29: cancel of the active EWB -> 200", s == 200 and canOk.get("ok") is True, (s, str(canOk)[:150]))
+rowC = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C29) + " AND voucher_id = " + str(sale29["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R29: submission status now 'cancelled' (row retained)", rowC == "cancelled", rowC)
+s, ewb29c = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/submit?vehicleNo=MH20GH3456")
+check("R29: fresh EWB born after cancel (rebirth path)", s == 200 and ewb29c.get("ok") is True, (s, str(ewb29c)[:150]))
+EWB29C = (ewb29c.get("submission") or {}).get("ewbNo")
+check("R29: new EWB number differs (old retired)", EWB29C and EWB29C != EWB29, (EWB29, EWB29C))
+
+# 7) 24h window: age the NEW EWB past generation on the mock, cancel is
+#    rejected by NIC verbatim; the failed op is recorded and the submission
+#    row stays accepted (a failed cancel changes nothing)
+urllib.request.urlopen(urllib.request.Request(MOCK + "/__expire", data=json.dumps({"ewbNo": EWB29C}).encode(), headers={"Content-Type": "application/json"}, method="POST"))
+s, canLate = r03(sA, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/cancel", {"reasonCode": "duplicate", "remark": "wrong party"})
+check("R29: cancel after 24h -> NIC rejection surfaces verbatim (502)", s == 502 and "24 hours" in str(canLate.get("error", "")), (s, str(canLate)[:160]))
+rowD = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C29) + " AND voucher_id = " + str(sale29["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R29: failed cancel leaves the EWB accepted (no state change)", rowD == "accepted", rowD)
+
+# 8) ops ledger: verbatim, ordered, per voucher
+s, ops = r03(sA, "GET", f"{R29}/reports/ewaybill/{sale29['id']}/ops")
+check("R29: ops ledger returned", s == 200 and len(ops) >= 5, (s, len(ops or [])))
+okinds = [o.get("op") for o in (ops or [])]
+check("R29: ops record vehewb/extend/cancel kinds", {"vehewb", "extend", "cancel"} <= set(okinds), okinds)
+failedOps = [o for o in (ops or []) if o.get("error")]
+check("R29: failed ops recorded verbatim too", len(failedOps) >= 1, len(failedOps))
+cancelOps = [o for o in (ops or []) if o.get("op") == "cancel" and o.get("response")]
+check("R29: successful cancel op carries CanFlag=Y response", any((o.get("response") or {}).get("CanFlag") == "Y" for o in cancelOps), cancelOps[:1])
+
+# 8) authorization: non-member blocked on every op surface
+for _op, _body in [("vehicle", {"vehicleNo": "MH99ZZ9999"}), ("extend", {"reasonCode": "others", "remainFrom": "X", "remainFromState": "27", "remainingDistance": 10}), ("cancel", {"reasonCode": "duplicate", "remark": "r"})]:
+    s, _b = r03(sB, "POST", f"{R29}/reports/ewaybill/{sale29['id']}/{_op}", _body)
+    check(f"R29: non-member {_op} -> 404", s == 404, s)
+s, _b = r03(sB, "GET", f"{R29}/reports/ewaybill/{sale29['id']}/ops")
+check("R29: non-member ops ledger -> 404", s == 404, s)
+
+# 9) no accepted EWB -> eager 400, no wire call
+s, other29 = r03(sA, "POST", f"{R29}/vouchers", {"voucherTypeId": vt29["Sales"], "date": "2026-09-05", "partyLedgerId": buy29["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales29["id"], "amount": -1000}, {"ledgerId": gm29["IGST"], "amount": -180}, {"ledgerId": buy29["id"], "amount": 1180}],
+    "inventoryEntries": [{"itemId": item29["id"], "qty": -1, "rate": 1000, "amount": 1000, "hsnSac": "8471", "gstRate": 18}]})
+s, noEwb = r03(sA, "POST", f"{R29}/reports/ewaybill/{other29['id']}/vehicle", {"vehicleNo": "MH11AA1111"})
+check("R29: ops without an accepted EWB -> 400 eager", s == 400 and "No accepted e-way bill" in str(noEwb.get("error", "")), (s, str(noEwb)[:150]))
+
+# 10) accounting untouched by connectivity: TB still balances on R29 books
+s, tb29 = r03(sA, "GET", f"{R29}/reports/trial-balance")
+_tb = tb29 if isinstance(tb29, list) else (tb29.get("rows") or tb29.get("accounts") or [])
+_dr = round(sum(abs(r.get("debit", 0)) for r in _tb), 2); _cr = round(sum(abs(r.get("credit", 0)) for r in _tb), 2)
+check("R29: trial balance balances (no accounting drift)", _dr == _cr, (_dr, _cr))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

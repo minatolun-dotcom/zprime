@@ -380,6 +380,25 @@ export const payslips = pgTable("payslips", {
 // leave the server. AppKey material is deliberately NOT stored — a fresh
 // 32-byte key is generated per auth session (the SEK it unlocks dies with
 // the 6h token, so nothing long-lived depends on it).
+// R-29: verbatim ledger of EWB lifecycle operations (vehicle update, validity
+// extension, cancellation) against an accepted e-way bill submission. One row
+// per attempted op — the R-28 legal posture (persist verbatim, never delete)
+// extended to the ops surface. Request/response JSONB are the exact NIC wire
+// shapes as seen by zprime (post-encryption-decryption).
+export const irpEwbOps = pgTable("irp_ewb_ops", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  submissionId: integer("submission_id").references(() => irpSubmissions.id, { onDelete: "cascade" }),
+  op: text("op").notNull(), // vehewb | extend | cancel
+  request: jsonb("request"), // what zprime sent to the NIC action (plaintext payload)
+  response: jsonb("response"), // decrypted NIC response, verbatim
+  error: jsonb("error"), // IRP ErrorDetails or transport message on failure
+  requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("irp_ewb_ops_submission_idx").on(t.submissionId, t.createdAt),
+]);
+
 export const irpCredentials = pgTable("irp_credentials", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -411,7 +430,7 @@ export const irpSubmissions = pgTable("irp_submissions", {
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   voucherId: integer("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
   kind: text("kind").notNull(), // e-invoice | ewaybill
-  status: text("status").notNull(), // pending | accepted | rejected | error
+  status: text("status").notNull(), // pending | accepted | rejected | error | cancelled (R-29: cancelled = EWB cancelled on the NIC; row retained verbatim)
   irn: text("irn"),
   ackNo: text("ack_no"),
   ackDate: text("ack_date"),

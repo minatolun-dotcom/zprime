@@ -592,14 +592,60 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       setEinvMsg({ ok: false, text: e?.message ?? "submission failed" });
     }
   };
+  // R-29: EWB lifecycle ops against the ACCEPTED e-way bill (opt-in, same
+  // credentials as R-28). Every outcome surfaces verbatim on the banner —
+  // NIC rejections included; eager guards (extend-once, 24h cancel window)
+  // come back as readable 422s before any wire call.
+  const ewbOp = async (op: "vehicle" | "extend" | "cancel", voucherId: number, number: string, body: Record<string, unknown>) => {
+    setEinvMsg(null);
+    try {
+      const res: any = await post(`/api/c/${cid}/reports/ewaybill/${voucherId}/${op}`, body);
+      if (res.ok) {
+        const s = res.submission ?? {};
+        setEinvMsg({ ok: true, text: `EWB ${op === "vehicle" ? "vehicle updated" : op === "extend" ? "validity extended" : "cancelled"} for ${number}` + (s.ewbNo ? ` — EWB ${s.ewbNo}` : "") + (op === "extend" && s.ewbValidUntil ? ` — valid until ${s.ewbValidUntil}` : "") });
+      }
+    } catch (e: any) {
+      setEinvMsg({ ok: false, text: e?.message ?? "operation failed" });
+    }
+  };
+  const askEwbOp = (op: "vehicle" | "extend" | "cancel", voucherId: number, number: string) => {
+    if (op === "vehicle") {
+      const vehicleNo = window.prompt(`New vehicle number for ${number} (e.g. MH14CD5678):`);
+      if (!vehicleNo) return;
+      const fromPlace = window.prompt("Current place of the vehicle (fromPlace):", "");
+      const fromState = window.prompt("Current state code (fromState, e.g. 27):", "");
+      void ewbOp("vehicle", voucherId, number, { vehicleNo, fromPlace, fromState });
+    } else if (op === "extend") {
+      const reasonCode = window.prompt("Reason (vehicle_breakdown | law_and_order | accident | natural_calamity | transshipment | others):", "transshipment");
+      if (!reasonCode) return;
+      const remainFrom = window.prompt("Vehicle is currently at (place):", "");
+      const remainFromState = window.prompt("Current state code (e.g. 27):", "");
+      const remainingDistance = window.prompt("Remaining distance in km:", "");
+      void ewbOp("extend", voucherId, number, { reasonCode, remainFrom, remainFromState, remainingDistance: Number(remainingDistance) });
+    } else {
+      const reasonCode = window.prompt("Cancel reason (duplicate | data_entry_mistake | order_cancelled | others):", "data_entry_mistake");
+      if (!reasonCode) return;
+      const remark = window.prompt("Remark (required):", "");
+      if (!remark) return;
+      void ewbOp("cancel", voucherId, number, { reasonCode, remark });
+    }
+  };
   const einvCell = (v: any) =>
     cid ? (
-      <td className="w-24">
+      <td className="w-56 whitespace-nowrap">
         <button className="link text-[12px]" onClick={() => downloadPayload("einvoice", v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
         {" "}
         <button className="link text-[12px]" onClick={() => downloadPayload("ewaybill", v.voucherId, v.number)} title="Generate EWB-01 e-way bill JSON">e-way</button>
         {" "}
-        <button className="link text-[12px]" onClick={() => submitPayload("e-invoice", v.voucherId, v.number)} title="Submit the e-invoice to the IRP (requires Company Settings → IRP Connectivity)">submit</button>
+      <button className="link text-[12px]" onClick={() => submitPayload("e-invoice", v.voucherId, v.number)} title="Submit the e-invoice to the IRP (requires Company Settings → IRP Connectivity)">submit</button>
+      {" "}
+      <button className="link text-[12px]" onClick={() => submitPayload("ewaybill", v.voucherId, v.number)} title="Generate an e-way bill from the registered IRN (requires the e-invoice to be submitted first)">ewb-gen</button>
+      {" "}
+      <button className="link text-[12px]" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">ewb-veh</button>
+        {" "}
+        <button className="link text-[12px]" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ewb-ext</button>
+        {" "}
+        <button className="link text-[12px]" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">ewb-can</button>
       </td>
     ) : null;
   const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (

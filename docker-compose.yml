@@ -31,6 +31,11 @@ services:
       # and refuses to boot if encrypted rows exist and the key is wrong.
       IRP_ENC_KEY: ${IRP_ENC_KEY:-}
       PORT: "3000"
+    # R-29: extra_hosts makes the HOST's loopback reachable from the container
+    # as `host.docker.internal` — how an operator (or the test suites) points
+    # an endpoint override at a locally-hosted mock/test IRP.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     depends_on:
@@ -39,6 +44,23 @@ services:
     # R-16 (F-R1): the db healthcheck can pass transiently during a fresh
     # volume's initdb; if the app's first migration connection then hits
     # ECONNREFUSED, the container self-restarts instead of staying dead.
+    restart: unless-stopped
+
+  # R-29: test-profile sidecar — the wire-faithful mock IRP, reachable from the
+  # app container as http://mock-irp:3199. Never started by `docker compose up`:
+  # only `docker compose --profile test up mock-irp`. Suites save that URL as
+  # the company's endpoint override (discovering the self-generated public key
+  # via /__pubkey), exercising the full handshake inside the compose network —
+  # no host-firewall dependency.
+  mock-irp:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "scripts/mock_irp.js", "--port", "3199"]
+    volumes:
+      - ./scripts:/app/scripts:ro
+    ports:
+      - "3299:3199"   # host 3299 ≠ suite-spawned mocks (3199) — no port collision
+    profiles: ["test"]
     restart: unless-stopped
 
 volumes:

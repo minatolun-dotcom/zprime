@@ -4,13 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.28.0
+
+- **Version:** 1.28.0
+- **Commit:** the v1.28.0 release commit (annotated tag `v1.28.0` → commit verified at release; a release commit cannot contain its own SHA — the annotated tag is the permanent pointer)
+- **Purpose:** R-29 — EWB lifecycle ops (approved Option A), completing the loop R-28 opened: migration 0013 (additive `irp_ewb_ops` verbatim per-op ledger + `irp_submissions.status` extended to `'accepted' | 'cancelled'`), `services/irp.ts` `updateEwbVehicle`/`extendEwbValidity`/`cancelEwb` with every guard fired **before** any network call (extend: 8h-before/after-expiry window + once per EWB **ever** via the ops ledger; cancel: 24-h window + mandatory remark; on cancel success the accepted row flips to `'cancelled'` — fresh GENEWB required afterwards, row retained verbatim as the legal record), 3 cid-gated routes with honest 422/409/502 mapping, GSTR-1 **veh/ext/can** lifecycle actions + **ewb-gen** birth button, mock IRP lifecycle verbs (`__expire` window simulation) self-keyed as a compose test-profile sidecar (host port 3299), app `extra_hosts` host-gateway. GENIRN/GENEWB paths byte-unchanged. No accounting-math change.
+- **Verification:** 1118/1118 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 836 incl. 32 R-29, attack-the-fixes 29); 354/354 browser (rebuilt image + fresh volume, 14/14 migration rows, `irp_ewb_ops` live; run.js 153 + r03…r29 scenarios = 201, r29 14/14 — full lifecycle through the real UI); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-19 (`main` = release commit, tag verified via ls-remote).
+
 ## v1.27.0
 
 - **Version:** 1.27.0
-- **Commit:** see `git rev-parse v1.27.0^{}` (annotated tag `v1.27.0` → commit verified at release)
+- **Commit:** `4dc1bbca124fee5df3b23ca7adb8cf3383cf6b2e` (annotated tag `a35cdacdead63cae9e4ba9af8e94fbb607f584d0` → commit verified at release)
 - **Purpose:** R-28 — live IRP/EWB connectivity (opt-in), superseding R-24/R-25's stateless posture when credentials are configured: migration 0012 (additive `irp_credentials` AES-256-GCM at rest via `IRP_ENC_KEY` + `irp_submissions` verbatim IRN/ack persistence — a legal duty; undeletable once accepted), `lib/crypto.ts` (boot-time fail-fast, R-09 posture), `services/irp.ts` (NIC AppKey/SEK/RSA handshake per official sandbox docs, 6h/1h token session cache, **hard idempotency** — repeat submits re-read the stored result with zero network calls), masked credentials routes (cid-gated, last-4 read-back), submit/history routes, CompanySettings IRP section, GSTR-1 submit actions with honest amber banners (422/409/502), wire-faithful `scripts/mock_irp.js` for CI. Generate/download paths byte-unchanged without credentials. No accounting-math change.
 - **Verification:** 1086/1086 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 804 incl. 26 R-28, attack-the-fixes 29); 340/340 browser (rebuilt image + fresh volume, 13/13 migration-tracker rows, run.js 153 + r03…r28 scenarios = 187, r28 15/15); typecheck server + client clean.
-- **Immutable: YES**
+- **Immutable: YES** — pushed to origin 2026-09-19 (`main` = `4dc1bbc`, tag verified via ls-remote).
 
 ## v1.26.0
 

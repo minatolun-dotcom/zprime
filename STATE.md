@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-19 — **R-28 (live IRP/EWB connectivity) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-28 changes; v1.26.0 remains the last tagged release. Migration 0012 (additive: `irp_credentials` AES-256-GCM at rest + `irp_submissions` verbatim IRN/ack persistence, `IRP_ENC_KEY` fail-fast), `lib/crypto.ts`, `services/irp.ts` (NIC auth handshake, session cache, hard idempotency, EWB-from-IRN), credentials/submit routes (cid-gated), CompanySettings masked credentials UI, GSTR-1 submit actions, wire-format mock IRP; 1086/1086 automated + 340/340 browser checks. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-19 (R-29 EWB lifecycle ops IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol. Working tree contains the R-29 changes: migration 0013 additive `irp_ewb_ops` + `status='cancelled'`, `services/irp.ts` VEHEWB/EXTENDVALIDITY/CANEWB with eager pre-network guards, 3 cid-gated routes, GSTR-1 lifecycle actions + ewb-gen birth button, mock IRP lifecycle + self-keyed sidecar, +32 Python / +14 browser checks; 1118/1118 automated + 354/354 browser. v1.27.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.)
 
 ## Product status
 

@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
-import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, stockItems, units, payslips, employees } from "../db/schema.js";
-import { and, eq, gte, lte, lt, gt, asc } from "drizzle-orm";
+import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, stockItems, units, payslips, employees, irpEwbOps } from "../db/schema.js";
+import { and, eq, gte, lte, lt, gt, asc, inArray, desc } from "drizzle-orm";
 import { cid, bad } from "../lib/routes.js";
 import { num, r2, today, fyStart, d } from "../lib/util.js";
 import {
@@ -13,7 +13,7 @@ import { gstr1, gstr3b } from "../services/gst.js";
 import { eInvoicePayload } from "../services/einvoice.js";
 import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
 import { gstr9 } from "../services/gstr9.js";
-import { submitEInvoice, submitEwayBillFromIrn, submissionHistory } from "../services/irp.js";
+import { submitEInvoice, submitEwayBillFromIrn, submissionHistory, updateEwbVehicle, extendEwbValidity, cancelEwb } from "../services/irp.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -231,6 +231,64 @@ export default async function reportRoutes(app: FastifyInstance) {
     const vid = q.voucherId != null ? parseInt(String(q.voucherId), 10) : undefined;
     if (vid != null && (!Number.isFinite(vid) || vid <= 0)) throw bad("Invalid voucher");
     return submissionHistory(c, vid);
+  });
+
+  // ---- R-29: EWB lifecycle ops (vehicle update / extend / cancel) ----
+  // Shared shape: resolve the accepted EWB for this voucher, run the op with
+  // eager guards, record verbatim, map the result honestly. Lifecycle ops are
+  // not submissions — the birth idempotency model is untouched.
+  const ewbOpReply = (reply: any, result: any) => {
+    const code = result.ok ? 200 : result.validationErrors ? 422 : 502;
+    if (!result.ok) {
+      const msg = result.validationErrors
+        ? result.validationErrors.join(" · ")
+        : irpErrorMessage(result.irpErrors);
+      reply.code(code);
+      return { ...result, error: msg };
+    }
+    reply.code(code);
+    return result;
+  };
+
+  app.post("/ewaybill/:voucherId/vehicle", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const b = (req.body ?? {}) as any;
+    const result = await updateEwbVehicle(c, vid, req.userId as number, b, submitEnv(req));
+    return ewbOpReply(reply, result);
+  });
+
+  app.post("/ewaybill/:voucherId/extend", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const b = (req.body ?? {}) as any;
+    const result = await extendEwbValidity(c, vid, req.userId as number, b, submitEnv(req));
+    return ewbOpReply(reply, result);
+  });
+
+  app.post("/ewaybill/:voucherId/cancel", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const b = (req.body ?? {}) as any;
+    const result = await cancelEwb(c, vid, req.userId as number, b, submitEnv(req));
+    return ewbOpReply(reply, result);
+  });
+
+  // Ops ledger for a voucher's EWB (or the whole company) — verbatim, read-only.
+  app.get("/ewaybill/:voucherId/ops", async (req) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const subs = await submissionHistory(c, vid);
+    const ids = subs.filter((s: any) => s.kind === "ewaybill").map((s: any) => s.id);
+    if (ids.length === 0) return [];
+    const rows = await db.select().from(irpEwbOps)
+      .where(and(eq(irpEwbOps.companyId, c), inArray(irpEwbOps.submissionId, ids)))
+      .orderBy(desc(irpEwbOps.id));
+    return rows;
   });
 
   app.get("/gstr3b", async (req) => {

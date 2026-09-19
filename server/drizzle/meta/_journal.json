@@ -92,6 +92,13 @@
 			"when": 1789792810303,
 			"tag": "0012_r28_irp_connectivity",
 			"breakpoints": true
+		},
+		{
+			"idx": 13,
+			"version": "7",
+			"when": 1789828563729,
+			"tag": "0013_r29_ewb_ops",
+			"breakpoints": true
 		}
 	]
 }
