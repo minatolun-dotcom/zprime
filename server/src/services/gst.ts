@@ -98,7 +98,9 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     const sign = kind === "outward" ? -1 : 1; // outward duty is credit (negative), inward duty is debit (positive)
 
     const taxableRows = entries.filter((e) => !e.dutyHead && e.taxability === "taxable");
-    let dutyRows: any[] = entries.filter((e) => e.dutyHead && e.dutyHead !== "TDS");
+    // R-27: TCS (income-tax s. 206C) is not GST either — exclude like TDS so
+    // collection lines never pollute GSTR-1/3B duty aggregation.
+    let dutyRows: any[] = entries.filter((e) => e.dutyHead && e.dutyHead !== "TDS" && e.dutyHead !== "TCS");
 
     // R-23: duty rows posted on RCM ledgers (dutyHead='RCM') carry no statutory
     // head — derive the IGST/CGST/SGST breakdown from the place of supply vs

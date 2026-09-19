@@ -93,6 +93,9 @@ async function seedCompanyTx(tx: any, companyId: number) {
     // recipient credits this ledger for tax owed directly; GSTR-3B classifies
     // those entries into Table 4(A)(3), separate from regular supplier ITC.
     { name: "RCM Payable", groupId: groupId.get("Duties & Taxes")!, dutyHead: "RCM" },
+    // R-27: TCS collection liability (Income-tax s. 206C) — collection-side
+    // sibling of TDS Payable; classified out of GST by the dutyHead filter.
+    { name: "TCS Payable", groupId: groupId.get("Duties & Taxes")!, dutyHead: "TCS" },
     { name: "Salary Payable", groupId: groupId.get("Current Liabilities")! },
   ];
   for (const l of starter) {

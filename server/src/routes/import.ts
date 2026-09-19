@@ -26,8 +26,8 @@ function classifyTaxability(name: string, parentName: string | null): string {
   return "none";
 }
 
-/** Ledger names that are GST duty heads (or TDS) — never "taxable" supply. */
-const DUTY_NAME_RE = /(\bcgst\b|\bsgst\b|\butgst\b|\bigst\b|\bcess\b|\btds\b|duties & taxes|duties and taxes)/i;
+/** Ledger names that are GST duty heads (or TDS/TCS) — never "taxable" supply. */
+const DUTY_NAME_RE = /(\bcgst\b|\bsgst\b|\butgst\b|\bigst\b|\bcess\b|\btds\b|\btcs\b|duties & taxes|duties and taxes)/i;
 
 const parser = new XMLParser({
   ignoreAttributes: false,

@@ -4,6 +4,14 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.26.0
+
+- **Version:** 1.26.0
+- **Commit:** see `git rev-parse v1.26.0^{}`
+- **Purpose:** R-27 — TCS collection (Income-tax s. 206C): `tcs_sections` master + `tcs_section_id` snapshots (migration 0011, additive, idempotent "TCS Payable" seed for existing companies), TCS-sections masters CRUD, voucher-entry validation, `GET /reports/tcs` (A-04 collected − remitted = payable), "− Collect TCS" client helper (gross-based, one-click balancing), and the two correctness-critical exclusions (`gst.ts` GST aggregation and `import.ts` duty classification). Thresholds surfaced, never enforced. No accounting-math change.
+- **Verification:** 1060/1060 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 778 incl. 23 R-27, attack-the-fixes 29); 325/325 browser (rebuilt image + fresh volume, 12/12 migrations, run.js 153 + r03…r27 scenarios, r27 15/15); typecheck server + client clean; fresh Docker install and v1.25.0 upgrade verified via fresh-volume migration run.
+- **Immutable: YES**
+
 ## v1.25.0
 
 - **Commit:** `v1.25.0^{}` — resolve with `git rev-parse v1.25.0^{}` (a release commit cannot contain its own SHA; the annotated tag is the permanent pointer)
@@ -398,5 +406,5 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 1. A new release is **appended** at the top; nothing above it is ever edited.
 2. A release requires the full `RELEASE_REVIEW` gate (`DEVELOPMENT_PROTOCOL.md`) — passing tests alone is not sufficient.
 3. Every release = one release commit + one annotated tag, verified `tag^{}` == HEAD, clean tree, all prior tags unchanged.
-4. **Publishing (adopted R-26 era):** every release is pushed to the remote — `git push origin main` + `git push origin --tags`. Releases v1.0.0–v1.24.0 were tagged before this rule existed; the backlog push (main at v1.24.0 + 26 tags) is **PENDING** — credentials were unavailable to the session agent and must be supplied by the human (PAT/SSH) or pushed manually.
+4. **Publishing (adopted R-26 era):** every release is pushed to the remote — `git push origin main` + `git push origin --tags`. Releases v1.0.0–v1.24.0 were tagged before this rule existed; the backlog push (27 commits + 27 tags) was **COMPLETED 2026-09-18** immediately after v1.25.0: remote `main` = the v1.25.0 commit and all 27 tags verified on origin via `ls-remote` (PAT supplied by the human via the repo's secrets file; token used per-command, never stored).
 5. Commit-message convention: `Release vX.Y.Z: <purpose>`; tag message: `zprime vX.Y.Z — <purpose>`.

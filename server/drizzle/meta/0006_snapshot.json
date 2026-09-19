@@ -1,6 +1,6 @@
 {
-  "id": "52d19ada-65e2-42f3-aee2-753d18814df1",
-  "prevId": "b6becab0-24f1-48e6-a32b-c1f9bcf346ea",
+  "id": "20e96e72-9835-4df8-9a59-65fd1ba3a369",
+  "prevId": "52d19ada-65e2-42f3-aee2-753d18814df1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -492,8 +492,18 @@
         "idempotency_keys_company_key_uq": {
           "name": "idempotency_keys_company_key_uq",
           "columns": [
-            "company_id",
-            "key"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true
         }
@@ -1717,15 +1727,30 @@
         "user_companies_user_company_uq": {
           "name": "user_companies_user_company_uq",
           "columns": [
-            "user_id",
-            "company_id"
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true
         },
         "user_companies_company_id_idx": {
           "name": "user_companies_company_id_idx",
           "columns": [
-            "company_id"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false
         }

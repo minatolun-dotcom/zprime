@@ -96,6 +96,8 @@ export const ledgers = pgTable("ledgers", {
   chequePayerName: text("cheque_payer_name"),
   // TDS: expense ledger attracts TDS under section
   tdsSectionId: integer("tds_section_id"),
+  // R-27: TCS — party/sale ledger attracts TCS under a section (s. 206C)
+  tcsSectionId: integer("tcs_section_id"),
   // Bill-wise
   billWise: boolean("bill_wise").notNull().default(false),
   // Party contact
@@ -135,6 +137,19 @@ export const tdsSections = pgTable("tds_sections", {
   rate: numeric("rate", { precision: 5, scale: 2 }).notNull().default("0"),
   threshold: numeric("threshold", { precision: 18, scale: 2 }).notNull().default("0"),
 }, (t) => [uniqueIndex("tds_company_section_uq").on(t.companyId, t.section)]);
+
+// R-27: TCS sections (Income-tax s. 206C) — mirror of tds_sections. Rates
+// genuinely vary (0.1% under 206C(1H), 1% scrap/minerals, higher without PAN),
+// so the operator defines them per company; threshold is stored as report
+// reference data, never enforced (same operator-judgment posture as TDS).
+export const tcsSections = pgTable("tcs_sections", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  section: text("section").notNull(), // 206C(1), 206C(1H) ...
+  description: text("description"),
+  rate: numeric("rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  threshold: numeric("threshold", { precision: 18, scale: 2 }).notNull().default("0"),
+}, (t) => [uniqueIndex("tcs_company_section_uq").on(t.companyId, t.section)]);
 
 // ---------- Inventory Masters ----------
 export const units = pgTable("units", {
@@ -284,6 +299,7 @@ export const voucherEntries = pgTable("voucher_entries", {
   gstRate: numeric("gst_rate", { precision: 5, scale: 2 }), // snapshot for service lines
   hsnSac: text("hsn_sac"), // snapshot for service lines
   tdsSectionId: integer("tds_section_id"), // snapshot for TDS reporting
+  tcsSectionId: integer("tcs_section_id"), // snapshot for TCS reporting (R-27)
   order: integer("order").notNull().default(0),
 }, (t) => [index("entries_voucher_idx").on(t.voucherId), index("entries_ledger_idx").on(t.ledgerId)]);
 

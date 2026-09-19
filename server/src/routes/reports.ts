@@ -174,6 +174,78 @@ export default async function reportRoutes(app: FastifyInstance) {
     return gstr9(c, p.from, p.to);
   });
 
+  // R-27: TCS report — collection-side mirror of the TDS report, with the
+  // same A-04 semantics: a TCS ledger entry is a COLLECTION only when it
+  // CREDITS the liability (amount < 0); a debit is a REMITTANCE to the
+  // government. collected − remitted = outstanding, reconciled on-screen.
+  // Threshold/rate data is surfaced as reference — never enforced (s. 206C
+  // applicability is the operator's judgment; the books record what happened).
+  app.get("/tcs", async (req) => {
+    const c = await cid(req);
+    const [company] = await db.select().from(companies).where(eq(companies.id, c));
+    const p = period(req.query as any, company?.booksBeginFrom);
+
+    const tcsLedgers = await db
+      .select({ id: ledgers.id, name: ledgers.name, closing: ledgers.openingBalance })
+      .from(ledgers)
+      .where(and(eq(ledgers.companyId, c), eq(ledgers.dutyHead, "TCS")));
+
+    const collections = await db
+      .select({
+        voucherId: vouchers.id, date: vouchers.date, number: vouchers.number,
+        ledgerId: voucherEntries.ledgerId, amount: voucherEntries.amount,
+        tcsSectionId: voucherEntries.tcsSectionId,
+      })
+      .from(voucherEntries)
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+      .where(and(
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(ledgers.dutyHead, "TCS"),
+        gte(vouchers.date, p.from), lte(vouchers.date, p.to),
+        lt(voucherEntries.amount, "0"),
+      ));
+
+    const sections = await db.select().from((await import("../db/schema.js")).tcsSections).where(eq((await import("../db/schema.js")).tcsSections.companyId, c));
+    const bySection = new Map<number, { sectionId: number; section: string; rate: number; threshold: number; amount: number; count: number }>();
+    for (const col of collections) {
+      const amt = Math.abs(num(col.amount));
+      const secId = col.tcsSectionId ?? 0;
+      const sec = sections.find((s) => s.id === secId);
+      const key = secId;
+      const cur = bySection.get(key) ?? { sectionId: secId, section: sec?.section ?? "Unspecified", rate: num(sec?.rate ?? 0), threshold: num(sec?.threshold ?? 0), amount: 0, count: 0 };
+      cur.amount = r2(cur.amount + amt);
+      cur.count += 1;
+      bySection.set(key, cur);
+    }
+
+    const remittances = await db
+      .select({
+        voucherId: vouchers.id, date: vouchers.date, number: vouchers.number,
+        amount: voucherEntries.amount,
+      })
+      .from(voucherEntries)
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+      .where(and(
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(ledgers.dutyHead, "TCS"),
+        gte(vouchers.date, p.from), lte(vouchers.date, p.to),
+        gt(voucherEntries.amount, "0"),
+      ));
+
+    const collected = r2(collections.reduce((s, x) => s + Math.abs(num(x.amount)), 0));
+    const remitted = r2(remittances.reduce((s, x) => s + num(x.amount), 0));
+
+    return {
+      sections: [...bySection.values()].sort((a, b) => a.section.localeCompare(b.section)),
+      payableLedgers: tcsLedgers.map((l) => ({ ...l })),
+      collections: collections.map((x) => ({ ...x, amount: Math.abs(num(x.amount)) })),
+      remittances: remittances.map((x) => ({ ...x, amount: num(x.amount) })),
+      totals: { collected, remitted, outstanding: r2(collected - remitted) },
+    };
+  });
+
   // TDS report: deductions by section + payable balances
   app.get("/tds", async (req) => {
     const c = await cid(req);

@@ -624,8 +624,18 @@
         "idempotency_keys_company_key_uq": {
           "name": "idempotency_keys_company_key_uq",
           "columns": [
-            "company_id",
-            "key"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true
         }
@@ -2113,15 +2123,30 @@
         "user_companies_user_company_uq": {
           "name": "user_companies_user_company_uq",
           "columns": [
-            "user_id",
-            "company_id"
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true
         },
         "user_companies_company_id_idx": {
           "name": "user_companies_company_id_idx",
           "columns": [
-            "company_id"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false
         }
@@ -2941,7 +2966,8 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": false,
+      "schema": ""
     }
   },
   "enums": {},

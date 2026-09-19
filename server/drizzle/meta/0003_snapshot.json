@@ -1,6 +1,6 @@
 {
   "id": "7446949b-ff53-4634-8dbc-d93e03bf2740",
-  "prevId": "3c503e5d-debd-43af-ac88-a0e304e9fb66",
+  "prevId": "9f435783-c814-4f4d-ac40-d3a8ae566ddb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2232,15 +2232,30 @@
         "user_companies_user_company_uq": {
           "name": "user_companies_user_company_uq",
           "columns": [
-            "user_id",
-            "company_id"
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true
         },
         "user_companies_company_id_idx": {
           "name": "user_companies_company_id_idx",
           "columns": [
-            "company_id"
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false
         }

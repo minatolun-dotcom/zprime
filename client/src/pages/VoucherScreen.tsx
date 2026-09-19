@@ -9,7 +9,7 @@ import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate } from "../lib/format";
 
-interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; againstBill?: string; tdsSectionId?: number | null; }
+interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
 interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; amount: number; kind: string; }
 interface VoucherType { id: number; name: string; category: string; affectsStock: boolean; shortCode: string; }
 
@@ -79,6 +79,7 @@ export default function VoucherScreen() {
   const { data: allItems } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`) });
   const { data: godowns } = useQuery({ queryKey: ["godowns", cid], queryFn: () => get<any[]>(`/api/c/${cid}/godowns`) });
   const { data: tdsSections } = useQuery({ queryKey: ["tds-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tds-sections`) });
+  const { data: tcsSections } = useQuery({ queryKey: ["tcs-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`) });
 
   const ledgerOptions: Option[] = (allLedgers ?? []).map((l) => ({ id: l.id, name: l.name }));
   const itemOptions: Option[] = (allItems ?? []).map((l) => ({ id: l.id, name: l.name }));
@@ -102,6 +103,7 @@ export default function VoucherScreen() {
           const rows: LedgerRow[] = v.entries.map((e: any) => ({
             ledgerId: e.ledgerId, ledgerName: e.ledgerName, amount: num(e.amount),
             tdsSectionId: e.tdsSectionId,
+            tcsSectionId: e.tcsSectionId, // R-27: preserve the snapshot on alter
             againstBill: e.bills?.find((b: any) => b.billType === "against_ref")?.billName ?? "",
           }));
           setEntries(rows.length ? rows : [{ ledgerId: null, ledgerName: "", amount: 0 }]);
@@ -260,6 +262,40 @@ export default function VoucherScreen() {
     setError("");
   };
 
+  // ---- TCS helper (R-27) — collection-side mirror of applyTds: party lines
+  // whose ledger carries a TCS section collect rate% as a CREDIT on the
+  // TCS Payable ledger (dutyHead='TCS').
+  const applyTcs = () => {
+    const withTcs = entries.filter((e) => {
+      const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
+      return l?.tcsSectionId;
+    });
+    if (withTcs.length === 0) { setError("No party line has a TCS section (set it on the party ledger)"); return; }
+    const tcsLedger = (allLedgers ?? []).find((l: any) => l.dutyHead === "TCS");
+    if (!tcsLedger) { setError("Create a 'TCS Payable' ledger under Duties & Taxes with Duty Head = TCS"); return; }
+    const base = entries.filter((e) => {
+      const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
+      return !(l?.dutyHead === "TCS");
+    });
+    for (const e of withTcs) {
+      const l = ledgerById.get(e.ledgerId!);
+      const sec = (tcsSections ?? []).find((s: any) => s.id === l?.tcsSectionId);
+      const rate = num(sec?.rate ?? 0);
+      const amount = r2((Math.abs(e.amount) * rate) / 100);
+      if (amount > 0) {
+        // Collection is computed on the ENTERED (gross) amount and comes out of
+        // the party credit: the party line is reduced so the voucher stays
+        // balanced after the single click (mirrors the statutory flow — collect
+        // rate% of the receipt from the buyer, remit it to the government).
+        const idx = base.indexOf(e);
+        if (idx >= 0) base[idx] = { ...base[idx], amount: r2(base[idx].amount + amount) };
+        base.push({ ledgerId: tcsLedger.id, ledgerName: tcsLedger.name, amount: -amount, tcsSectionId: sec?.id ?? null });
+      }
+    }
+    setEntries(base);
+    setError("");
+  };
+
   // ---- save ----
   const save = async () => {
     if (savingRef.current) return; // R-10: single-shot save (hotkey path)
@@ -313,6 +349,7 @@ export default function VoucherScreen() {
           gstRate: l?.gstRate != null ? num(l.gstRate) : null,
           hsnSac: l?.hsnSac ?? null,
           tdsSectionId: e.tdsSectionId ?? null,
+          tcsSectionId: e.tcsSectionId ?? null, // R-27: persist the collection-section snapshot
           bills,
         };
       }),
@@ -599,6 +636,9 @@ export default function VoucherScreen() {
                 )}
                 {vType?.category === "Accounting" && (
                   <button className="btn-ghost text-[12px]" onClick={applyTds}>− Deduct TDS</button>
+                )}
+                {vType?.category === "Accounting" && (
+                  <button className="btn-ghost text-[12px]" onClick={applyTcs}>− Collect TCS</button>
                 )}
               </div>
             </div>

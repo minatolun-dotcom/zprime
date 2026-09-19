@@ -120,6 +120,7 @@ export default function Reports() {
       {key === "gstr3b" && data && <Gstr3bView data={data} />}
       {key === "gstr9" && data && <Gstr9View data={data} />}
       {key === "tds" && data && <TdsView data={data} />}
+      {key === "tcs" && data && <TcsView data={data} />}
       {key === "salary-register" && data && <SalaryRegisterView data={data} />}
       {key === "cheque-register" && data && <ChequeRegisterView data={data} />}
     </Shell>
@@ -772,6 +773,56 @@ function TdsView({ data }: { data: any }) {
   );
 }
 
+// ---------- TCS (R-27) — collection-side mirror of the TDS view ----------
+function TcsView({ data }: { data: any }) {
+  const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <Card className="p-0 overflow-hidden">
+        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Collections by Section</div>
+        <table className="report-table">
+          <thead><tr><th>Section</th><th className="w-20 text-right">Entries</th><th className="w-24 text-right">Rate</th><th className="w-32 text-right">Amount</th></tr></thead>
+          <tbody>
+            {data.sections.map((s: any) => (
+              <tr key={s.sectionId}><td>{s.section}</td><td className="num">{s.count}</td><td className="num">{s.rate ? `${s.rate}%` : "—"}</td><td className="num">{money(s.amount)}</td></tr>
+            ))}
+            {data.sections.length === 0 && <tr><td colSpan={4} className="text-center text-slate-400 py-4">No TCS collected in period</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+      <div className="space-y-4">
+        <Card className="p-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Remittances in Period</div>
+          <table className="report-table">
+            <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
+            <tbody>
+              {data.remittances.map((r2: any, i: number) => (
+                <tr key={i}><td>{fmtDate(r2.date)}</td><td>{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
+              ))}
+              {data.remittances.length === 0 && <tr><td colSpan={3} className="text-center text-slate-400 py-4">No TCS remitted in period</td></tr>}
+            </tbody>
+          </table>
+        </Card>
+        <Card className="p-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">TCS Payable Balance (Outstanding)</div>
+          <table className="report-table">
+            <tbody>
+              {data.payableLedgers.map((l: any) => (
+                <tr key={l.id}><td>{l.name}</td><td className="num">{money(num(l.closing))}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+        <Card className="p-3">
+          <div className="flex justify-between text-[13px]"><span className="text-slate-600">Collected in period</span><span className="num font-semibold">{money(data.totals.collected)}</span></div>
+          <div className="flex justify-between text-[13px]"><span className="text-slate-600">Remitted in period</span><span className="num font-semibold">{money(data.totals.remitted)}</span></div>
+          <div className="flex justify-between text-[13px] border-t border-slate-200 mt-1 pt-1"><span className="text-slate-600 font-medium">Outstanding (collected − remitted)</span><span className="num font-semibold">{money(data.totals.outstanding)}</span></div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Salary register ----------
 function SalaryRegisterView({ data }: { data: any }) {
   const money = (v: any) => num(v).toLocaleString("en-IN");
@@ -924,6 +975,7 @@ const ENDPOINTS: Record<string, string> = {
   gstr3b: "gstr3b",
   gstr9: "gstr9",
   tds: "tds",
+  tcs: "tcs",
   "salary-register": "salary-register",
   "cheque-register": "cheque-register",
 };
@@ -944,6 +996,7 @@ const TITLES: Record<string, string> = {
   gstr3b: "GSTR-3B",
   gstr9: "GSTR-9 (Annual)",
   tds: "TDS Report",
+  tcs: "TCS Report",
   "salary-register": "Salary Register",
   "cheque-register": "Cheque Register",
 };

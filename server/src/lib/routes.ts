@@ -80,6 +80,7 @@ export const voucherEntrySchema = z.object({
   gstRate: z.number().finite().min(0).max(100).nullable().optional(),
   hsnSac: z.string().max(50).nullable().optional(),
   tdsSectionId: z.number().int().positive().nullable().optional(),
+  tcsSectionId: z.number().int().positive().nullable().optional(),
 });
 
 export const billSchema = z.object({
@@ -156,6 +157,8 @@ export const tdsSectionSchema = z.object({
   rate: z.preprocess(numF, z.number().finite().min(0, "rate cannot be negative").max(100, "rate cannot exceed 100%").nullable().optional()),
   threshold: z.preprocess(numF, z.number().finite().min(0, "threshold cannot be negative").nullable().optional()),
 });
+
+export const tcsSectionSchema = tdsSectionSchema;
 
 export const payHeadSchema = z.object({
   name: z.string().trim().min(1, "Pay head name is required").max(200),

@@ -12,7 +12,7 @@ type FieldType = "text" | "number" | "date" | "select" | "checkbox" | "textarea"
 interface FieldDef {
   name: string; label: string; type: FieldType;
   options?: { value: string | number; label: string }[];
-  optionsFrom?: "ledgers" | "units" | "stock-groups" | "stock-categories" | "groups" | "tds-sections" | "employees";
+  optionsFrom?: "ledgers" | "units" | "stock-groups" | "stock-categories" | "groups" | "tds-sections" | "tcs-sections" | "employees";
   required?: boolean; hint?: string; full?: boolean;
 }
 interface KindConfig {
@@ -70,6 +70,11 @@ export default function MasterPage() {
     queryFn: () => get<any[]>(`/api/c/${cid}/tds-sections`),
     enabled: config.fields.some((f) => f.optionsFrom === "tds-sections"),
   });
+  const { data: tcsOpts } = useQuery({
+    queryKey: ["tcs-sections", cid],
+    queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`),
+    enabled: config.fields.some((f) => f.optionsFrom === "tcs-sections"),
+  });
 
   const resolvedFields = useMemo(() => {
     return config.fields.map((f) => {
@@ -90,9 +95,10 @@ export default function MasterPage() {
       if (f.optionsFrom === "stock-groups") options = (sgOpts ?? []).map((g) => ({ value: g.id, label: g.name }));
       if (f.optionsFrom === "stock-categories") options = (scOpts ?? []).map((g) => ({ value: g.id, label: g.name }));
       if (f.optionsFrom === "tds-sections") options = [{ value: "", label: "— None —" }, ...(tdsOpts ?? []).map((s) => ({ value: s.id, label: `${s.section} (${s.rate}%)` }))];
+      if (f.optionsFrom === "tcs-sections") options = [{ value: "", label: "— None —" }, ...(tcsOpts ?? []).map((s) => ({ value: s.id, label: `${s.section} (${s.rate}%)` }))];
       return { ...f, options };
     });
-  }, [config, ledgerOpts, unitOpts, sgOpts, scOpts, tdsOpts]);
+  }, [config, ledgerOpts, unitOpts, sgOpts, scOpts, tdsOpts, tcsOpts]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -293,6 +299,7 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
     { name: "chequeEnabled", label: "Cheque Printing", type: "checkbox" },
     { name: "chequePayerName", label: "A/c Payee Name (cheque)", type: "text" },
     { name: "tdsSectionId", label: "TDS Section (expense)", type: "select", optionsFrom: "tds-sections" },
+    { name: "tcsSectionId", label: "TCS Section (party)", type: "select", optionsFrom: "tcs-sections" },
     { name: "partyAddress", label: "Party Address", type: "textarea", full: true },
     { name: "partyState", label: "Party State", type: "text" },
     { name: "partyPincode", label: "Party PIN Code", type: "text", hint: "6-digit; required for e-invoice payloads" },
@@ -397,6 +404,17 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
         { name: "description", label: "Description", type: "text", full: true },
         { name: "rate", label: "TDS Rate %", type: "number" },
         { name: "threshold", label: "Threshold ₹", type: "number" },
+      ],
+      columns: [{ key: "section", label: "Section" }, { key: "rate", label: "Rate %", sub: "num" }],
+      newRow: () => ({ rate: "0", threshold: "0" }),
+    },
+    "tcs-sections": {
+      title: "TCS Sections", endpoint: "tcs-sections",
+      fields: [
+        { name: "section", label: "Section *", type: "text", required: true, hint: "e.g. 206C(1H)" },
+        { name: "description", label: "Description", type: "text", full: true },
+        { name: "rate", label: "TCS Rate %", type: "number" },
+        { name: "threshold", label: "Threshold ₹ (reference)", type: "number" },
       ],
       columns: [{ key: "section", label: "Section" }, { key: "rate", label: "Rate %", sub: "num" }],
       newRow: () => ({ rate: "0", threshold: "0" }),

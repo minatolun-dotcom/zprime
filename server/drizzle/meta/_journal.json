@@ -1,83 +1,90 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1788797935747,
-      "tag": "0000_medical_blockbuster",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1788885979493,
-      "tag": "0001_fix_qa_001",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1789132800000,
-      "tag": "0002_r02_cancel_metadata",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1789300000000,
-      "tag": "0003_r03_user_companies",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1789386400000,
-      "tag": "0004_r06_negative_stock_guard",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1789472800000,
-      "tag": "0005_r10_idempotency_keys",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1789476400000,
-      "tag": "0006_r17_voucher_actor",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1789560000000,
-      "tag": "0007_r18_audit_events",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1789646400000,
-      "tag": "0008_r22_master_actor",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1789732800000,
-      "tag": "0009_r23_rcm",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1789819200000,
-      "tag": "0010_r24_party_pincode",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "postgresql",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1788797935747,
+			"tag": "0000_medical_blockbuster",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1788885979493,
+			"tag": "0001_fix_qa_001",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1789132800000,
+			"tag": "0002_r02_cancel_metadata",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1789300000000,
+			"tag": "0003_r03_user_companies",
+			"breakpoints": true
+		},
+		{
+			"idx": 4,
+			"version": "7",
+			"when": 1789386400000,
+			"tag": "0004_r06_negative_stock_guard",
+			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "7",
+			"when": 1789472800000,
+			"tag": "0005_r10_idempotency_keys",
+			"breakpoints": true
+		},
+		{
+			"idx": 6,
+			"version": "7",
+			"when": 1789476400000,
+			"tag": "0006_r17_voucher_actor",
+			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "7",
+			"when": 1789560000000,
+			"tag": "0007_r18_audit_events",
+			"breakpoints": true
+		},
+		{
+			"idx": 8,
+			"version": "7",
+			"when": 1789646400000,
+			"tag": "0008_r22_master_actor",
+			"breakpoints": true
+		},
+		{
+			"idx": 9,
+			"version": "7",
+			"when": 1789732800000,
+			"tag": "0009_r23_rcm",
+			"breakpoints": true
+		},
+		{
+			"idx": 10,
+			"version": "7",
+			"when": 1789819200000,
+			"tag": "0010_r24_party_pincode",
+			"breakpoints": true
+		},
+		{
+			"idx": 11,
+			"version": "7",
+			"when": 1789758824037,
+			"tag": "0011_r27_tcs",
+			"breakpoints": true
+		}
+	]
 }

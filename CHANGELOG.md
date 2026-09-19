@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.26.0 — R-27 TCS collection (Income-tax s. 206C)
+
+R-27 implements the approved Option A scope: the collection-side mirror of the proven TDS machinery. One additive migration; no accounting-math change; no posting-engine change.
+
+- **Migration `0011_r27_tcs.sql`** (additive): `tcs_sections` master (company FK cascade, `(company_id, section)` unique), `ledgers.tcs_section_id` + `voucher_entries.tcs_section_id` snapshots, and an idempotent "TCS Payable" starter ledger (`dutyHead='TCS'`) seeded into every existing company (`WHERE NOT EXISTS`, 0009 RCM precedent; new companies get it from `seedCompanyTx`). Generated via drizzle-kit's programmatic API after repairing the snapshot metadata chain (0002/0006 duplicate-id defect + format normalization of hand-authored snapshots — metadata only, **no SQL change**, so runtime migration hashes on existing installs are unaffected).
+- **Server:** TCS-sections masters CRUD (mirror of TDS sections), voucher-entry validation (section must belong to the same company), `gst.ts` duty filter excludes `TCS` from GST aggregation (dedicated regression proof: TCS lines never move GSTR-1/3B), `import.ts` `DUTY_NAME_RE` classifies `\btcs\b` ledgers as duty (no taxable-supply contamination), **`GET /reports/tcs`** — A-04 semantics: collected (CREDIT) − remitted (DEBIT) = payable, per section + Unspecified; thresholds surfaced as reference data, never enforced (same operator-judgment posture as TDS).
+- **Client:** "− Collect TCS" helper beside "− Deduct TDS" — computed on the **gross entered amount**, party credited net (one-click balancing identical to the TDS flow); TCS Sections master + TCS ledger field; `TcsView` + Gateway entry + registry.
+- **En-route defects found and fixed (R-27's own helper):** (1) the first `applyTcs` added a collection line without netting the party credit — the voucher could never balance after one click, and pre-netting the party line computed TCS on the net (systematic under-collection); fixed to gross-based semantics. (2) the save payload mapped `tdsSectionId` but omitted `tcsSectionId` — the helper's section snapshot was silently dropped on save, landing collections under "Unspecified"; save + edit-load now persist it (server side was already complete).
+- **Tests:** `final_regression.py` +23 R-27 checks (**778**) — CRUD scoping, voucher validation, collected/remitted/payable math, snapshot classification, GST-exclusion proof, non-member 404; new `scripts/acceptance/r27_ui.js` (**15** browser checks: TCS master CRUD, Collect-TCS receipt flow through the real button, report section buckets + payable, GST neutrality).
+- **Verification (final tree):** Python **1060/1060** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **778** incl. 23 R-27, attack-the-fixes 29); browser **325/325** on a rebuilt image + fresh volume (12/12 migrations; run.js 153/153 exit-0 + r03…r27 = 172 scenario checks, r27 15/15); typecheck server + client clean; `git diff --check` clean.
+
 ## v1.25.0 — R-26 GSTR-9 annual return
 
 R-26 implements the approved Option A scope: the annual return as a pure report-family projection. No migration, no accounting-math change, no new transaction semantics.

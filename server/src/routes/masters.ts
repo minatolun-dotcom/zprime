@@ -1,10 +1,10 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
-  groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections,
+  groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections, tcsSections,
 } from "../db/schema.js";
 import { and, asc, eq, ilike } from "drizzle-orm";
-import { cid, bad, groupSchema, tdsSectionSchema } from "../lib/routes.js";
+import { cid, bad, groupSchema, tdsSectionSchema, tcsSectionSchema } from "../lib/routes.js";
 import { crud } from "./crud.js";
 
 const byName = (a: any, b: any) => (a.name ?? "").localeCompare(b.name ?? "");
@@ -59,6 +59,8 @@ export default async function masterRoutes(app: FastifyInstance) {
   crud(app, "voucher-types", voucherTypes, { orderBy: byName });
   // tds_sections has no `name` column — sorting by name crashed the list route (F-TDS-01)
   crud(app, "tds-sections", tdsSections, { orderBy: bySection, schema: tdsSectionSchema });
+  // R-27: TCS sections — same shape as TDS (no `name` column → bySection)
+  crud(app, "tcs-sections", tcsSections, { orderBy: bySection, schema: tcsSectionSchema });
 
   // Ledger lookup for voucher screens
   app.get("/ledger-lookup", async (req) => {
@@ -70,7 +72,7 @@ export default async function masterRoutes(app: FastifyInstance) {
         groupName: groups.name, groupNature: groups.nature,
         isBankCash: ledgers.isBankCash, billWise: ledgers.billWise,
         gstRegistrationType: ledgers.gstRegistrationType, taxability: ledgers.taxability,
-        gstin: ledgers.gstin, dutyHead: ledgers.dutyHead, tdsSectionId: ledgers.tdsSectionId,
+        gstin: ledgers.gstin, dutyHead: ledgers.dutyHead, tdsSectionId: ledgers.tdsSectionId, tcsSectionId: ledgers.tcsSectionId,
         openingBalance: ledgers.openingBalance,
       })
       .from(ledgers)

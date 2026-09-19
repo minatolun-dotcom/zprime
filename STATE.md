@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — **v1.25.0 RELEASED** (R-26 GSTR-9 annual return: tables 4/5/6-7/8/9/12 with Table-8 duty-ledger reconciliation and consistency cross-checks; 1019/1019 automated + 310/310 browser checks; release-process amendment adds push to RELEASED protocol). Released commit per RELEASES.md; phase IDLE. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-18 — **v1.26.0 scope COMPLETE, holding at RELEASE_REVIEW** (R-27 TCS collection, Income-tax s. 206C: `tcs_sections` master + snapshot columns + idempotent "TCS Payable" seed (migration 0011, additive), `/reports/tcs` A-04 semantics, Collect-TCS helper, gst.ts/import.ts TCS exclusions; 1060/1060 automated + 325/325 browser checks on the final tree; working tree contains the R-27 changes; v1.25.0 remains the last tagged release). See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

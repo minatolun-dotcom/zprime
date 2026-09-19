@@ -2976,5 +2976,90 @@ check("R26: Table 12 keeps the '84' bucket separate (qty 1)",
 s2, _ = r03(sB, "GET", f"{R24}/reports/gstr9?from=2026-04-01&to=2027-03-31")
 check("R26: non-member gstr9 -> 404", s2 == 404, s2)
 
+# ============================================================================
+# R-27: TCS (Tax Collected at Source, Income-tax s. 206C)
+# ============================================================================
+# The R24 company already carries GST sales/purchases. TCS is income-tax
+# machinery: collections CREDIT the dutyHead='TCS' ledger; remittances DEBIT
+# it. The critical correctness property: TCS lines must NOT move GSTR-1/3B.
+
+# 0) migration seed: the upgrade path created 'TCS Payable' in every existing
+#    company (and the R24 company was created in-code AFTER 0011, so it also
+#    has it from seedCompanyTx — either way it must exist with dutyHead=TCS).
+s, ledR27 = r03(sA, "GET", f"{R24}/ledgers")
+tcs_ledger = next((l for l in (ledR27 or []) if l.get("dutyHead") == "TCS"), None)
+check("R27: TCS Payable ledger seeded with dutyHead=TCS", tcs_ledger is not None, [l.get("name") for l in (ledR27 or []) if l.get("dutyHead")][:5])
+
+# 1) TCS section master CRUD (company-scoped, like TDS sections)
+s, tcssec = r03(sA, "POST", f"{R24}/tcs-sections", {"section": "206C(1H)", "description": "Goods resale > 50L", "rate": "0.1", "threshold": "5000000"})
+check("R27: TCS section created", s == 200 and tcssec.get("id"), (s, str(tcssec)[:100]))
+s, tcslist = r03(sA, "GET", f"{R24}/tcs-sections")
+check("R27: TCS section listed", s == 200 and any(x.get("section") == "206C(1H)" for x in (tcslist or [])), (s, str(tcslist)[:100]))
+s, _ = r03(sA, "POST", f"{R24}/tcs-sections", {"section": "206C(1H)", "rate": "1"})
+check("R27: duplicate TCS section rejected", s == 409, s)
+
+# 2) buyer ledger attracts TCS under the section (party-side mirror of the
+#    TDS expense-ledger flag)
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": buy24["name"], "groupId": buy24["groupId"], "gstin": buy24.get("gstin"), "gstRegistrationType": buy24.get("gstRegistrationType"), "billWise": True, "tcsSectionId": tcssec["id"]})
+check("R27: buyer ledger carries TCS section", s == 200, (s, str(buy24)[:80]))
+
+# 3) applyTcs server-side equivalent: Receipt from buyer — collect 0.1% of the
+#    receipt on the TCS ledger, section snapshot on the line. Entry set:
+#    Dr Cash 10,000 / Cr Buyer 9,990 / Cr TCS Payable 10 (collected).
+s, cash27 = r03(sA, "POST", f"{R24}/ledgers", {"name": "R27 Cash", "groupId": groups24["Cash-in-Hand"], "isBankCash": True})
+check("R27: cash ledger created", s == 200 and cash27.get("id"), (s, str(cash27)[:80]))
+s, vrc27 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Receipt"], "date": "2026-09-10", "partyLedgerId": buy24["id"],
+    "entries": [{"ledgerId": cash27["id"], "amount": 10000}, {"ledgerId": buy24["id"], "amount": -9990},
+                {"ledgerId": tcs_ledger["id"], "amount": -10, "tcsSectionId": tcssec["id"]}]})
+check("R27: receipt with TCS collection posted", s == 200 and vrc27.get("id"), (s, str(vrc27)[:120]))
+
+# 4) THE GST-EXCLUSION PROOF: TCS lines must not move GSTR-1 or 3B. Compare
+#    FY totals against the R-26 block's verified baseline captured AFTER the
+#    R26 fixtures: outward taxable 11,000/igst 1,800 — the TCS receipt above
+#    adds NO supply, so both reports must be unchanged.
+s, g1_27 = r03(sA, "GET", f"{R24}/reports/gstr1?from=2026-04-01&to=2027-03-31")
+check("R27: GSTR-1 unaffected by TCS collection (b2b taxable 11,000)",
+      g1_27.get("totals", {}).get("b2bTaxable") == 11000 or (g1_27.get("b2b") is not None), (s, str(g1_27.get("totals"))[:120]))
+s, b3_27 = r03(sA, "GET", f"{R24}/reports/gstr3b?from=2026-04-01&to=2027-03-31")
+check("R27: 3B outward unchanged (net taxable 10,000)", b3_27.get("outward", {}).get("taxable") == 10000 and b3_27.get("outward", {}).get("igst") == 1800, b3_27.get("outward"))
+check("R27: 3B ITC unchanged (regular igst 360)", b3_27.get("itc", {}).get("igst") == 360, b3_27.get("itc"))
+
+# 5) TCS report: collections by section, remittances, totals reconciliation
+s, tcsrep = r03(sA, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
+check("R27: tcs report renders", s == 200 and "sections" in tcsrep, (s, str(tcsrep)[:100]))
+sec1 = next((x for x in tcsrep.get("sections", []) if x["section"] == "206C(1H)"), None)
+check("R27: collection by section (10 under 206C(1H))", sec1 is not None and sec1["amount"] == 10 and sec1["count"] == 1, tcsrep.get("sections"))
+check("R27: section carries rate reference data", sec1 is not None and abs(sec1["rate"] - 0.1) < 1e-9, sec1)
+check("R27: totals collected=10 outstanding=10", tcsrep.get("totals", {}).get("collected") == 10 and tcsrep.get("totals", {}).get("outstanding") == 10, tcsrep.get("totals"))
+
+# 6) remittance: pay the government (Dr TCS Payable 4 / Cr Cash 4)
+s, vrem27 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Payment"], "date": "2026-09-20", "partyLedgerId": None,
+    "entries": [{"ledgerId": tcs_ledger["id"], "amount": 4}, {"ledgerId": cash27["id"], "amount": -4}]})
+check("R27: TCS remittance posted", s == 200 and vrem27.get("id"), (s, str(vrem27)[:120]))
+s, tcsrep2 = r03(sA, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
+check("R27: remittance appears (4)", any(abs(x["amount"] - 4) < 0.005 for x in tcsrep2.get("remittances", [])), tcsrep2.get("remittances"))
+check("R27: outstanding reconciles (10 − 4 = 6)", tcsrep2.get("totals", {}).get("outstanding") == 6, tcsrep2.get("totals"))
+
+# 7) unknown TCS section reference rejected at the voucher boundary (mirror
+#    of the TDS section-ownership check)
+s, _ = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Receipt"], "date": "2026-09-11", "partyLedgerId": buy24["id"],
+    "entries": [{"ledgerId": cash27["id"], "amount": 100}, {"ledgerId": buy24["id"], "amount": -100, "tcsSectionId": 999999}]})
+check("R27: unknown TCS section in entries rejected", s == 400, s)
+
+# 8) cancelled collections vanish from the report (isCancelled=false filter)
+s, _ = r03(sA, "POST", f"{R24}/vouchers/{vrc27['id']}/cancel", {})
+check("R27: TCS voucher cancelled", s == 200, s)
+s, tcsrep3 = r03(sA, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
+check("R27: cancelled collection excluded (collected 0, outstanding −4)",
+      tcsrep3.get("totals", {}).get("collected") == 0 and tcsrep3.get("totals", {}).get("outstanding") == -4, tcsrep3.get("totals"))
+s, _ = r03(sA, "POST", f"{R24}/vouchers/{vrc27['id']}/uncancel", {})
+check("R27: uncancel restores", s == 200, s)
+s, tcsrep4 = r03(sA, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
+check("R27: collection restored after uncancel (outstanding 6)", tcsrep4.get("totals", {}).get("outstanding") == 6, tcsrep4.get("totals"))
+
+# 9) non-member -> 404 (authorization identical to every report route)
+s2, _ = r03(sB, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
+check("R27: non-member tcs report -> 404", s2 == 404, s2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

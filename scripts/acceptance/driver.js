@@ -328,6 +328,10 @@ async function enterVoucher(v) {
     await page.locator('button:has-text("Deduct TDS")').first().click();
     await sleep(300);
   }
+  if (v.clickApplyTcs) {
+    await page.locator('button:has-text("Collect TCS")').first().click();
+    await sleep(300);
+  }
 
   await page.keyboard.press("Control+a");
   await sleep(800);

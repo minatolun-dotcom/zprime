@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
-  stockItems, godowns, tdsSections, voucherCounters, payslips, companies, idempotencyKeys,
+  stockItems, godowns, tdsSections, tcsSections, voucherCounters, payslips, companies, idempotencyKeys,
   auditEvents, users,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
@@ -46,6 +46,12 @@ async function assertRefsTx(tx: Tx, companyId: number, input: VoucherInput) {
   if (tdsIds.length > 0) {
     const rows = await tx.select({ id: tdsSections.id }).from(tdsSections).where(and(eq(tdsSections.companyId, companyId), inArray(tdsSections.id, tdsIds)));
     if (rows.length !== tdsIds.length) throw bad("Unknown TDS section in entries");
+  }
+  // R-27: same in-company guarantee for TCS section references.
+  const tcsIds = [...new Set(input.entries.map((e) => e.tcsSectionId).filter((t): t is number => typeof t === "number" && t > 0))];
+  if (tcsIds.length > 0) {
+    const rows = await tx.select({ id: tcsSections.id }).from(tcsSections).where(and(eq(tcsSections.companyId, companyId), inArray(tcsSections.id, tcsIds)));
+    if (rows.length !== tcsIds.length) throw bad("Unknown TCS section in entries");
   }
 }
 
@@ -392,6 +398,7 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
         gstRate: e.gstRate != null ? String(e.gstRate) : null,
         hsnSac: e.hsnSac ?? null,
         tdsSectionId: e.tdsSectionId ?? null,
+        tcsSectionId: e.tcsSectionId ?? null,
         order: i,
       })
       .returning({ id: voucherEntries.id });
@@ -516,7 +523,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
       .select({
         id: voucherEntries.id, ledgerId: voucherEntries.ledgerId, ledgerName: ledgers.name,
         amount: voucherEntries.amount, gstRate: voucherEntries.gstRate, hsnSac: voucherEntries.hsnSac,
-        tdsSectionId: voucherEntries.tdsSectionId, order: voucherEntries.order,
+        tdsSectionId: voucherEntries.tdsSectionId, tcsSectionId: voucherEntries.tcsSectionId, order: voucherEntries.order,
       })
       .from(voucherEntries)
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
