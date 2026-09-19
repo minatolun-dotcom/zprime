@@ -1,7 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { companies, groups, ledgers, voucherTypes, userCompanies, users } from "../db/schema.js";
+import { companies, groups, ledgers, voucherTypes, userCompanies, users, irpCredentials } from "../db/schema.js";
+import { encryptSecret, decryptSecret } from "../lib/crypto.js";
 import { and, eq, asc } from "drizzle-orm";
 import { DEFAULT_GROUPS, DEFAULT_VOUCHER_TYPES } from "../lib/defaults.js";
 import { bad, pgFriendly } from "../lib/routes.js";
@@ -226,6 +227,71 @@ export default async function companyRoutes(app: FastifyInstance) {
     // even access it) — including an owner trying to leave as sole owner.
     if (targetRow.role === "owner" && owners.length <= 1) throw bad("Cannot remove the last owner of a company", 409);
     await db.delete(userCompanies).where(and(eq(userCompanies.companyId, id), eq(userCompanies.userId, target)));
+    return { ok: true };
+  });
+
+  // ---- R-28: IRP connectivity credentials (opt-in) ----
+  // Owner-only (they are company-wide secrets). Stored AES-256-GCM encrypted
+  // at rest; reads return masked values (last 4 only). The same masking rule
+  // as members: 404 for non-members, never 403 — no existence leak.
+  const irpCredsSchema = z.object({
+    environment: z.enum(["sandbox", "production"]).default("sandbox"),
+    clientId: z.string().trim().min(1).max(200),
+    clientSecret: z.string().min(1).max(200),
+    gstin: z.string().trim().min(15).max(15),
+    username: z.string().trim().min(1).max(200),
+    password: z.string().min(1).max(200),
+    publicKeyPem: z.string().trim().max(8000).optional().nullable(),
+    endpointOverride: z.string().trim().max(400).optional().nullable(),
+  });
+
+  const maskIrpCreds = (row: any) => ({
+    environment: row.environment,
+    clientId: row.clientId,
+    gstin: row.gstin,
+    username: row.username,
+    // last-4 only, derived server-side — plaintext secrets never leave the box
+    clientSecretLast4: decryptSecret(row.clientSecretEnc).slice(-4),
+    passwordLast4: decryptSecret(row.passwordEnc).slice(-4),
+    publicKeyPem: row.publicKeyPem,
+    endpointOverride: row.endpointOverride,
+  });
+
+  app.get("/companies/:id/irp-credentials", async (req) => {
+    const id = await requireOwner(req, parseInt((req.params as any).id, 10));
+    const rows = await db.select().from(irpCredentials).where(eq(irpCredentials.companyId, id));
+    return rows.map(maskIrpCreds);
+  });
+
+  app.put("/companies/:id/irp-credentials", async (req) => {
+    const id = await requireOwner(req, parseInt((req.params as any).id, 10));
+    const parsed = irpCredsSchema.safeParse(req.body);
+    if (!parsed.success) throw bad("Invalid IRP credentials: " + parsed.error.issues[0]?.message);
+    const d = parsed.data;
+    const values = {
+      companyId: id,
+      environment: d.environment,
+      clientId: d.clientId,
+      clientSecretEnc: encryptSecret(d.clientSecret),
+      gstin: d.gstin,
+      username: d.username,
+      passwordEnc: encryptSecret(d.password),
+      publicKeyPem: d.publicKeyPem ?? null,
+      endpointOverride: d.endpointOverride ?? null,
+      updatedBy: req.userId as number,
+      updatedAt: new Date(),
+    };
+    const [row] = await db.insert(irpCredentials).values(values)
+      .onConflictDoUpdate({ target: [irpCredentials.companyId, irpCredentials.environment], set: values })
+      .returning();
+    return maskIrpCreds(row);
+  });
+
+  app.delete("/companies/:id/irp-credentials/:env", async (req) => {
+    const id = await requireOwner(req, parseInt((req.params as any).id, 10));
+    const env = String((req.params as any).env ?? "");
+    if (env !== "sandbox" && env !== "production") throw bad("Invalid environment");
+    await db.delete(irpCredentials).where(and(eq(irpCredentials.companyId, id), eq(irpCredentials.environment, env)));
     return { ok: true };
   });
 }

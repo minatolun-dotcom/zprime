@@ -8,8 +8,9 @@ import { existsSync } from "node:fs";
 import { runMigrations } from "./db/index.js";
 import authPlugin, { hashPassword } from "./plugins/auth.js";
 import { db } from "./db/index.js";
-import { users, companies } from "./db/schema.js";
+import { users, companies, irpCredentials } from "./db/schema.js";
 import { eq } from "drizzle-orm";
+import { decryptSecret } from "./lib/crypto.js";
 
 import authRoutes from "./routes/auth.js";
 import companyRoutes from "./routes/companies.js";
@@ -113,6 +114,22 @@ if (existing.length === 0) {
     passwordHash: hashPassword(adminPassword),
   });
   console.log(`Created default admin user: ${process.env.ADMIN_USER ?? "admin"}`);
+}
+
+// R-28 boot check: encrypted credentials must be readable with the current
+// IRP_ENC_KEY before serving traffic — a missing/rotated key must fail fast
+// (R-09 posture), never surface as request-time 500s.
+const irpCount = await db.$count(irpCredentials);
+if (irpCount > 0) {
+  const probe = await db.select({ blob: irpCredentials.clientSecretEnc }).from(irpCredentials).limit(1);
+  try {
+    decryptSecret(probe[0].blob);
+  } catch {
+    throw new Error(
+      "IRP credentials exist but cannot be decrypted with the current IRP_ENC_KEY " +
+        "(missing or rotated). Restore the key in .env — refusing to start to avoid silent corruption.",
+    );
+  }
 }
 
 await app.listen({ port: PORT, host: "0.0.0.0" });

@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-18 — **v1.26.0 scope COMPLETE, holding at RELEASE_REVIEW** (R-27 TCS collection, Income-tax s. 206C: `tcs_sections` master + snapshot columns + idempotent "TCS Payable" seed (migration 0011, additive), `/reports/tcs` A-04 semantics, Collect-TCS helper, gst.ts/import.ts TCS exclusions; 1060/1060 automated + 325/325 browser checks on the final tree; working tree contains the R-27 changes; v1.25.0 remains the last tagged release). See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-19 — **R-28 (live IRP/EWB connectivity) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-28 changes; v1.26.0 remains the last tagged release. Migration 0012 (additive: `irp_credentials` AES-256-GCM at rest + `irp_submissions` verbatim IRN/ack persistence, `IRP_ENC_KEY` fail-fast), `lib/crypto.ts`, `services/irp.ts` (NIC auth handshake, session cache, hard idempotency, EWB-from-IRN), credentials/submit routes (cid-gated), CompanySettings masked credentials UI, GSTR-1 submit actions, wire-format mock IRP; 1086/1086 automated + 340/340 browser checks. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

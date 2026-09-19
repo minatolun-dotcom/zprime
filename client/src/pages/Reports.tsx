@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner } from "../components/ui";
-import { get } from "../lib/api";
+import { get, post } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel } from "../lib/format";
@@ -571,12 +571,35 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       setEinvMsg({ ok: false, text: e?.message ?? "payload generation failed" });
     }
   };
+  // R-28: submit the stored payload to the IRP (opt-in — requires credentials
+  // in Company Settings). Outcome surfaces verbatim: IRN/ack on success,
+  // the IRP's own error list on rejection, a duplicate notice (409) when the
+  // voucher was already accepted/pending — never a second network call.
+  const submitPayload = async (kind: "e-invoice" | "ewaybill", voucherId: number, number: string) => {
+    setEinvMsg(null);
+    try {
+      const res: any = await post(
+        `/api/c/${cid}/reports/${kind === "e-invoice" ? "einvoice" : "ewaybill"}/${voucherId}/submit`,
+        {},
+      );
+      if (res.ok && res.submission) {
+        const s = res.submission;
+        setEinvMsg({ ok: true, text: `${kind === "e-invoice" ? "e-invoice" : "e-way bill"} accepted for ${number}` + (s.irn ? ` — IRN ${s.irn}` : s.ewbNo ? ` — EWB ${s.ewbNo}` : "") });
+      }
+    } catch (e: any) {
+      // Non-2xx: the server's `error` message is human-readable (validation
+      // gaps, duplicate refusal, IRP ErrorDetails, unreachable endpoint).
+      setEinvMsg({ ok: false, text: e?.message ?? "submission failed" });
+    }
+  };
   const einvCell = (v: any) =>
     cid ? (
       <td className="w-24">
         <button className="link text-[12px]" onClick={() => downloadPayload("einvoice", v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
         {" "}
         <button className="link text-[12px]" onClick={() => downloadPayload("ewaybill", v.voucherId, v.number)} title="Generate EWB-01 e-way bill JSON">e-way</button>
+        {" "}
+        <button className="link text-[12px]" onClick={() => submitPayload("e-invoice", v.voucherId, v.number)} title="Submit the e-invoice to the IRP (requires Company Settings → IRP Connectivity)">submit</button>
       </td>
     ) : null;
   const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (

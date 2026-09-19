@@ -4,13 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.27.0
+
+- **Version:** 1.27.0
+- **Commit:** see `git rev-parse v1.27.0^{}` (annotated tag `v1.27.0` → commit verified at release)
+- **Purpose:** R-28 — live IRP/EWB connectivity (opt-in), superseding R-24/R-25's stateless posture when credentials are configured: migration 0012 (additive `irp_credentials` AES-256-GCM at rest via `IRP_ENC_KEY` + `irp_submissions` verbatim IRN/ack persistence — a legal duty; undeletable once accepted), `lib/crypto.ts` (boot-time fail-fast, R-09 posture), `services/irp.ts` (NIC AppKey/SEK/RSA handshake per official sandbox docs, 6h/1h token session cache, **hard idempotency** — repeat submits re-read the stored result with zero network calls), masked credentials routes (cid-gated, last-4 read-back), submit/history routes, CompanySettings IRP section, GSTR-1 submit actions with honest amber banners (422/409/502), wire-faithful `scripts/mock_irp.js` for CI. Generate/download paths byte-unchanged without credentials. No accounting-math change.
+- **Verification:** 1086/1086 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 804 incl. 26 R-28, attack-the-fixes 29); 340/340 browser (rebuilt image + fresh volume, 13/13 migration-tracker rows, run.js 153 + r03…r28 scenarios = 187, r28 15/15); typecheck server + client clean.
+- **Immutable: YES**
+
 ## v1.26.0
 
 - **Version:** 1.26.0
-- **Commit:** see `git rev-parse v1.26.0^{}`
+- **Commit:** `3e0fb41c5e46edeb9c56b718ca567bdc556658a6` (annotated tag `ac42a4a280e2e29778f544c62a1533ba14b656e3` → commit verified at release)
 - **Purpose:** R-27 — TCS collection (Income-tax s. 206C): `tcs_sections` master + `tcs_section_id` snapshots (migration 0011, additive, idempotent "TCS Payable" seed for existing companies), TCS-sections masters CRUD, voucher-entry validation, `GET /reports/tcs` (A-04 collected − remitted = payable), "− Collect TCS" client helper (gross-based, one-click balancing), and the two correctness-critical exclusions (`gst.ts` GST aggregation and `import.ts` duty classification). Thresholds surfaced, never enforced. No accounting-math change.
 - **Verification:** 1060/1060 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 778 incl. 23 R-27, attack-the-fixes 29); 325/325 browser (rebuilt image + fresh volume, 12/12 migrations, run.js 153 + r03…r27 scenarios, r27 15/15); typecheck server + client clean; fresh Docker install and v1.25.0 upgrade verified via fresh-volume migration run.
-- **Immutable: YES**
+- **Immutable: YES** — pushed to origin 2026-09-19 (`main` = `3e0fb41`, tag verified via ls-remote).
 
 ## v1.25.0
 

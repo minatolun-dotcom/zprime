@@ -1,8 +1,10 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable, serial, integer, text, boolean, date, timestamp, numeric, index, uniqueIndex, jsonb,
 } from "drizzle-orm/pg-core";
 // (drizzle-orm/pg-core exports reviewed for R-02: no new column types needed —
-// timestamp/text/integer already imported.)
+// timestamp/text/integer already imported. R-28 adds `sql` for the partial
+// unique indexes that enforce submission idempotency at the DB level.)
 
 // R-22: the R-17 actor-provance column triple, shared by the 9 master tables
 // (groups, ledgers, units, stock_groups, stock_categories, godowns,
@@ -369,3 +371,58 @@ export const payslips = pgTable("payslips", {
   deductions: numeric("deductions", { precision: 18, scale: 2 }).notNull(),
   net: numeric("net", { precision: 18, scale: 2 }).notNull(),
 }, (t) => [uniqueIndex("pslip_emp_month_uq").on(t.employeeId, t.month)]);
+
+// ---------- R-28: IRP/EWB connectivity (opt-in) ----------
+// Per-company NIC IRP/EWB API credentials. Secrets are stored AES-256-GCM
+// encrypted at rest (lib/crypto.ts; key from the IRP_ENC_KEY env — the boot
+// path refuses to run if encrypted rows exist and the key is missing/invalid,
+// the R-09 fail-fast posture). Reads are masked: plaintext secrets never
+// leave the server. AppKey material is deliberately NOT stored — a fresh
+// 32-byte key is generated per auth session (the SEK it unlocks dies with
+// the 6h token, so nothing long-lived depends on it).
+export const irpCredentials = pgTable("irp_credentials", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  environment: text("environment").notNull().default("sandbox"), // sandbox | production
+  clientId: text("client_id").notNull(),
+  clientSecretEnc: text("client_secret_enc").notNull(), // base64(nonce+tag+ciphertext), GCM
+  gstin: text("gstin").notNull(),
+  username: text("username").notNull(),
+  passwordEnc: text("password_enc").notNull(),
+  // NIC publishes per-environment public keys (portal download). Operators
+  // paste the PEM here (or set IRP_NIC_PUBLIC_KEY env as a default). Never
+  // hardcoded in source.
+  publicKeyPem: text("public_key_pem"),
+  // Base-URL override for mock/test IRPs (CI) and self-hosted adapters.
+  endpointOverride: text("endpoint_override"),
+  ...masterActor(),
+}, (t) => [uniqueIndex("irp_creds_company_env_uq").on(t.companyId, t.environment)]);
+
+// Submission ledger — the legal record ("an invoice without IRN will not be
+// a legal document"). IRP responses are stored VERBATIM (decrypted JSON as
+// received); accepted rows are never deleted by the application. Lifecycle:
+// pending → accepted | rejected | error. Two PARTIAL unique indexes enforce
+// idempotency at the DB level: at most one accepted and at most one pending
+// row per (voucher, kind) — a concurrent second submit loses on the insert
+// (no second network call), while rejected/error rows release the slot so
+// the operator can retry with history intact.
+export const irpSubmissions = pgTable("irp_submissions", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  voucherId: integer("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+  kind: text("kind").notNull(), // e-invoice | ewaybill
+  status: text("status").notNull(), // pending | accepted | rejected | error
+  irn: text("irn"),
+  ackNo: text("ack_no"),
+  ackDate: text("ack_date"),
+  ewbNo: text("ewb_no"),
+  ewbValidUntil: text("ewb_valid_until"),
+  response: jsonb("response"), // decrypted IRP response, verbatim
+  error: jsonb("error"), // IRP ErrorDetails or transport message
+  requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("irp_subs_company_created_idx").on(t.companyId, t.createdAt),
+  uniqueIndex("irp_subs_accepted_uq").on(t.voucherId, t.kind).where(sql`status = 'accepted'`),
+  uniqueIndex("irp_subs_pending_uq").on(t.voucherId, t.kind).where(sql`status = 'pending'`),
+]);

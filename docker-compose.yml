@@ -25,6 +25,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (cp .env.example .env)}
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env (cp .env.example .env)}
+      # R-28: OPTIONAL — only needed when an operator configures IRP/EWB
+      # credentials (opt-in connectivity). Absent/empty behaves as unset; the
+      # server fails fast with an actionable message at first credential save,
+      # and refuses to boot if encrypted rows exist and the key is wrong.
+      IRP_ENC_KEY: ${IRP_ENC_KEY:-}
       PORT: "3000"
     ports:
       - "3000:3000"

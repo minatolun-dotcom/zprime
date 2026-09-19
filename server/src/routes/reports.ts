@@ -13,12 +13,21 @@ import { gstr1, gstr3b } from "../services/gst.js";
 import { eInvoicePayload } from "../services/einvoice.js";
 import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
 import { gstr9 } from "../services/gstr9.js";
+import { submitEInvoice, submitEwayBillFromIrn, submissionHistory } from "../services/irp.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
     from: q.from ?? booksBegin ?? fyStart(today()),
     to: q.to ?? today(),
   };
+}
+
+/** R-28: format IRP errors for a human-readable `error` message. */
+function irpErrorMessage(errs: unknown): string {
+  if (Array.isArray(errs)) {
+    return errs.map((e: any) => e?.ErrorMessage ?? e?.message ?? JSON.stringify(e)).join(" · ") || "IRP submission failed";
+  }
+  return String(errs ?? "IRP submission failed");
 }
 
 export default async function reportRoutes(app: FastifyInstance) {
@@ -156,6 +165,72 @@ export default async function reportRoutes(app: FastifyInstance) {
       transDocDate: q.transDocDate, transporterName: q.transporterName,
     };
     return ewaybillPayload(c, vid, params);
+  });
+
+  // ---- R-28: IRP submission (opt-in; requires company credentials) ----
+  // Submissions ride on the SAME cid() authorization boundary as every other
+  // report route (404 for non-members — no existence leak). The service layer
+  // enforces idempotency (DB partial-unique + eager duplicate refusal) so the
+  // NIC's one-hour duplicate-submission block can never be triggered by us.
+  const submitEnv = (req: any) => {
+    const env = String((req.query as any)?.env ?? "sandbox");
+    if (env !== "sandbox" && env !== "production") throw bad("Invalid environment");
+    return env;
+  };
+
+  app.post("/einvoice/:voucherId/submit", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const result = await submitEInvoice(c, vid, req.userId as number, submitEnv(req));
+    const code = result.ok ? 200 : result.validationErrors ? 422 : result.duplicate ? 409 : 502;
+    if (!result.ok) {
+      // Human-readable message alongside the structured result — the client's
+      // api() helper surfaces `error` verbatim on non-2xx responses.
+      const msg = result.duplicate
+        ? "Already submitted (accepted or in-flight) — refusing to resubmit."
+        : result.validationErrors
+          ? result.validationErrors.join(" · ")
+          : irpErrorMessage(result.irpErrors);
+      reply.code(code);
+      return { ...result, error: msg };
+    }
+    reply.code(code);
+    return result;
+  });
+
+  app.post("/ewaybill/:voucherId/submit", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const q = req.query as any;
+    const partB: Record<string, unknown> = {};
+    if (q.vehicleNo) partB.vehicleNo = q.vehicleNo;
+    if (q.transMode) partB.transMode = q.transMode;
+    if (q.transDocNo) partB.transDocNo = q.transDocNo;
+    if (q.transDocDate) partB.transDocDate = q.transDocDate;
+    if (q.transporterName) partB.transporterName = q.transporterName;
+    const result = await submitEwayBillFromIrn(c, vid, req.userId as number, partB, submitEnv(req));
+    const code = result.ok ? 200 : result.duplicate ? 409 : 502;
+    if (!result.ok) {
+      const msg = result.duplicate
+        ? "Already submitted (accepted or in-flight) — refusing to resubmit."
+        : irpErrorMessage(result.irpErrors);
+      reply.code(code);
+      return { ...result, error: msg };
+    }
+    reply.code(code);
+    return result;
+  });
+
+  // Submission history — per voucher or whole company; verbatim IRP responses
+  // (they carry no secrets) with actors. Read-only.
+  app.get("/submissions", async (req) => {
+    const c = await cid(req);
+    const q = req.query as any;
+    const vid = q.voucherId != null ? parseInt(String(q.voucherId), 10) : undefined;
+    if (vid != null && (!Number.isFinite(vid) || vid <= 0)) throw bad("Invalid voucher");
+    return submissionHistory(c, vid);
   });
 
   app.get("/gstr3b", async (req) => {

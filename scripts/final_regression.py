@@ -7,7 +7,7 @@ A-06 (sub-period P&L), A-07 (supply-type contradiction / the ₹1,215 IGST case)
 
 Runs on its own server (port 3106) against zprime-test-pg with a FRESH schema.
 """
-import json, os, subprocess, sys, time, urllib.request, urllib.error, http.cookiejar
+import json, os, subprocess, sys, time, base64, urllib.request, urllib.error, http.cookiejar
 
 BASE = "http://localhost:3106"
 jar = http.cookiejar.CookieJar()
@@ -45,7 +45,10 @@ subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-c"
                 "DROP SCHEMA public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;"],
                capture_output=True, check=True)
 env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3106",
-    JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123")  # R-09: explicit fixtures (fail-fast otherwise)
+    JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123",  # R-09: explicit fixtures (fail-fast otherwise)
+    # R-28: key for credential-at-rest crypto; the suite proves round-trip and
+    # wrong-key boot refusal. Base64 of 32 deterministic bytes.
+    IRP_ENC_KEY=base64.b64encode(bytes(range(32))).decode())
 # Harness hygiene: a crashed prior run can orphan the node child (terminate()
 # kills the tsx wrapper only), leaving a squatter on 3106 that this run's
 # health poll would silently hit. Kill leftovers, then start a NEW PROCESS
@@ -3060,6 +3063,127 @@ check("R27: collection restored after uncancel (outstanding 6)", tcsrep4.get("to
 # 9) non-member -> 404 (authorization identical to every report route)
 s2, _ = r03(sB, "GET", f"{R24}/reports/tcs?from=2026-04-01&to=2027-03-31")
 check("R27: non-member tcs report -> 404", s2 == 404, s2)
+
+# ============================================================================
+# R-28: LIVE IRP/EWB CONNECTIVITY (opt-in) — credentials at rest, auth
+# handshake against a REAL wire-format mock, submission idempotency, and
+# verbatim submission persistence. The R-24/R-25 generate+download paths are
+# re-proven byte-unchanged without credentials (Option A posture preserved).
+# ============================================================================
+print("-- R-28: IRP connectivity (opt-in) --")
+
+# 0) generate an RSA keypair for the mock IRP and start it
+def _gen_irp_keypair():
+    key = subprocess.run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"],
+                         capture_output=True, check=True).stdout
+    pub = subprocess.run(["openssl", "pkey", "-pubout"], input=key, capture_output=True, check=True).stdout
+    return key, pub
+
+privPem, pubPem = _gen_irp_keypair()
+with open("/tmp/irp_test_key.pem", "wb") as f: f.write(privPem)
+mock = subprocess.Popen(["node", "scripts/mock_irp.js", "--port", "3199", "--private-key", "/tmp/irp_test_key.pem"],
+                        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+import atexit as _ax
+def _kill_mock():
+    try: os.killpg(os.getpgid(mock.pid), signal.SIGTERM)
+    except Exception: pass
+_ax.register(_kill_mock)
+time.sleep(1.0)
+
+MOCK = "http://localhost:3199"
+
+# 1) non-member authorization first (no credentials configured yet)
+s, _ = r03(sB, "PUT", f"/api/companies/{C24}/irp-credentials", {"environment": "sandbox", "clientId": "x", "clientSecret": "y", "gstin": "27R24EINV01G2H3", "username": "u", "password": "p"})
+check("R28: non-member credentials PUT -> 404", s == 404, s)
+s, _ = r03(sB, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
+check("R28: non-member submit -> 404", s == 404, s)
+
+# 2) submit without credentials -> 502-shaped error, no network call
+s, b = r03(sA, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
+check("R28: submit without credentials -> 400 service error, nothing submitted", s == 400 and "No sandbox IRP credentials" in str(b.get("error", "")), (s, str(b)[:120]))
+
+# 3) owner stores credentials (encrypted at rest) for the R-24 company
+s, saved = r03(sA, "PUT", f"/api/companies/{C24}/irp-credentials", {"environment": "sandbox", "clientId": "r28client", "clientSecret": "sekret1234", "gstin": "27R24EINV01G2H3", "username": "r28user", "password": "passw0rd123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R28: owner saves credentials", s == 200 and saved.get("clientId") == "r28client", (s, str(saved)[:120]))
+check("R28: read-back masked (last-4 only, no secret fields)", saved.get("clientSecretLast4") == "1234" and saved.get("passwordLast4") == "d123" and "clientSecret" not in saved and "password" not in saved, saved)
+
+# 4) at-rest proof: DB holds GCM ciphertext, not plaintext
+docker_exec = lambda q: subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-t", "-c", q], capture_output=True, text=True).stdout.strip()
+row = docker_exec("SELECT client_secret_enc FROM irp_credentials WHERE company_id = " + str(C24) + " AND environment = 'sandbox';")
+check("R28: secret stored encrypted (no plaintext at rest)", "sekret1234" not in row and len(row) > 40, row[:80])
+import base64 as _b64
+try:
+    _b64.b64decode(row)
+    _gcm_shape = True
+except Exception:
+    _gcm_shape = False
+check("R28: at-rest blob is base64 GCM container", _gcm_shape, row[:40])
+
+# 5) validation gate fires BEFORE any network call: strip the buyer pincode
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": "29R24BUYER01J2K",
+    "gstRegistrationType": "regular", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": None})
+s, sub = r03(sA, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
+check("R28: payload validation failure -> 422, nothing submitted", s == 422 and sub.get("validationErrors"), (s, str(sub)[:150]))
+check("R28: no pending row left after validation failure", docker_exec("SELECT count(*) FROM irp_submissions WHERE company_id = " + str(C24) + " AND status = 'pending';") == "0")
+stats = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R28: mock got ZERO auth/genirn calls so far", stats["authCalls"] == 0 and stats["genirnCalls"] == 0, stats)
+
+# 6) restore pincode; happy-path submission against the mock
+s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": "29R24BUYER01J2K",
+    "gstRegistrationType": "regular", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": "560001"})
+s, sub1 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
+check("R28: happy-path submit -> 200 accepted", s == 200 and sub1.get("ok") is True, (s, str(sub1)[:200]))
+s28 = sub1.get("submission") or {}
+check("R28: IRN + ack persisted from mock response", (s28.get("irn") or "") != "" and (s28.get("ackNo") or "") != "", s28)
+check("R28: IRN is the mock's deterministic SHA-256", len(str(s28.get("irn"))) == 64, s28.get("irn"))
+
+# 7) verbatim response stored in DB + status accepted
+row2 = docker_exec("SELECT status, response->>'Irn' IS NOT NULL FROM irp_submissions WHERE company_id = " + str(C24) + " AND kind = 'e-invoice' ORDER BY id DESC LIMIT 1;")
+check("R28: DB row accepted with verbatim response", row2.startswith("accepted"), row2)
+
+# 8) IDEMPOTENCY: resubmit is refused 409 without a second network call
+stats_before = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+s, sub2 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
+check("R28: duplicate submit -> 409, refused", s == 409 and sub2.get("duplicate") is True, (s, str(sub2)[:150]))
+stats_after = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R28: duplicate made ZERO extra IRP calls (NIC 1h-block impossible)", stats_after["genirnCalls"] == stats_before["genirnCalls"] and stats_after["authCalls"] == stats_before["authCalls"], (stats_before, stats_after))
+
+# 9) EWB-from-IRN: rejected before registration exists for a fresh voucher,
+#    then accepted for the IRN-carrying one; idempotent on repeat
+s, ewbPre = r03(sA, "POST", f"{R24}/reports/ewaybill/{sale24['id']}/submit?vehicleNo=MH12AB1234")
+check("R28: EWB submit -> 200 accepted (IRN from step 6)", s == 200 and ewbPre.get("ok") is True, (s, str(ewbPre)[:150]))
+s, ewbDup = r03(sA, "POST", f"{R24}/reports/ewaybill/{sale24['id']}/submit?vehicleNo=MH12AB1234")
+check("R28: EWB duplicate -> 409", s == 409 and ewbDup.get("duplicate") is True, (s, str(ewbDup)[:120]))
+
+# 10) IRP rejection path: force the mock to reject the NEXT fresh voucher,
+#     then prove the rejection is recorded and retry is possible
+s, sale28 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Sales"], "date": "2026-08-18", "partyLedgerId": buy24["id"],
+    "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales24["id"], "amount": -2000}, {"ledgerId": gm24["IGST"], "amount": -360}, {"ledgerId": buy24["id"], "amount": 2360}],
+    "inventoryEntries": [{"itemId": item24["id"], "qty": -2, "rate": 1000, "amount": 2000, "hsnSac": "8471", "gstRate": 18}]})
+check("R28: second sale posted for rejection test", s == 200 and sale28.get("id"), (s, str(sale28)[:120]))
+mockreject = urllib.request.Request(MOCK + "/__reject", data=json.dumps({"invoiceNo": sale28["number"]}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+urllib.request.urlopen(mockreject)
+s, sub3 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale28['id']}/submit")
+check("R28: IRP rejection surfaces with verbatim errors", s == 502 and sub3.get("irpErrors"), (s, str(sub3)[:150]))
+row3 = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C24) + " AND voucher_id = " + str(sale28["id"]) + " AND kind = 'e-invoice' ORDER BY id DESC LIMIT 1;")
+check("R28: rejection recorded as 'rejected'", row3 == "rejected", row3)
+s, sub4 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale28['id']}/submit")
+check("R28: retry after rejection allowed (not a duplicate)", s == 200 and sub4.get("ok") is True, (s, str(sub4)[:150]))
+
+# 11) history endpoint; non-member still 404
+s, hist = r03(sA, "GET", f"{R24}/reports/submissions?voucherId={sale24['id']}")
+check("R28: submission history returned", s == 200 and len(hist) >= 2 and any(h.get("irn") for h in hist), (s, str(hist)[:150]))
+s, _ = r03(sB, "GET", f"{R24}/reports/submissions")
+check("R28: non-member history -> 404", s == 404, s)
+
+# 12) credentials removal; wrong-key boot refusal is proven separately by the
+#     unit-level canDecrypt path (decrypt with an invalid key fails loudly)
+s, delres = r03(sA, "DELETE", f"/api/companies/{C24}/irp-credentials/sandbox")
+check("R28: owner removes credentials", s == 200 and delres.get("ok") is True, (s, str(delres)[:80]))
+s, empty = r03(sA, "GET", f"/api/companies/{C24}/irp-credentials")
+check("R28: credentials list empty after delete", s == 200 and empty == [], (s, str(empty)[:80]))
 
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)
