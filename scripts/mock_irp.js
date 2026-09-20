@@ -35,7 +35,7 @@ const priv = privKeyPath
   ? crypto.createPrivateKey(fs.readFileSync(privKeyPath, "utf8"))
   : crypto.createPrivateKey(crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs1", format: "pem" }));
 
-const stats = { authCalls: 0, genirnCalls: 0, genewbCalls: 0, vehewbCalls: 0, extendCalls: 0, cancelCalls: 0 };
+const stats = { authCalls: 0, genirnCalls: 0, genewbCalls: 0, vehewbCalls: 0, extendCalls: 0, cancelCalls: 0, ewbAuthCalls: 0, ewbDirectCalls: 0 };
 const sessions = new Map(); // authtoken → { sek: Buffer }
 const rejectNext = new Set(); // invoice numbers to reject once
 const failAction = new Map(); // action → pending IRP-style failure (one shot)
@@ -75,6 +75,27 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/__failaction") { failAction.set(json.action, json.error ?? [{ ErrorCode: "9999", ErrorMessage: "mock forced failure" }]); return send(200, { ok: true }); }
   if (req.url === "/__expire") { expired.add(json.ewbNo); return send(200, { ok: true }); }
 
+  // ---- R-30: EWB-API v1.03 (a SEPARATE portal under the same mock) ----
+  // Same self-keyed RSA/AES choreography; lowercase response casing (the
+  // service tolerates both). The auth body carries the password + appkey
+  // RSA-encrypted with the EWB public key.
+  if (req.url === "/v1.03/auth") {
+    stats.ewbAuthCalls++;
+    try {
+      const appKey = rsaDec(json.appkey);
+      const pw = rsaDec(json.password);
+      if (!json.username || !pw) return send(200, { status: "0", errorDetails: [{ errorCode: "AUTH", errorMessage: "username and password required" }] });
+      const sek = crypto.randomBytes(32);
+      const authtoken = crypto.randomUUID();
+      sessions.set(authtoken, { sek });
+      const c = crypto.createCipheriv("aes-256-ecb", appKey, null);
+      const sekEnc = Buffer.concat([c.update(sek), c.final()]).toString("base64");
+      return send(200, { status: "1", authtoken, sek: sekEnc });
+    } catch (e) {
+      return send(200, { status: "0", errorDetails: [{ errorCode: "AUTH", errorMessage: "decryption failed: " + e.message }] });
+    }
+  }
+
   if (req.url === "/eivital/v1.10/auth") {
     stats.authCalls++;
     try {
@@ -90,7 +111,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const sess = sessions.get(req.headers["auth-token"]);
+  const sess = sessions.get(req.headers["auth-token"] ?? req.headers["authtoken"]);
   if (!sess) return send(200, { Status: 0, ErrorDetails: [{ ErrorCode: "TOKEN", ErrorMessage: "invalid or expired authtoken" }] });
 
   let payload;
@@ -154,6 +175,23 @@ const server = http.createServer(async (req, res) => {
     const born = ewbBornAt.get(payload.ewbNo) ?? Date.now();
     if (Date.now() - born > 24 * 60 * 60 * 1000) return send(200, { Status: 0, ErrorDetails: [{ ErrorCode: "3105", ErrorMessage: "Cannot cancel — 24 hours have elapsed since generation" }] });
     return send(200, { Status: 1, Data: ecbEnc(sess.sek, { CanFlag: "Y", CancellingTime: new Date().toISOString() }) });
+  }
+
+  // ---- R-30: direct GENEWB (non-IRN) — lowercase envelope, ewbBornAt
+  // registered so the R-29 lifecycle ops work on direct-born EWBs too
+  // (they are row-shaped, not birth-path-shaped).
+  if (req.url === "/v1.03/ewayapi") {
+    if (json.action === "GENEWB") {
+      stats.ewbDirectCalls++;
+      if (failAndClear("GENEWB")) return;
+      if (!payload?.docNo) return send(200, { status: "0", errorDetails: [{ errorCode: "4002", errorMessage: "docNo required" }] });
+      if (!payload?.userGstin) return send(200, { status: "0", errorDetails: [{ errorCode: "3001", errorMessage: "userGstin required" }] });
+      if (!payload?.totInvValue) return send(200, { status: "0", errorDetails: [{ errorCode: "3011", errorMessage: "totInvValue required" }] });
+      const ewbNo = "19" + String(Math.floor(Math.random() * 1e10));
+      ewbBornAt.set(ewbNo, Date.now());
+      return send(200, { status: "1", data: ecbEnc(sess.sek, { ewayBillNo: ewbNo, ewayBillDate: new Date().toISOString().slice(0, 10), validUpto: "2026-09-21 23:59:00", alert: "" }) });
+    }
+    return send(200, { status: "0", errorDetails: [{ errorCode: "9999", errorMessage: `mock: unsupported EWB action ${json.action}` }] });
   }
 
   return send(404, { error: "unknown mock endpoint" });

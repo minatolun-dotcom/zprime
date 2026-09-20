@@ -241,6 +241,11 @@ export default async function companyRoutes(app: FastifyInstance) {
     gstin: z.string().trim().min(15).max(15),
     username: z.string().trim().min(1).max(200),
     password: z.string().min(1).max(200),
+    // R-30: EWB-portal credentials (separate from the e-invoice IRP),
+    // optional — absent = EWB-from-IRN only. Must arrive as a PAIR: a
+    // username without a password could never authenticate.
+    ewbUsername: z.string().trim().min(1).max(200).optional().nullable(),
+    ewbPassword: z.string().min(1).max(200).optional().nullable(),
     publicKeyPem: z.string().trim().max(8000).optional().nullable(),
     endpointOverride: z.string().trim().max(400).optional().nullable(),
   });
@@ -250,6 +255,10 @@ export default async function companyRoutes(app: FastifyInstance) {
     clientId: row.clientId,
     gstin: row.gstin,
     username: row.username,
+    // R-30: EWB-portal credentials — username is not secret; the password
+    // surfaces as last-4 only, same rule as every secret here.
+    ewbUsername: row.ewbUsername ?? null,
+    ewbPasswordLast4: row.ewbPasswordEnc ? decryptSecret(row.ewbPasswordEnc).slice(-4) : null,
     // last-4 only, derived server-side — plaintext secrets never leave the box
     clientSecretLast4: decryptSecret(row.clientSecretEnc).slice(-4),
     passwordLast4: decryptSecret(row.passwordEnc).slice(-4),
@@ -268,7 +277,7 @@ export default async function companyRoutes(app: FastifyInstance) {
     const parsed = irpCredsSchema.safeParse(req.body);
     if (!parsed.success) throw bad("Invalid IRP credentials: " + parsed.error.issues[0]?.message);
     const d = parsed.data;
-    const values = {
+    const values: Record<string, unknown> = {
       companyId: id,
       environment: d.environment,
       clientId: d.clientId,
@@ -281,7 +290,18 @@ export default async function companyRoutes(app: FastifyInstance) {
       updatedBy: req.userId as number,
       updatedAt: new Date(),
     };
-    const [row] = await db.insert(irpCredentials).values(values)
+    // R-30: EWB credentials are optional. Pair rule — username and password
+    // go together; when both are omitted the stored pair is left UNTOUCHED
+    // (never silently cleared) on update, and NULL on fresh insert.
+    const ewbUser = (d.ewbUsername ?? "").trim();
+    const ewbPass = (d.ewbPassword ?? "").trim();
+    if (ewbUser && !ewbPass) throw bad("EWB password required together with the EWB username — stored values cannot be read back, so retype it.");
+    if (!ewbUser && ewbPass) throw bad("EWB username required together with the EWB password.");
+    if (ewbUser && ewbPass) {
+      values.ewbUsername = ewbUser;
+      values.ewbPasswordEnc = encryptSecret(ewbPass);
+    }
+    const [row] = await db.insert(irpCredentials).values(values as any)
       .onConflictDoUpdate({ target: [irpCredentials.companyId, irpCredentials.environment], set: values })
       .returning();
     return maskIrpCreds(row);

@@ -3312,5 +3312,154 @@ _tb = tb29 if isinstance(tb29, list) else (tb29.get("rows") or tb29.get("account
 _dr = round(sum(abs(r.get("debit", 0)) for r in _tb), 2); _cr = round(sum(abs(r.get("credit", 0)) for r in _tb), 2)
 check("R29: trial balance balances (no accounting drift)", _dr == _cr, (_dr, _cr))
 
+# ============================================================================
+# R-30: DIRECT EWB GENERATION (non-IRN, B2C) — the NIC EWB-API is a separate
+# portal with its own credentials; direct birth serves EWB-eligible-but-not-
+# IRN-eligible vouchers (B2C sales, Rule 138). Same idempotency model (one
+# accepted/pending row per (voucher, kind='ewaybill')), friendly IRN boundary,
+# honest all-at-once validation, lifecycle ops work on direct-born EWBs.
+# ============================================================================
+print("-- R-30: direct EWB generation (B2C, non-IRN) --")
+
+s, c30 = r03(sA, "POST", "/api/companies", {"name": "R30-Direct-EWB", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R30DIRECT1E2F", "address": "21 Direct Way", "pincode": "411002",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R30: company created", s == 200 and c30.get("id"), (s, str(c30)[:90]))
+C30 = c30["id"]; R30 = f"/api/c/{C30}"
+
+# IRP-only credentials first (NO EWB pair) — proves the missing-creds boundary
+# fires with an actionable message and ZERO wire calls.
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R30: IRP-only credentials saved", s == 200, s)
+
+# fixture: B2C party (NO GSTIN — the whole point) with address/state/pincode
+s, vts30 = r03(sA, "GET", f"{R30}/voucher-types")
+vt30 = {t["name"]: t["id"] for t in (vts30 or [])}
+s, grps30 = r03(sA, "GET", f"{R30}/groups")
+g30 = {g["name"]: g["id"] for g in (grps30 or [])}
+s, sales30 = r03(sA, "POST", f"{R30}/ledgers", {"name": "R30 Sales", "groupId": g30["Sales Accounts"], "taxability": "taxable"})
+s, b2c30 = r03(sA, "POST", f"{R30}/ledgers", {"name": "R30 Walk-in Customer", "groupId": g30["Sundry Debtors"], "billWise": True, "partyAddress": "5 Consumer Lane", "partyState": "Karnataka", "partyPincode": "560002"})
+check("R30: B2C party created (no GSTIN)", s == 200 and b2c30.get("id") and not b2c30.get("gstin"), (s, str(b2c30)[:120]))
+s, units30 = r03(sA, "GET", f"{R30}/units")
+if not any(u.get("symbol") == "NOS" for u in (units30 or [])):
+    r03(sA, "POST", f"{R30}/units", {"name": "Numbers", "symbol": "NOS", "decimalPlaces": 0})
+s, units30 = r03(sA, "GET", f"{R30}/units")
+U30 = next(u["id"] for u in units30 if u["symbol"] == "NOS")
+s, item30 = r03(sA, "POST", f"{R30}/stock-items", {"name": "R30 Gadget", "unitId": U30, "hsnSac": "8471", "gstRate": "18", "openingQty": "30", "openingRate": "800", "openingValue": "24000"})
+s, led30 = r03(sA, "GET", f"{R30}/ledgers")
+gm30 = {l["name"]: l["id"] for l in (led30 or [])}
+s, sale30 = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Sales"], "date": "2026-09-10", "partyLedgerId": b2c30["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales30["id"], "amount": -8000}, {"ledgerId": gm30["IGST"], "amount": -1440}, {"ledgerId": b2c30["id"], "amount": 9440}],
+    "inventoryEntries": [{"itemId": item30["id"], "qty": -10, "rate": 800, "amount": 8000, "hsnSac": "8471", "gstRate": 18}]})
+check("R30: B2C inter-state sale posted", s == 200 and sale30.get("id"), (s, str(sale30)[:120]))
+
+# missing EWB creds: 400 BEFORE any wire call (payload was valid, creds absent)
+s, noCreds = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/generate-direct")
+check("R30: direct birth without EWB creds -> 400 actionable", s == 400 and "EWB-portal credentials" in str(noCreds.get("error", "")), (s, str(noCreds)[:160]))
+stats30a = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R30: missing-creds refusal made ZERO wire calls", stats30a["ewbDirectCalls"] == 0, stats30a)
+
+# pair rule + masked read-back
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R30: EWB username without password -> 400 (pair rule)", s == 400 and "EWB password" in str(_), (s, str(_)[:120]))
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "ewbPassword": "r30ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R30: credentials with EWB pair saved", s == 200, s)
+s, creds30 = r03(sA, "GET", f"/api/companies/{C30}/irp-credentials")
+c30row = next((c for c in (creds30 or []) if c.get("environment") == "sandbox"), {})
+check("R30: masked read-back carries EWB username + last-4 only", c30row.get("ewbUsername") == "r30ewbuser" and c30row.get("ewbPasswordLast4") == "pass" and "ewbPasswordEnc" not in str(c30row), str(c30row)[:200])
+
+# happy path: direct birth on the B2C sale
+s, d30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/generate-direct?vehicleNo=MH30DR1010")
+check("R30: direct birth accepted", s == 200 and d30.get("ok") is True, (s, str(d30)[:160]))
+EWB30 = (d30.get("submission") or {}).get("ewbNo")
+check("R30: EWB number persisted (mock 19-prefix)", bool(EWB30) and str(EWB30).startswith("19"), EWB30)
+stats30b = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R30: exactly one direct wire call", stats30b["ewbDirectCalls"] == 1, stats30b)
+s, dup30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/generate-direct")
+check("R30: duplicate direct birth -> 409 (no resubmit)", s == 409 and dup30.get("duplicate") is True, (s, str(dup30)[:120]))
+stats30c = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R30: duplicate made ZERO wire calls (idempotency holds)", stats30c["ewbDirectCalls"] == 1, stats30c)
+
+# GSTR-1 B2C row now carries the accepted EWB (drives the UI lifecycle cell)
+s, g30r1 = r03(sA, "GET", f"{R30}/reports/gstr1")
+b2cRow = next((r for r in (g30r1.get("b2c") or []) if r.get("voucherId") == sale30["id"]), {})
+check("R30: GSTR-1 B2C row surfaces accepted ewbNo", b2cRow.get("ewbNo") == EWB30, str(b2cRow)[:150])
+
+# honest refusals: non-Sales voucher, party-side gaps, seller-side gaps
+s, _ = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Receipt"], "date": "2026-09-11", "partyLedgerId": b2c30["id"],
+    "entries": [{"ledgerId": b2c30["id"], "amount": 1000}, {"ledgerId": sales30["id"], "amount": -1000}]})
+s, notSales = r03(sA, "POST", f"{R30}/reports/ewaybill/{_['id'] if isinstance(_, dict) else 0}/generate-direct")
+check("R30: direct birth on non-Sales voucher -> 422", s == 422 and "apply to Sales" in str(notSales.get("error", "")), (s, str(notSales)[:140]))
+
+s, noAddr = r03(sA, "POST", f"{R30}/ledgers", {"name": "R30 No-Addr", "groupId": g30["Sundry Debtors"], "partyState": "Karnataka"})
+s, saleNoAddr = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Sales"], "date": "2026-09-11", "partyLedgerId": noAddr["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales30["id"], "amount": -500}, {"ledgerId": gm30["IGST"], "amount": -90}, {"ledgerId": noAddr["id"], "amount": 590}],
+    "inventoryEntries": [{"itemId": item30["id"], "qty": -1, "rate": 500, "amount": 500, "hsnSac": "8471", "gstRate": 18}]})
+s, refAddr = r03(sA, "POST", f"{R30}/reports/ewaybill/{saleNoAddr['id']}/generate-direct")
+check("R30: buyer address missing -> 422 honest refusal", s == 422 and "Buyer address missing" in str(refAddr.get("error", "")), (s, str(refAddr)[:150]))
+
+s, noPin = r03(sA, "POST", f"{R30}/ledgers", {"name": "R30 No-Pin", "groupId": g30["Sundry Debtors"], "partyAddress": "7 St", "partyState": "Karnataka"})
+s, saleNoPin = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Sales"], "date": "2026-09-11", "partyLedgerId": noPin["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales30["id"], "amount": -500}, {"ledgerId": gm30["IGST"], "amount": -90}, {"ledgerId": noPin["id"], "amount": 590}],
+    "inventoryEntries": [{"itemId": item30["id"], "qty": -1, "rate": 500, "amount": 500, "hsnSac": "8471", "gstRate": 18}]})
+s, refPin = r03(sA, "POST", f"{R30}/reports/ewaybill/{saleNoPin['id']}/generate-direct")
+check("R30: buyer pincode missing -> 422 honest refusal", s == 422 and "Buyer pincode missing" in str(refPin.get("error", "")), (s, str(refPin)[:150]))
+
+# seller-side gaps (temporarily blank the company address+pincode; restored below)
+docker_exec("UPDATE companies SET address = NULL, pincode = NULL WHERE id = " + str(C30) + ";")
+s, refSeller = r03(sA, "POST", f"{R30}/reports/ewaybill/{saleNoAddr['id']}/generate-direct")
+check("R30: seller address+pincode missing -> 422 all-at-once", s == 422 and "Seller address missing" in str(refSeller.get("error", "")) and "Seller pincode missing" in str(refSeller.get("error", "")), (s, str(refSeller)[:170]))
+docker_exec("UPDATE companies SET address = '21 Direct Way', pincode = '411002' WHERE id = " + str(C30) + ";")
+
+# IRN boundary: a B2B voucher with an accepted e-invoice must use the IRN path
+s, b2b30 = r03(sA, "POST", f"{R30}/ledgers", {"name": "R30 Registered Buyer", "groupId": g30["Sundry Debtors"], "gstin": "29R30B2BBUY3R4T", "gstRegistrationType": "regular", "billWise": True, "partyAddress": "9 Biz Park", "partyState": "Karnataka", "partyPincode": "560003"})
+s, sale30b = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Sales"], "date": "2026-09-12", "partyLedgerId": b2b30["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales30["id"], "amount": -2000}, {"ledgerId": gm30["IGST"], "amount": -360}, {"ledgerId": b2b30["id"], "amount": 2360}],
+    "inventoryEntries": [{"itemId": item30["id"], "qty": -2, "rate": 1000, "amount": 2000, "hsnSac": "8471", "gstRate": 18}]})
+s, _ = r03(sA, "POST", f"{R30}/reports/einvoice/{sale30b['id']}/submit")
+check("R30: B2B e-invoice accepted (boundary fixture)", s == 200 and _.get("ok") is True, (s, str(_)[:140]))
+s, irnBound = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30b['id']}/generate-direct")
+check("R30: direct birth on IRN-registered voucher -> 400 friendly boundary", s == 400 and "registered IRN" in str(irnBound.get("error", "")), (s, str(irnBound)[:150]))
+
+# lifecycle interplay: ops are row-shaped — they work on the direct-born EWB
+s, veh30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/vehicle", {"vehicleNo": "MH30VE2222", "fromPlace": "Pune", "fromState": "27"})
+check("R30: vehicle update works on direct-born EWB", s == 200 and veh30.get("ok") is True, (s, str(veh30)[:150]))
+s, can30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/cancel", {"reasonCode": "data_entry_mistake", "remark": "direct-born cancel test"})
+check("R30: cancel works on direct-born EWB (24h window)", s == 200 and can30.get("ok") is True, (s, str(can30)[:150]))
+row30 = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C30) + " AND voucher_id = " + str(sale30["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R30: direct-born submission status now 'cancelled'", row30 == "cancelled", row30)
+s, g30r1b = r03(sA, "GET", f"{R30}/reports/gstr1")
+b2cRow2 = next((r for r in (g30r1b.get("b2c") or []) if r.get("voucherId") == sale30["id"]), {})
+check("R30: cancelled EWB disappears from GSTR-1 B2C row (birth re-opens)", b2cRow2.get("ewbNo") is None, str(b2cRow2)[:120])
+s, reb30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/generate-direct?vehicleNo=MH30RB3333")
+check("R30: fresh direct birth after cancel (rebirth path)", s == 200 and reb30.get("ok") is True, (s, str(reb30)[:150]))
+EWB30B = (reb30.get("submission") or {}).get("ewbNo")
+check("R30: reborn EWB number differs (old retired)", EWB30B and EWB30B != EWB30, (EWB30, EWB30B))
+
+# portal rejection surfaces verbatim; the row is 'rejected' (retryable).
+# Fixture note: this sale needs a fully VALID payload (the earlier gap sales
+# 422 at validation before the wire — by design), so a fresh B2C sale with
+# the complete party is used here.
+s, sale30c = r03(sA, "POST", f"{R30}/vouchers", {"voucherTypeId": vt30["Sales"], "date": "2026-09-13", "partyLedgerId": b2c30["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales30["id"], "amount": -500}, {"ledgerId": gm30["IGST"], "amount": -90}, {"ledgerId": b2c30["id"], "amount": 590}],
+    "inventoryEntries": [{"itemId": item30["id"], "qty": -1, "rate": 500, "amount": 500, "hsnSac": "8471", "gstRate": 18}]})
+urllib.request.urlopen(urllib.request.Request(MOCK + "/__failaction", data=json.dumps({"action": "GENEWB"}).encode(), headers={"Content-Type": "application/json"}, method="POST"))
+s, rej30 = r03(sA, "POST", f"{R30}/reports/ewaybill/{sale30c['id']}/generate-direct?vehicleNo=MH30RJ4444")
+check("R30: portal rejection -> 502 with verbatim error", s == 502 and "mock forced failure" in str(rej30.get("error", "")), (s, str(rej30)[:160]))
+row30r = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C30) + " AND voucher_id = " + str(sale30c["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R30: rejected submission recorded (slot re-opens for retry)", row30r == "rejected", row30r)
+
+# authorization: non-member gets 404 on the direct surface (no existence leak)
+s, _ = r03(sB, "POST", f"{R30}/reports/ewaybill/{sale30['id']}/generate-direct")
+check("R30: non-member direct birth -> 404", s == 404, s)
+s, _ = r03(sB, "GET", f"/api/companies/{C30}/irp-credentials")
+check("R30: non-member credentials read -> 404", s == 404, s)
+
+# accounting untouched: TB still balances on the R30 books
+s, tb30 = r03(sA, "GET", f"{R30}/reports/trial-balance")
+_tb30 = tb30 if isinstance(tb30, list) else (tb30.get("rows") or tb30.get("accounts") or [])
+_dr30 = round(sum(abs(r.get("debit", 0)) for r in _tb30), 2); _cr30 = round(sum(abs(r.get("credit", 0)) for r in _tb30), 2)
+check("R30: trial balance balances (no accounting drift)", _dr30 == _cr30, (_dr30, _cr30))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

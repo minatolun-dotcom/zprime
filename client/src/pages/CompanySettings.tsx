@@ -51,8 +51,8 @@ export default function CompanySettings() {
   const [irpMsg, setIrpMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    setIrpForm(current ? { clientId: current.clientId, gstin: current.gstin, username: current.username, publicKeyPem: current.publicKeyPem ?? "", endpointOverride: current.endpointOverride ?? "" } : { clientId: "", gstin: "", username: "", publicKeyPem: "", endpointOverride: "" });
-  }, [current?.clientId, current?.gstin, current?.username, current?.publicKeyPem, current?.endpointOverride, env, creds]);
+    setIrpForm(current ? { clientId: current.clientId, gstin: current.gstin, username: current.username, ewbUsername: current.ewbUsername ?? "", publicKeyPem: current.publicKeyPem ?? "", endpointOverride: current.endpointOverride ?? "" } : { clientId: "", gstin: "", username: "", ewbUsername: "", publicKeyPem: "", endpointOverride: "" });
+  }, [current?.clientId, current?.gstin, current?.username, current?.ewbUsername, current?.publicKeyPem, current?.endpointOverride, env, creds]);
 
   const saveIrp = async () => {
     setIrpMsg(null);
@@ -71,10 +71,14 @@ export default function CompanySettings() {
         username: irpForm.username,
         clientSecret: irpForm.clientSecret,
         password: irpForm.password,
+        // R-30: EWB-portal credentials are OPTIONAL and pair-ruled — both or
+        // neither. Omitted pair = stored pair left untouched server-side.
+        ewbUsername: irpForm.ewbUsername || null,
+        ewbPassword: irpForm.ewbPassword || null,
         publicKeyPem: irpForm.publicKeyPem || null,
         endpointOverride: irpForm.endpointOverride || null,
       });
-      setIrpForm({ ...irpForm, clientSecret: "", password: "" });
+      setIrpForm({ ...irpForm, clientSecret: "", password: "", ewbPassword: "" });
       setIrpMsg({ ok: true, text: `IRP credentials saved (${env}).` });
       qc.invalidateQueries({ queryKey: credsKey });
     } catch (err) {
@@ -154,6 +158,19 @@ export default function CompanySettings() {
           <Field label="Endpoint override (mock/test IRP; production requires it)">
             <input className="w-full" value={irpForm.endpointOverride ?? ""} onChange={(e) => setIrpForm({ ...irpForm, endpointOverride: e.target.value })} placeholder="https://…" />
           </Field>
+        </div>
+        {/* R-30: the EWB system is a SEPARATE portal (ewaybillgst.gov.in) with
+            its own credentials — this pair unlocks DIRECT e-way bill birth for
+            B2C invoices (no IRN). Optional: leave blank for B2B-only (IRN path). */}
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="text-[13px] font-semibold mb-2">EWB portal (direct e-way bills, B2C)</div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="EWB portal username"><input className="w-full" value={irpForm.ewbUsername ?? ""} onChange={(e) => setIrpForm({ ...irpForm, ewbUsername: e.target.value })} /></Field>
+            <Field label={current?.ewbPasswordLast4 ? `EWB portal password (stored: ••••${current.ewbPasswordLast4} — retype to change)` : "EWB portal password (optional)"}>
+              <input className="w-full" type="password" value={irpForm.ewbPassword ?? ""} onChange={(e) => setIrpForm({ ...irpForm, ewbPassword: e.target.value })} autoComplete="new-password" />
+            </Field>
+          </div>
+          <p className="text-[12px] text-slate-500 mt-1">Leave both blank to keep any stored pair unchanged. The EWB-API host is the same endpoint override above (it serves both portals for the mock; production hosts differ).</p>
         </div>
         <div className="flex gap-2 mt-3">
           <button type="button" className="btn-primary" onClick={saveIrp}>Save IRP credentials</button>

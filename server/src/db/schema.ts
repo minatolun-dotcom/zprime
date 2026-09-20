@@ -408,6 +408,13 @@ export const irpCredentials = pgTable("irp_credentials", {
   gstin: text("gstin").notNull(),
   username: text("username").notNull(),
   passwordEnc: text("password_enc").notNull(),
+  // R-30: direct e-way bill generation rides the NIC EWB-API (a SEPARATE
+  // portal from the e-invoice IRP, with its own credentials — the taxpayer's
+  // ewaybillgst.gov.in username/password). Nullable: absent = EWB-from-IRN
+  // only (B2B); present = direct GENEWB also available (B2C). Same GCM
+  // at-rest encryption as the IRP secrets.
+  ewbUsername: text("ewb_username"),
+  ewbPasswordEnc: text("ewb_password_enc"),
   // NIC publishes per-environment public keys (portal download). Operators
   // paste the PEM here (or set IRP_NIC_PUBLIC_KEY env as a default). Never
   // hardcoded in source.

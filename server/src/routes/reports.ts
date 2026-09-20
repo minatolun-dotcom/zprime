@@ -13,7 +13,7 @@ import { gstr1, gstr3b } from "../services/gst.js";
 import { eInvoicePayload } from "../services/einvoice.js";
 import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
 import { gstr9 } from "../services/gstr9.js";
-import { submitEInvoice, submitEwayBillFromIrn, submissionHistory, updateEwbVehicle, extendEwbValidity, cancelEwb } from "../services/irp.js";
+import { submitEInvoice, submitEwayBillFromIrn, generateEwbDirect, submissionHistory, updateEwbVehicle, extendEwbValidity, cancelEwb } from "../services/irp.js";
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -216,6 +216,36 @@ export default async function reportRoutes(app: FastifyInstance) {
       const msg = result.duplicate
         ? "Already submitted (accepted or in-flight) — refusing to resubmit."
         : irpErrorMessage(result.irpErrors);
+      reply.code(code);
+      return { ...result, error: msg };
+    }
+    reply.code(code);
+    return result;
+  });
+
+  // R-30: DIRECT e-way bill generation (no IRN — B2C). Same partB query
+  // contract and the same honest mapping as the IRN path; the service owns
+  // the friendly IRN-exists boundary and the idempotency, so the route is a
+  // thin cid-gated adapter — identical to every other submission route.
+  app.post("/ewaybill/:voucherId/generate-direct", async (req, reply) => {
+    const c = await cid(req);
+    const vid = parseInt((req.params as any).voucherId, 10);
+    if (!Number.isFinite(vid) || vid <= 0) throw bad("Invalid voucher");
+    const q = req.query as any;
+    const partB: Record<string, unknown> = {};
+    if (q.vehicleNo) partB.vehicleNo = q.vehicleNo;
+    if (q.transMode) partB.transMode = q.transMode;
+    if (q.transDocNo) partB.transDocNo = q.transDocNo;
+    if (q.transDocDate) partB.transDocDate = q.transDocDate;
+    if (q.transporterName) partB.transporterName = q.transporterName;
+    const result = await generateEwbDirect(c, vid, req.userId as number, partB, submitEnv(req));
+    const code = result.ok ? 200 : result.validationErrors ? 422 : result.duplicate ? 409 : 502;
+    if (!result.ok) {
+      const msg = result.duplicate
+        ? "Already submitted (accepted or in-flight) — refusing to resubmit."
+        : result.validationErrors
+          ? result.validationErrors.join(" · ")
+          : irpErrorMessage(result.irpErrors);
       reply.code(code);
       return { ...result, error: msg };
     }

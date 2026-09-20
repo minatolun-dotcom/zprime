@@ -4,13 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.29.0
+
+- **Version:** 1.29.0
+- **Commit:** (recorded at release)
+- **Purpose:** R-30 — direct e-way bills, non-IRN, B2C (approved Option B): migration 0014 (additive `ewb_username`/`ewb_password_enc` on `irp_credentials` — the NIC EWB-API is a separate portal with its own credentials; NULL = EWB-from-IRN only, the pre-R-30 behavior), `services/ewaybill.ts` `ewaybillDirectPayload()` (NIC v1.03 shape — DD/MM/YYYY, mandatory address/pincode blocks, head-split item rates; buyer GSTIN legitimately optional; Sales-only; honest all-at-once refusals), `services/irp.ts` EWB-portal session (own AUTHTOK/SEK cache namespace, fail-fast without an endpoint override) + `generateEwbDirect()` (friendly IRN boundary; shared `(voucher, kind='ewaybill')` idempotency makes double-birth structurally impossible; verbatim rejected/error rows), route `POST /reports/ewaybill/:voucherId/generate-direct` (cid-gated, honest 422/400/409/502), credentials EWB pair rule + masked last-4, CompanySettings EWB section, GSTR-1 B2C direct **ewb** birth action → **veh/ext/can** lifecycle on born rows (`gstr1()` B2C rows surface accepted `ewbNo`), mock `/v1.03/auth` + `/v1.03/ewayapi` under the self-keyed sidecar. GENIRN/GENEWB-from-IRN paths byte-unchanged. No accounting-math change.
+- **Verification:** 1150/1150 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 868 incl. 32 R-30, attack-the-fixes 29); 371/371 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r30 scenarios = 218, r30 17/17); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-20.
+
 ## v1.28.0
 
 - **Version:** 1.28.0
-- **Commit:** the v1.28.0 release commit (annotated tag `v1.28.0` → commit verified at release; a release commit cannot contain its own SHA — the annotated tag is the permanent pointer)
+- **Commit:** `a1b7d9bb0f6a5ce1c323dd260b3152f17c80b7c0` (annotated tag `817fcac9c63db874715c808042d5d0b8587f04ae` → commit verified at release)
 - **Purpose:** R-29 — EWB lifecycle ops (approved Option A), completing the loop R-28 opened: migration 0013 (additive `irp_ewb_ops` verbatim per-op ledger + `irp_submissions.status` extended to `'accepted' | 'cancelled'`), `services/irp.ts` `updateEwbVehicle`/`extendEwbValidity`/`cancelEwb` with every guard fired **before** any network call (extend: 8h-before/after-expiry window + once per EWB **ever** via the ops ledger; cancel: 24-h window + mandatory remark; on cancel success the accepted row flips to `'cancelled'` — fresh GENEWB required afterwards, row retained verbatim as the legal record), 3 cid-gated routes with honest 422/409/502 mapping, GSTR-1 **veh/ext/can** lifecycle actions + **ewb-gen** birth button, mock IRP lifecycle verbs (`__expire` window simulation) self-keyed as a compose test-profile sidecar (host port 3299), app `extra_hosts` host-gateway. GENIRN/GENEWB paths byte-unchanged. No accounting-math change.
 - **Verification:** 1118/1118 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 836 incl. 32 R-29, attack-the-fixes 29); 354/354 browser (rebuilt image + fresh volume, 14/14 migration rows, `irp_ewb_ops` live; run.js 153 + r03…r29 scenarios = 201, r29 14/14 — full lifecycle through the real UI); typecheck server + client clean.
-- **Immutable: YES** — pushed to origin 2026-09-19 (`main` = release commit, tag verified via ls-remote).
+- **Immutable: YES** — pushed to origin 2026-09-19 (`main` = `a1b7d9b`, tag object `817fcac` verified via ls-remote).
 
 ## v1.27.0
 

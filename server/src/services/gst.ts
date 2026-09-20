@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
-import { companies, ledgers, vouchers, voucherEntries, inventoryEntries, stockItems, voucherTypes, units } from "../db/schema.js";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { companies, ledgers, vouchers, voucherEntries, inventoryEntries, stockItems, voucherTypes, units, irpSubmissions } from "../db/schema.js";
+import { and, eq, gte, lte, inArray } from "drizzle-orm";
 import { num, r2 } from "../lib/util.js";
 
 export interface VoucherGst {
@@ -213,6 +213,23 @@ export async function gstr1(companyId: number, from: string, to: string) {
   const notes = outward.filter((v) => v.isNote);
   const b2b = supplies.filter((v) => v.partyGstin);
   const b2c = supplies.filter((v) => !v.partyGstin);
+  // R-30: surface the accepted e-way bill (IRN-born or direct-born — the
+  // submission row is birth-path-agnostic) so the B2C table can render the
+  // lifecycle actions exactly like the B2B one. Report-only join; no
+  // accounting effect.
+  if (b2c.length > 0) {
+    const ewbRows = await db
+      .select({ voucherId: irpSubmissions.voucherId, ewbNo: irpSubmissions.ewbNo })
+      .from(irpSubmissions)
+      .where(and(
+        eq(irpSubmissions.companyId, companyId),
+        eq(irpSubmissions.kind, "ewaybill"),
+        eq(irpSubmissions.status, "accepted"),
+        inArray(irpSubmissions.voucherId, b2c.map((v) => v.voucherId)),
+      ));
+    const ewbByVoucher = new Map(ewbRows.map((r) => [r.voucherId, r.ewbNo]));
+    for (const v of b2c) (v as any).ewbNo = ewbByVoucher.get(v.voucherId) ?? null;
+  }
   const magnitude = (v: VoucherGst): VoucherGst => ({
     ...v,
     taxable: Math.abs(v.taxable), igst: Math.abs(v.igst), cgst: Math.abs(v.cgst),

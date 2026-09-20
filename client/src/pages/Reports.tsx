@@ -592,6 +592,25 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       setEinvMsg({ ok: false, text: e?.message ?? "submission failed" });
     }
   };
+  // R-30: DIRECT e-way bill birth (no IRN — B2C). Vehicle is the one
+  // operator-known input; leaving it empty births the EWB Part-B-empty and
+  // the vehicle attaches later through the lifecycle action. Errors surface
+  // verbatim: address/pincode gaps as readable 422s, duplicate refusals,
+  // portal ErrorDetails on rejection.
+  const ewbDirect = async (voucherId: number, number: string) => {
+    setEinvMsg(null);
+    const vehicleNo = window.prompt(`Vehicle number for the e-way bill on ${number} (optional — leave empty to attach it later):`, "");
+    try {
+      const q = vehicleNo ? `?vehicleNo=${encodeURIComponent(vehicleNo)}` : "";
+      const res: any = await post(`/api/c/${cid}/reports/ewaybill/${voucherId}/generate-direct${q}`, {});
+      if (res.ok && res.submission) {
+        const s = res.submission;
+        setEinvMsg({ ok: true, text: `e-way bill (direct) accepted for ${number}` + (s.ewbNo ? ` — EWB ${s.ewbNo}` : "") });
+      }
+    } catch (e: any) {
+      setEinvMsg({ ok: false, text: e?.message ?? "direct generation failed" });
+    }
+  };
   // R-29: EWB lifecycle ops against the ACCEPTED e-way bill (opt-in, same
   // credentials as R-28). Every outcome surfaces verbatim on the banner —
   // NIC rejections included; eager guards (extend-once, 24h cancel window)
@@ -646,6 +665,25 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
         <button className="link text-[12px]" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ewb-ext</button>
         {" "}
         <button className="link text-[12px]" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">ewb-can</button>
+      </td>
+    ) : null;
+  // R-30: B2C rows carry the direct-birth action until an EWB exists, then
+  // the same lifecycle actions as B2B rows (the ops are row-shaped).
+  const b2cCell = (v: any) =>
+    cid ? (
+      <td className="w-56 whitespace-nowrap">
+        {v.ewbNo ? (
+          <>
+            <span className="text-[12px] text-slate-500" title="Accepted e-way bill">EWB {v.ewbNo}</span>{" "}
+            <button className="link text-[12px]" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">veh</button>
+            {" "}
+            <button className="link text-[12px]" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ext</button>
+            {" "}
+            <button className="link text-[12px]" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">can</button>
+          </>
+        ) : (
+          <button className="link text-[12px]" onClick={() => ewbDirect(v.voucherId, v.number)} title="Generate an e-way bill directly from this invoice (no IRN — requires Company Settings → EWB portal credentials)">ewb</button>
+        )}
       </td>
     ) : null;
   const NoteTable = ({ rows, gstin }: { rows: any[]; gstin: boolean }) => (
@@ -704,12 +742,13 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">B2C (unregistered consumers)</div>
         <table className="report-table">
           <thead><tr><th className="w-24">Date</th><th className="w-24">Invoice</th><th>Party</th>
-            <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th></tr></thead>
+            <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-56">E-way bill</th></tr></thead>
           <tbody>
             {data.b2c.map((v: any) => (
               <tr key={v.voucherId}>
                 <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName ?? "—"}</td>
                 <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
+                {b2cCell(v)}
               </tr>
             ))}
           </tbody>

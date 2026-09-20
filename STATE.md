@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-19 (R-29 EWB lifecycle ops IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol. Working tree contains the R-29 changes: migration 0013 additive `irp_ewb_ops` + `status='cancelled'`, `services/irp.ts` VEHEWB/EXTENDVALIDITY/CANEWB with eager pre-network guards, 3 cid-gated routes, GSTR-1 lifecycle actions + ewb-gen birth button, mock IRP lifecycle + self-keyed sidecar, +32 Python / +14 browser checks; 1118/1118 automated + 354/354 browser. v1.27.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.)
+**Last updated:** 2026-09-20 — **R-30 direct e-way bills (non-IRN, B2C) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol** (approved Option B: migration 0014 additive `ewb_username`/`ewb_password_enc` on `irp_credentials`, `ewaybillDirectPayload()` NIC v1.03 shape with honest address/pincode validation, EWB-portal session + `generateEwbDirect()` with the shared `(voucher, kind='ewaybill')` idempotency and friendly IRN boundary, `generate-direct` route, CompanySettings EWB section, GSTR-1 B2C direct birth + lifecycle actions; 1150/1150 automated + 371/371 browser). v1.28.0 (`a1b7d9b`) remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

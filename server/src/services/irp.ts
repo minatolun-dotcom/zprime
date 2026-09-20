@@ -32,6 +32,7 @@ import { and, eq, lt } from "drizzle-orm";
 import crypto from "node:crypto";
 import { decryptSecret, encryptSecret, irpKeyFromEnv } from "../lib/crypto.js";
 import { eInvoicePayload } from "./einvoice.js";
+import { ewaybillDirectPayload, EwaybillParams } from "./ewaybill.js";
 
 const PENDING_STALE_MS = 10 * 60 * 1000;
 
@@ -41,6 +42,9 @@ export type IrpStatus = "pending" | "accepted" | "rejected" | "error" | "cancell
 interface IrpCredsRow {
   id: number; companyId: number; environment: string; clientId: string;
   clientSecretEnc: string; gstin: string; username: string; passwordEnc: string;
+  // R-30: EWB-portal credentials (a SEPARATE portal from the e-invoice IRP).
+  // Nullable — absent = EWB-from-IRN only (B2B), the pre-R-30 behavior.
+  ewbUsername: string | null; ewbPasswordEnc: string | null;
   publicKeyPem: string | null; endpointOverride: string | null;
 }
 
@@ -73,6 +77,22 @@ function baseUrl(creds: IrpCredsRow): string {
   );
 }
 
+// R-30: the NIC EWB-API is a DIFFERENT system (v1.03) with no stable,
+// NIC-published sandbox constant we could verify — so unlike the IRP base
+// URL there is no default: sandbox AND production require an explicit
+// endpoint override (the mock sidecar in CI — it speaks BOTH URL families
+// under one host; the operator's GSP/NIC EWB-API host in the field).
+// Fail-fast beats guessing a hostname. Documented limitation: production
+// IRP and EWB hosts share the single override field today.
+function ewbBaseUrl(creds: IrpCredsRow): string {
+  if (creds.endpointOverride && creds.endpointOverride.trim() !== "") return creds.endpointOverride.replace(/\/+$/, "");
+  throw new Error(
+    "Direct e-way bill connectivity requires an explicit endpoint override in Company Settings " +
+      "(the EWB-API host differs from the e-invoice IRP and has no zprime default) — point it at " +
+      "your GSP/NIC EWB-API host or the mock for testing.",
+  );
+}
+
 async function irpFetch(creds: IrpCredsRow, path: string, init: RequestInit): Promise<any> {
   let res: Response;
   try {
@@ -82,6 +102,20 @@ async function irpFetch(creds: IrpCredsRow, path: string, init: RequestInit): Pr
   }
   const body = await res.json().catch(() => null);
   if (body === null) throw new Error(`IRP returned non-JSON HTTP ${res.status}`);
+  return body;
+}
+
+// R-30: same transport, EWB base URL (distinct portal). Error text names the
+// EWB system so an unreachable host is diagnosable at a glance.
+async function ewbFetch(creds: IrpCredsRow, path: string, init: RequestInit): Promise<any> {
+  let res: Response;
+  try {
+    res = await fetch(ewbBaseUrl(creds) + path, init);
+  } catch (e: any) {
+    throw new Error(`EWB-API unreachable (${e?.message ?? e})`);
+  }
+  const body = await res.json().catch(() => null);
+  if (body === null) throw new Error(`EWB-API returned non-JSON HTTP ${res.status}`);
   return body;
 }
 
@@ -147,6 +181,85 @@ async function irpAction(creds: IrpCredsRow, action: string, payload: unknown, p
     throw Object.assign(new Error(`IRP action ${action} failed`), { irpErrors: body.ErrorDetails ?? [{ ErrorMessage: `HTTP-level failure (Status ${body.Status})` }] });
   }
   return decryptResponse(sess.sek, body.Data);
+}
+
+// ---- R-30: EWB-portal session (NIC EWB-API v1.03 — a SEPARATE portal) ----
+// Same RSA/AES choreography as the IRP but its own credentials (the
+// taxpayer's ewaybillgst.gov.in username/password), own authtoken/SEK, own
+// cache namespace. Casing is tolerated across the wire because v1.03
+// mirrors disagree (MasterGST/Vayana vs NIC PDF) — the mock emits the
+// lowercase form.
+interface EwbSession { authtoken: string; sek: Buffer; appKey: Buffer; expiry: number }
+const ewbSessions = new Map<string, EwbSession>(); // `ewb:${credsId}`
+
+export function _clearEwbSessions(): void { ewbSessions.clear(); }
+
+function ewbDecryptSek(appKey: Buffer, b64: string): Buffer {
+  const d = crypto.createDecipheriv("aes-256-ecb", appKey, null);
+  return Buffer.concat([d.update(Buffer.from(b64, "base64")), d.final()]);
+}
+
+async function ewbAuthenticate(creds: IrpCredsRow): Promise<EwbSession> {
+  if (!creds.ewbUsername || !creds.ewbPasswordEnc) {
+    throw Object.assign(
+      new Error("Direct e-way bills need EWB-portal credentials (the EWB system is separate from the e-invoice IRP) — add the EWB username/password in Company Settings."),
+      { statusCode: 400 },
+    );
+  }
+  const appKey = crypto.randomBytes(32);
+  const pub = creds.publicKeyPem?.trim()
+    ? creds.publicKeyPem
+    : process.env.EWB_NIC_PUBLIC_KEY?.trim() ?? process.env.IRP_NIC_PUBLIC_KEY?.trim() ?? "";
+  if (!pub) throw new Error("No EWB public key configured (Company Settings public key or EWB_NIC_PUBLIC_KEY env).");
+  const reqBody = {
+    action: "AUTHTOK",
+    gstin: creds.gstin,
+    username: creds.ewbUsername,
+    password: rsaEncrypt(pub, Buffer.from(decryptSecret(creds.ewbPasswordEnc), "utf8")),
+    appkey: rsaEncrypt(pub, appKey),
+  };
+  const body = await ewbFetch(creds, "/v1.03/auth", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(reqBody),
+  });
+  const status = body.status ?? body.Status;
+  const token = body.authtoken ?? body.Authtoken;
+  const sekB64 = body.sek ?? body.Sek;
+  if (Number(status) !== 1 || !token || !sekB64) {
+    const err = body.errorDetails ?? body.ErrorDetails ?? [{ errorMessage: `EWB auth failed (HTTP Status ${status})` }];
+    throw Object.assign(new Error("EWB-portal authentication failed"), { irpErrors: err });
+  }
+  const hours = typeof body.expInHrs === "number" ? body.expInHrs : 6; // v1.03 AUTHTOK: 6 h
+  const sess: EwbSession = { authtoken: token, sek: ewbDecryptSek(appKey, sekB64), appKey, expiry: Date.now() + hours * 3600_000 - 5 * 60_000 };
+  ewbSessions.set(`ewb:${creds.id}`, sess);
+  return sess;
+}
+
+async function ewbSession(creds: IrpCredsRow): Promise<EwbSession> {
+  const cur = ewbSessions.get(`ewb:${creds.id}`);
+  if (cur && cur.expiry > Date.now()) return cur;
+  return ewbAuthenticate(creds);
+}
+
+async function ewbAction(creds: IrpCredsRow, action: string, payload: unknown, path = "/v1.03/ewayapi"): Promise<any> {
+  const sess = await ewbSession(creds);
+  const body = await ewbFetch(creds, path, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      gstin: creds.gstin,
+      username: creds.ewbUsername ?? "",
+      authtoken: sess.authtoken,
+    },
+    body: JSON.stringify({ action, payload: encryptPayload(sess.sek, payload) }),
+  });
+  const status = body.status ?? body.Status;
+  const data = body.data ?? body.Data;
+  if (Number(status) !== 1 || !data) {
+    throw Object.assign(new Error(`EWB action ${action} failed`), {
+      irpErrors: body.errorDetails ?? body.ErrorDetails ?? body.info ?? [{ errorMessage: `HTTP-level failure (Status ${status})` }],
+    });
+  }
+  return decryptResponse(sess.sek, data);
 }
 
 // ---------- idempotency ----------
@@ -266,6 +379,74 @@ export async function submitEwayBillFromIrn(
     }).where(eq(irpSubmissions.id, rowId)).returning();
     return { ok: accepted, irpErrors: accepted ? undefined : updated[0].error, submission: maskSubmission(updated[0]) };
   } catch (e: any) {
+    const rejected = Array.isArray(e?.irpErrors);
+    const updated = await db.update(irpSubmissions).set({ status: rejected ? "rejected" : "error", error: { message: e?.message ?? String(e), irpErrors: e?.irpErrors ?? null } }).where(eq(irpSubmissions.id, rowId)).returning();
+    return { ok: false, irpErrors: e?.irpErrors ?? e?.message, submission: maskSubmission(updated[0]) };
+  }
+}
+
+// ---- R-30: DIRECT e-way bill generation (NIC EWB-API v1.03, non-IRN) ----
+// For EWB-eligible-but-not-IRN-eligible vouchers (B2C sales): the e-invoice
+// path demands a buyer GSTIN, Rule 138 does not. Same idempotency model as
+// every submission: one (voucher, kind='ewaybill') accepted/pending row,
+// enforced by the DB partial uniques — a direct-born EWB and an IRN-born EWB
+// are the same kind, so one voucher can never carry two EWBs.
+export async function generateEwbDirect(
+  companyId: number, voucherId: number, requestedBy: number, partB: EwaybillParams, env = "sandbox",
+): Promise<SubmitResult> {
+  await resolveStalePending(voucherId, "ewaybill");
+  const block = await existingBlocking(voucherId, "ewaybill");
+  if (block) return { ok: false, duplicate: true, submission: maskSubmission(block) };
+
+  // Friendly boundary: if the voucher already rides an IRN, the EWB must be
+  // born from it (Part-A is derived server-side there). Direct is for the
+  // rest — the structural guard is the shared kind, this is the message.
+  const einv = await existingBlocking(voucherId, "e-invoice");
+  if (einv && einv.status === "accepted" && einv.irn) {
+    throw Object.assign(new Error("This voucher has a registered IRN — generate the e-way bill from it (ewb-gen)."), { statusCode: 400 });
+  }
+
+  const payload = await ewaybillDirectPayload(companyId, voucherId, partB);
+  if (!payload.ok || !payload.payload) {
+    return { ok: false, validationErrors: payload.errors };
+  }
+
+  const creds = await loadCreds(companyId, env);
+  if (!creds.ewbUsername || !creds.ewbPasswordEnc) {
+    throw Object.assign(
+      new Error("Direct e-way bills need EWB-portal credentials (Company Settings → EWB portal section) — the EWB system is separate from the e-invoice IRP."),
+      { statusCode: 400 },
+    );
+  }
+
+  const inserted = await db
+    .insert(irpSubmissions)
+    .values({ companyId, voucherId, kind: "ewaybill", status: "pending", requestedBy })
+    .onConflictDoNothing()
+    .returning();
+  if (inserted.length === 0) {
+    const block2 = await existingBlocking(voucherId, "ewaybill");
+    return { ok: false, duplicate: true, submission: block2 ? maskSubmission(block2) : undefined };
+  }
+  const rowId = inserted[0].id;
+  try {
+    // v1.03 response: { ewayBillNo, ewayBillDate, validUpto, alert } — the
+    // EwbNo alias is tolerated defensively (mirror casing varies).
+    const resp = (await ewbAction(creds, "GENEWB", payload.payload)) as any;
+    const ewbNo = resp.ewayBillNo ?? resp.EwbNo ?? null;
+    const accepted = ewbNo != null;
+    const updated = await db.update(irpSubmissions).set({
+      status: accepted ? "accepted" : "rejected",
+      ewbNo: accepted ? String(ewbNo) : null,
+      ewbValidUntil: resp.validUpto ?? resp.ValidUpto ?? null,
+      response: resp,
+      error: accepted ? null : (resp.errorDetails ?? resp.ErrorDetails ?? [{ errorMessage: "EWB-API did not return an e-way bill number" }]),
+    }).where(eq(irpSubmissions.id, rowId)).returning();
+    return { ok: accepted, irpErrors: accepted ? undefined : updated[0].error, submission: maskSubmission(updated[0]) };
+  } catch (e: any) {
+    // Same split as every submission: a business rejection from the portal
+    // (Status 0 + error details) = 'rejected' — fix and retry; a transport/
+    // decryption failure = 'error' — zprime-side problem. Verbatim either way.
     const rejected = Array.isArray(e?.irpErrors);
     const updated = await db.update(irpSubmissions).set({ status: rejected ? "rejected" : "error", error: { message: e?.message ?? String(e), irpErrors: e?.irpErrors ?? null } }).where(eq(irpSubmissions.id, rowId)).returning();
     return { ok: false, irpErrors: e?.irpErrors ?? e?.message, submission: maskSubmission(updated[0]) };
