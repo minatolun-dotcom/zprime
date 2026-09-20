@@ -1,6 +1,19 @@
 # Changelog
 
-## v1.30.0 — R-31 EWB lifecycle birth-path routing
+## v1.31.0 — R-32 IRP/EWB production onboarding runbook
+
+R-32 implements the approved Option A scope: the operator-facing path to production connectivity. No schema change, no server code change, no accounting surface — docs-first with one honest client help note.
+
+- **New `ONBOARDING_IRP_EWB.md`** — the full runbook: prerequisites (portal API access for the IRP and the separate EWB system; per-portal credentials; public-key sourcing with the PEM conversion command; `IRP_ENC_KEY` generation + boot fail-fast + disaster-recovery warning), the host table (sandbox IRP built-in default; production IRP and the EWB-API always from the operator's IRP/GSP via the endpoint override), per-environment Company Settings setup (masked read-back + retype rule), an 8-step sandbox first-submit walkthrough (e-invoice → IRN → ewb-gen → direct B2C EWB → veh/ext/can lifecycle), the NIC error-code decode table (3001/3011/4002 validation, 3095 duplicate-hour, 3105 cancel-window, 3120 extend-once, 382 expiry, transport failures), credential rotation/revocation, and where the legal records live.
+- **README** gains an "e-Invoice & e-Way Bill connectivity (optional)" pointer section (≤10 lines, links the runbook).
+- **PROJECT.md truth-pass** to v1.30.0 reality: GST section now documents CDNR/CDNUR (R-05), RCM (R-23), GSTR-9 (R-26); new **Connectivity** section (R-24…R-31: stateless payloads, live submission, direct B2C EWBs, lifecycle with birth-path routing, records, mock); Payroll & TDS section gains TCS (R-27); Reports list gains the R-14/R-18/R-20/R-23 additions; XML import updated to the R-04 resolved state; scope boundaries corrected (e-invoice/EWB/GSTR-9/audit moved from OUT OF SCOPE to IMPLEMENTED; genuine gaps listed); verification counts updated to 1171 + 386.
+- **CompanySettings** connectivity card gains a compact host-facts help note (sandbox IRP default; production IRP + EWB-API from the override; runbook pointer) — text only, no behavior change.
+- **Tests:** `final_regression.py` +4 R-32 grounding checks (**893**) — the runbook exists and names both portals + the sandbox host + `IRP_ENC_KEY` as DR-relevant; README carries the runbook pointer. File-level, no server round-trips.
+- **Verification (final tree):** Python **1175/1175** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **893** incl. 4 R-32, attack-the-fixes 29); browser **386/386** on a rebuilt image + fresh volume (run.js 153/153 + r03…r31 = 233 scenario checks — the settings text change disturbs no locators); typecheck server + client clean; `git diff --check` clean.
+
+## v1.30.0 — R-31 EWB lifecycle birth-path routing (RELEASED)
+
+> Commit `7d916e4d63303ee266ba6d7e3ddf818ec878de1a` · annotated tag `9b31910a0b2926981f04c9b9c3eacf22c86aa45b` · pushed 2026-09-20.
 
 R-31 implements the approved Option A scope: lifecycle ops (vehicle update / validity extension / cancellation) now address the NIC system the EWB was **born** on — IRN-born EWBs ride the e-invoice system (eivital v1.10), direct-born EWBs (R-30, B2C) ride the EWB-API (v1.03). Closes R-30's one documented limitation; no migration, no schema change, no accounting surface, no UI change.
 

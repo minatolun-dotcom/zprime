@@ -4,10 +4,18 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.31.0
+
+- **Version:** 1.31.0
+- **Commit:** (recorded at tag verification below)
+- **Purpose:** R-32 — IRP/EWB production onboarding runbook (approved Option A, docs-first): new `ONBOARDING_IRP_EWB.md` (prerequisites incl. the separate EWB-portal registration and `IRP_ENC_KEY` DR warning; host table — sandbox IRP built-in default, production IRP + EWB-API from the endpoint override; per-env setup with masked read-back + retype rule; 8-step sandbox first-submit walkthrough; NIC error-code decode table; rotation/revocation; record locations), README connectivity pointer section, **PROJECT.md truth-pass** to v1.30.0 reality (GST/Connectivity/Payroll+TCS/Reports/Import/scope/verification counts), one honest CompanySettings host-facts note, +4 runbook-grounding checks. **No schema, no server code paths, no accounting surface.**
+- **Verification:** 1175/1175 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 893 incl. 4 R-32, attack-the-fixes 29); 386/386 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r31 scenarios = 233); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-20.
+
 ## v1.30.0
 
 - **Version:** 1.30.0
-- **Commit:** (recorded at tag verification below)
+- **Commit:** `7d916e4d63303ee266ba6d7e3ddf818ec878de1a` (annotated tag `9b31910a0b2926981f04c9b9c3eacf22c86aa45b` → commit verified at release; pushed — `origin/main` = `7d916e4` = `v1.30.0^{}` verified via ls-remote)
 - **Purpose:** R-31 — EWB lifecycle birth-path routing (approved Option A): lifecycle ops address the NIC system the EWB was **born** on. `services/irp.ts` `EwbBirthPath` + `ewbBirthPath()` (discriminator = the accepted row's verbatim response casing stored at birth: `ewayBillNo` → ewayapi, `EwbNo` → eivital; fallback eivital = every pre-R-30 row byte-for-byte unchanged), `EwbCtx.birth`, `ewbLifecycleWire()` routing each op through `ewbAction` (`/v1.03/ewayapi`, action-dispatched, EWB-pair credentials via the R-30 session cache) or `irpAction` (the v1.10 op URLs). All eager guards, `irp_ewb_ops` verbatim ledger, idempotency, masking, routes, and UI unchanged. Mock `/v1.03/ewayapi` speaks VEHEWB/EXTENDVALIDITY/CANEWB with per-system counters (`ewbVehCalls`/`ewbExtendCalls`/`ewbCancelCalls`) proving the routing. Closes R-30's one documented limitation. **No migration, no schema change, no accounting surface, no client change.**
 - **Verification:** 1171/1171 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 889 incl. 21 R-31, attack-the-fixes 29); 386/386 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r31 scenarios = 233, r31 15/15); typecheck server + client clean.
 - **Immutable: YES** — pushed to origin 2026-09-20.

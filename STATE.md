@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-20 — **R-31 (EWB lifecycle birth-path routing) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Lifecycle ops address the NIC system the EWB was born on (IRN-born → eivital v1.10, direct-born → EWB-API v1.03) via response-casing discrimination; mock speaks the v1.03 lifecycle verbs with per-system counters; 1171/1171 automated + 386/386 browser. Working tree contains the R-31 changes; v1.29.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-20 — **R-32 (IRP/EWB production onboarding runbook) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** New `ONBOARDING_IRP_EWB.md` runbook + README pointer + PROJECT.md truth-pass to v1.30.0 reality + settings host-facts note + 4 grounding checks (1175/1175 automated + 386/386 browser). Working tree contains the R-32 changes; v1.30.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,13 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-31 (implemented 2026-09-20, holding at RELEASE_REVIEW): EWB lifecycle birth-path routing
+### R-32 (implemented 2026-09-20, holding at RELEASE_REVIEW): IRP/EWB production onboarding runbook
+
+Investigation (`R-32_INVESTIGATION.md`) established the R-28…R-31 connectivity stack as machine-complete but operator-blind: README never mentioned connectivity; PROJECT.md still listed e-invoice/EWB/RCM/TCS/GSTR-9 as absent (stale by ten releases); no onboarding doc, error-code decode, or rotation procedure existed. Not a defect — R-28's documented out-of-scope line becoming the highest-value work.
+
+Implemented per approved **Option A (docs-first, no schema/server change)**: new `ONBOARDING_IRP_EWB.md` (prerequisites incl. the separate EWB-portal registration and `IRP_ENC_KEY` DR warning; host table — sandbox IRP built-in default, production IRP + EWB-API from the endpoint override; per-env setup with masked read-back + retype rule; 8-step sandbox first-submit walkthrough; NIC error-code decode table; rotation/revocation; record locations), README pointer section, **PROJECT.md truth-pass** (GST/Connectivity/Payroll+TCS/Reports/Import/scope/verification counts — every stale claim corrected against the R-05…R-31 changelog), one honest settings host-facts note, +4 runbook-grounding checks. Python **1175/1175** (final regression **893**); browser **386/386** (fresh volume — settings text disturbs no locators); typecheck clean. No accounting surface.
+
+### R-31 (released as v1.30.0, 2026-09-20): EWB lifecycle birth-path routing
 
 Investigation (`R-31_INVESTIGATION.md`) source-traced R-30's documented limitation on v1.29.0: all three R-29 lifecycle ops hard-bound the **eivital** endpoints regardless of birth path — correct when every EWB was IRN-born, but a direct-born (B2C) EWB legally lives on the **EWB-API v1.03**, a separate portal whose credentials/session machinery R-30 already built. The mock collapses both systems under one host, so CI could not see the mismatch. Not a regression — a production-fidelity gap.
 

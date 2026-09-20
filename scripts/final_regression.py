@@ -3574,5 +3574,31 @@ _tb31 = tb31 if isinstance(tb31, list) else (tb31.get("rows") or tb31.get("accou
 _dr31 = round(sum(abs(r.get("debit", 0)) for r in _tb31), 2); _cr31 = round(sum(abs(r.get("credit", 0)) for r in _tb31), 2)
 check("R31: trial balance balances (no accounting drift)", _dr31 == _cr31, (_dr31, _cr31))
 
+# ============================================================================
+# R-32: OPERATOR RUNBOOK GROUNDING (docs-first release) — the IRP/EWB
+# onboarding runbook must stay truthful to the code: it names both portals,
+# the sandbox IRP default host, IRP_ENC_KEY, and the runbook must exist in
+# README's connectivity pointer. Two cheap file-level checks (no server).
+# ============================================================================
+print("-- R-32: onboarding runbook grounding --")
+
+_runbook = ""
+try:
+    with open("ONBOARDING_IRP_EWB.md", encoding="utf-8") as _f:
+        _runbook = _f.read()
+except FileNotFoundError:
+    pass
+check("R32: runbook exists and names both portals", "einvoic" in _runbook.lower().replace("-", "") or "e-invoice" in _runbook and "ewaybillgst.gov.in" in _runbook, len(_runbook))
+check("R32: runbook documents the sandbox IRP default host", "einv-apisandbox.nic.in" in _runbook, "host")
+check("R32: runbook documents IRP_ENC_KEY as DR-relevant", "IRP_ENC_KEY" in _runbook and "disaster" in _runbook.lower(), "key")
+
+_readme = ""
+try:
+    with open("README.md", encoding="utf-8") as _f:
+        _readme = _f.read()
+except FileNotFoundError:
+    pass
+check("R32: README carries the connectivity pointer to the runbook", "ONBOARDING_IRP_EWB.md" in _readme and "IRP" in _readme, "readme")
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

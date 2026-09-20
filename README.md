@@ -108,6 +108,13 @@ This exact round-trip is regression-guarded by the test suite (`R-12` block in `
 
 **Whole-volume alternative:** to snapshot everything (including volume metadata), stop the stack and copy the named volume, e.g. `docker run --rm -v zprime_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/pgdata.tgz -C /data .` — restore by reversing the copy into a fresh volume. Prefer `pg_dump` for version-safe, human-readable backups.
 
+## e-Invoice & e-Way Bill connectivity (optional)
+
+zprime can submit e-invoices and e-way bills to NIC directly (R-28+): B2B e-invoice → IRN, e-way bill from IRN, direct e-way bills for B2C (no IRN), and the full EWB lifecycle (vehicle/extend/cancel). Without credentials, payload **generate + download** works as always.
+
+- Enable API access on the NIC portals (e-invoice IRP and — for direct EWBs — the separate EWB system), collect credentials + public key, set `IRP_ENC_KEY` in `.env` (`openssl rand -base64 32`), then configure per company in **Company Settings → IRP / e-Way Bill Connectivity** (sandbox/production rows, masked read-back).
+- Full runbook — hosts, first-submit walkthrough, NIC error-code decode, rotation, backup notes: **[`ONBOARDING_IRP_EWB.md`](ONBOARDING_IRP_EWB.md)**.
+
 ## Notes & limits
 
 - GST reports are management summaries (not e-filing JSON); TDS is deduction/payable tracking without challan e-file formats.

@@ -142,6 +142,12 @@ export default function CompanySettings() {
             </button>
           ))}
         </div>
+        {/* R-32: the three host facts an operator needs — the sandbox IRP has a
+            built-in default; production IRP and the EWB-API always come from
+            the operator's IRP/GSP. Full runbook: ONBOARDING_IRP_EWB.md. */}
+        <p className="text-[12px] text-slate-500 mb-3">
+          Hosts: sandbox IRP defaults to einv-apisandbox.nic.in — production IRP and the EWB-API (separate portal) have no default and are taken from the endpoint override (your IRP/GSP's documented host). Setup, first-submit walkthrough and error decode: <span className="font-mono">ONBOARDING_IRP_EWB.md</span> in the repository.
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Client ID"><input className="w-full" value={irpForm.clientId ?? ""} onChange={(e) => setIrpForm({ ...irpForm, clientId: e.target.value })} /></Field>
           <Field label="GSTIN (for this credential set)"><input className="w-full" value={irpForm.gstin ?? ""} onChange={(e) => setIrpForm({ ...irpForm, gstin: e.target.value.toUpperCase() })} maxLength={15} /></Field>
