@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-20 — **R-30 direct e-way bills (non-IRN, B2C) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol** (approved Option B: migration 0014 additive `ewb_username`/`ewb_password_enc` on `irp_credentials`, `ewaybillDirectPayload()` NIC v1.03 shape with honest address/pincode validation, EWB-portal session + `generateEwbDirect()` with the shared `(voucher, kind='ewaybill')` idempotency and friendly IRN boundary, `generate-direct` route, CompanySettings EWB section, GSTR-1 B2C direct birth + lifecycle actions; 1150/1150 automated + 371/371 browser). v1.28.0 (`a1b7d9b`) remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-20 — **R-31 (EWB lifecycle birth-path routing) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Lifecycle ops address the NIC system the EWB was born on (IRN-born → eivital v1.10, direct-born → EWB-API v1.03) via response-casing discrimination; mock speaks the v1.03 lifecycle verbs with per-system counters; 1171/1171 automated + 386/386 browser. Working tree contains the R-31 changes; v1.29.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,13 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-**All six releases are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
+### R-31 (implemented 2026-09-20, holding at RELEASE_REVIEW): EWB lifecycle birth-path routing
+
+Investigation (`R-31_INVESTIGATION.md`) source-traced R-30's documented limitation on v1.29.0: all three R-29 lifecycle ops hard-bound the **eivital** endpoints regardless of birth path — correct when every EWB was IRN-born, but a direct-born (B2C) EWB legally lives on the **EWB-API v1.03**, a separate portal whose credentials/session machinery R-30 already built. The mock collapses both systems under one host, so CI could not see the mismatch. Not a regression — a production-fidelity gap.
+
+Implemented per approved **Option A (birth-path routing, no migration)**: `ewbBirthPath()` derives the system from the accepted row's verbatim response casing stored at birth (`ewayBillNo` → ewayapi, `EwbNo` → eivital; fallback eivital = every pre-R-30 row byte-for-byte unchanged); `ewbLifecycleWire()` routes each op through `ewbAction` (`/v1.03/ewayapi`, action-dispatched, EWB-pair credentials) or `irpAction` (v1.10 op URLs). All eager guards, ops ledger, idempotency, error mapping, and UI unchanged. Mock speaks the v1.03 lifecycle verbs with per-system counters so suites prove the routing, not just the happy path. Regression: final_regression 868 → **889** (+21 R-31 checks); Python **1171/1171**; browser **386/386** (run.js 153 + r03…r31 = 233 scenario checks, new `r31_ui.js` 15/15 — lifecycle-identical UX on both birth paths); typecheck clean; fresh Docker volume healthy. No accounting surface, no schema change.
+
+**All releases through v1.29.0 are tagged and immutable: v1.0.0 (483), v1.1.0 (622), v1.1.1 (711), v1.2.0 (790), v1.3.0 (821), and v1.4.0 (860 = 686 Python + 174 browser) — R-03 was released as v1.3.0, commit `38637c14f4e2eea4054385f9f006545b69c7a519`; R-04 (import integrity: B-03+B-05+B-13+B-14) was released as v1.4.0 — see RELEASES.md for the full ledger and commit SHAs. The working tree is clean at the v1.5.0 release commit; `R-05_INVESTIGATION.md` and the workflow docs are part of the release record. R-05 is committed and tagged. `ZLEDGER_PRODUCTION_ACTION_PLAN.md` remains intentionally untracked (historical audit input).**
 
 ### R-09 (P1 deploy-dependent confirmed → released as v1.9.0, 2026-09-16): fail-fast deployment secrets ⚠ BREAKING
 

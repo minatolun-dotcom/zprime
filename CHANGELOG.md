@@ -1,6 +1,15 @@
 # Changelog
 
-## v1.29.0 — R-30 direct e-way bills (non-IRN, B2C) — HOLDING AT RELEASE_REVIEW
+## v1.30.0 — R-31 EWB lifecycle birth-path routing
+
+R-31 implements the approved Option A scope: lifecycle ops (vehicle update / validity extension / cancellation) now address the NIC system the EWB was **born** on — IRN-born EWBs ride the e-invoice system (eivital v1.10), direct-born EWBs (R-30, B2C) ride the EWB-API (v1.03). Closes R-30's one documented limitation; no migration, no schema change, no accounting surface, no UI change.
+
+- **Server (`services/irp.ts`):** `EwbBirthPath` + `ewbBirthPath()` — the discriminator is the accepted row's verbatim response casing stored at birth (`ewayBillNo` → ewayapi, `EwbNo` → eivital; fallback eivital keeps every pre-R-30 row byte-for-byte). `ewbLifecycleWire()` routes each op through `ewbAction` (`/v1.03/ewayapi`, action-dispatched, EWB-pair credentials via the R-30 session cache) or `irpAction` (the v1.10 op URLs) — all eager guards, the ops ledger, idempotency, and error mapping unchanged.
+- **Test infra:** mock `/v1.03/ewayapi` speaks `VEHEWB`/`EXTENDVALIDITY`/`CANEWB` (lowercase envelope, same once-ever and 24-h-window rules) and exposes per-system counters (`ewbVehCalls`/`ewbExtendCalls`/`ewbCancelCalls`) so the suites **prove the routing**, not just the happy path.
+- **Tests:** `final_regression.py` +21 R-31 checks (**889**) — per-path routing proof for vehicle and extension, eager once-ever guard with zero wire calls on the v1.03 path, verbatim NIC 24-h-window rejection leaving the submission untouched, legal cancel + ops-ledger rows + rebirth, non-member 404, TB-still-balances; new `scripts/acceptance/r31_ui.js` (**15** checks) proving through the real UI that IRN-born (B2B) and direct-born (B2C) rows are lifecycle-identical: actions, banners, cancel, birth re-opening.
+- **Verification (final tree):** Python **1171/1171** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **889** incl. 21 R-31, attack-the-fixes 29); browser **386/386** on a rebuilt image + fresh volume, every suite exactly once (run.js 153/153 + r03…r31 = 233 scenario checks, r31 15/15); typecheck server + client clean; `git diff --check` clean.
+
+## v1.29.0 — R-30 direct e-way bills (non-IRN, B2C)
 
 R-30 implements the approved Option B scope: **direct** GENEWB via the NIC EWB-API (a separate portal with its own credentials) for EWB-eligible-but-not-IRN-eligible vouchers — the B2C invoice, where Rule 138 requires an e-way bill for consignments above ₹50,000 but no e-invoice can exist. One additive migration; no accounting-math change; GENIRN/GENEWB-from-IRN paths byte-unchanged.
 
@@ -11,6 +20,7 @@ R-30 implements the approved Option B scope: **direct** GENEWB via the NIC EWB-A
 - **Tests:** `final_regression.py` +32 R-30 checks (**868**) — missing-creds 400 with zero wire calls, pair rule, masked read-back, happy path, duplicate 409 with zero wire calls, non-Sales/buyer-gap/seller-gap 422s, IRN boundary, lifecycle interplay on direct-born EWBs, cancel/rebirth, portal rejection verbatim, non-member 404s, TB-still-balances; new `scripts/acceptance/r30_ui.js` (**17** checks) driving settings + the full birth/lifecycle cycle through the real UI.
 - **Verification (final tree):** Python **1150/1150** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **868** incl. 32 R-30, attack-the-fixes 29); browser **371/371** on a rebuilt image + fresh volume, every suite exactly once (run.js 153/153 + r03…r30 = 218 scenario checks, r30 17/17); typecheck server + client clean; `git diff --check` clean.
 - **Documented limitation:** the endpoint override is shared between the IRP and EWB-API paths (the mock serves both URL families; production hosts differ), and lifecycle ops for direct-born EWBs ride the R-29 routes — verified against the mock; production EWB-API lifecycle variants belong to the next connectivity increment.
+- **Release:** commit `da9e2c4` — `Release v1.29.0: direct e-way bills (non-IRN, B2C)`, annotated tag `v1.29.0` (tag object `065c605`), pushed to origin 2026-09-20.
 
 ## v1.28.0 — R-29 EWB lifecycle ops (vehicle / extend / cancel)
 

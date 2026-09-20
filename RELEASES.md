@@ -4,10 +4,18 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.30.0
+
+- **Version:** 1.30.0
+- **Commit:** (recorded at tag verification below)
+- **Purpose:** R-31 — EWB lifecycle birth-path routing (approved Option A): lifecycle ops address the NIC system the EWB was **born** on. `services/irp.ts` `EwbBirthPath` + `ewbBirthPath()` (discriminator = the accepted row's verbatim response casing stored at birth: `ewayBillNo` → ewayapi, `EwbNo` → eivital; fallback eivital = every pre-R-30 row byte-for-byte unchanged), `EwbCtx.birth`, `ewbLifecycleWire()` routing each op through `ewbAction` (`/v1.03/ewayapi`, action-dispatched, EWB-pair credentials via the R-30 session cache) or `irpAction` (the v1.10 op URLs). All eager guards, `irp_ewb_ops` verbatim ledger, idempotency, masking, routes, and UI unchanged. Mock `/v1.03/ewayapi` speaks VEHEWB/EXTENDVALIDITY/CANEWB with per-system counters (`ewbVehCalls`/`ewbExtendCalls`/`ewbCancelCalls`) proving the routing. Closes R-30's one documented limitation. **No migration, no schema change, no accounting surface, no client change.**
+- **Verification:** 1171/1171 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 889 incl. 21 R-31, attack-the-fixes 29); 386/386 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r31 scenarios = 233, r31 15/15); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-20.
+
 ## v1.29.0
 
 - **Version:** 1.29.0
-- **Commit:** (recorded at release)
+- **Commit:** `da9e2c480e8c4c41cff8378dfa836076af604a2c` (annotated tag `065c605830649285e9f1b1c54c2f3dcd909f6511` → commit verified at release)
 - **Purpose:** R-30 — direct e-way bills, non-IRN, B2C (approved Option B): migration 0014 (additive `ewb_username`/`ewb_password_enc` on `irp_credentials` — the NIC EWB-API is a separate portal with its own credentials; NULL = EWB-from-IRN only, the pre-R-30 behavior), `services/ewaybill.ts` `ewaybillDirectPayload()` (NIC v1.03 shape — DD/MM/YYYY, mandatory address/pincode blocks, head-split item rates; buyer GSTIN legitimately optional; Sales-only; honest all-at-once refusals), `services/irp.ts` EWB-portal session (own AUTHTOK/SEK cache namespace, fail-fast without an endpoint override) + `generateEwbDirect()` (friendly IRN boundary; shared `(voucher, kind='ewaybill')` idempotency makes double-birth structurally impossible; verbatim rejected/error rows), route `POST /reports/ewaybill/:voucherId/generate-direct` (cid-gated, honest 422/400/409/502), credentials EWB pair rule + masked last-4, CompanySettings EWB section, GSTR-1 B2C direct **ewb** birth action → **veh/ext/can** lifecycle on born rows (`gstr1()` B2C rows surface accepted `ewbNo`), mock `/v1.03/auth` + `/v1.03/ewayapi` under the self-keyed sidecar. GENIRN/GENEWB-from-IRN paths byte-unchanged. No accounting-math change.
 - **Verification:** 1150/1150 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 868 incl. 32 R-30, attack-the-fixes 29); 371/371 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r30 scenarios = 218, r30 17/17); typecheck server + client clean.
 - **Immutable: YES** — pushed to origin 2026-09-20.

@@ -3461,5 +3461,118 @@ _tb30 = tb30 if isinstance(tb30, list) else (tb30.get("rows") or tb30.get("accou
 _dr30 = round(sum(abs(r.get("debit", 0)) for r in _tb30), 2); _cr30 = round(sum(abs(r.get("credit", 0)) for r in _tb30), 2)
 check("R30: trial balance balances (no accounting drift)", _dr30 == _cr30, (_dr30, _cr30))
 
+# ============================================================================
+# R-31: BIRTH-PATH ROUTING for EWB lifecycle ops — a lifecycle op must address
+# the NIC system the EWB was BORN on: IRN-born → eivital v1.10, direct-born
+# (R-30, B2C) → EWB-API v1.03. Discriminator = the accepted row's verbatim
+# response casing (ewayBillNo vs EwbNo). The mock exposes PER-SYSTEM counters
+# so the suite PROVES the routing (each birth path hits its own wire), not
+# just the happy path. No migration, no accounting surface.
+# ============================================================================
+print("-- R-31: lifecycle birth-path routing (eivital vs ewayapi) --")
+
+s, c31 = r03(sA, "POST", "/api/companies", {"name": "R31-Birth-Path", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R31BIRTHP4T5U", "address": "3 Router Lane", "pincode": "411003",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R31: company created", s == 200 and c31.get("id"), (s, str(c31)[:90]))
+C31 = c31["id"]; R31 = f"/api/c/{C31}"
+
+# full credentials: IRP pair AND EWB pair (both systems in play)
+s, _ = r03(sA, "PUT", f"/api/companies/{C31}/irp-credentials", {"environment": "sandbox", "clientId": "r31client", "clientSecret": "r31sekret99", "gstin": "27R31BIRTHP4T5U", "username": "r31user", "password": "r31pass123", "ewbUsername": "r31ewbuser", "ewbPassword": "r31ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+check("R31: full credentials (IRP + EWB pair) saved", s == 200, s)
+
+s, vts31 = r03(sA, "GET", f"{R31}/voucher-types")
+vt31 = {t["name"]: t["id"] for t in (vts31 or [])}
+s, grps31 = r03(sA, "GET", f"{R31}/groups")
+g31 = {g["name"]: g["id"] for g in (grps31 or [])}
+s, sales31 = r03(sA, "POST", f"{R31}/ledgers", {"name": "R31 Sales", "groupId": g31["Sales Accounts"], "taxability": "taxable"})
+s, gm31 = r03(sA, "POST", f"{R31}/ledgers", {"name": "R31 IGST Out", "groupId": g31["Duties & Taxes"], "dutyHead": "IGST"})
+s, units31 = r03(sA, "GET", f"{R31}/units")
+if not any(u["symbol"] == "NOS" for u in (units31 or [])):
+    r03(sA, "POST", f"{R31}/units", {"name": "Numbers", "symbol": "NOS", "decimalPlaces": 0})
+    s, units31 = r03(sA, "GET", f"{R31}/units")
+U31 = next(u["id"] for u in units31 if u["symbol"] == "NOS")
+s, item31 = r03(sA, "POST", f"{R31}/stock-items", {"name": "R31 Widget", "unitId": U31, "hsnSac": "8471", "gstRate": "18", "openingQty": "20", "openingRate": "900", "openingValue": "18000"})
+
+# ---- IRN-born EWB (eivital): B2B sale → e-invoice → GENEWB-from-IRN ----
+s, b2b31 = r03(sA, "POST", f"{R31}/ledgers", {"name": "R31 B2B Buyer", "groupId": g31["Sundry Debtors"], "gstin": "29R31B2BBUY5R6S", "gstRegistrationType": "regular", "billWise": True, "partyAddress": "4 Corp Ave", "partyState": "Karnataka", "partyPincode": "560004"})
+s, sale31i = r03(sA, "POST", f"{R31}/vouchers", {"voucherTypeId": vt31["Sales"], "date": "2026-09-14", "partyLedgerId": b2b31["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales31["id"], "amount": -1500}, {"ledgerId": gm31["id"], "amount": -270}, {"ledgerId": b2b31["id"], "amount": 1770}],
+    "inventoryEntries": [{"itemId": item31["id"], "qty": -1, "rate": 1500, "amount": 1500, "hsnSac": "8471", "gstRate": 18}]})
+s, einv31 = r03(sA, "POST", f"{R31}/reports/einvoice/{sale31i['id']}/submit")
+check("R31: B2B e-invoice accepted (IRN-born fixture)", s == 200 and einv31.get("ok") is True, (s, str(einv31)[:140]))
+s, ewb31i = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31i['id']}/submit?vehicleNo=MH31IR0000")
+check("R31: EWB born from IRN (eivital birth)", s == 200 and ewb31i.get("ok") is True, (s, str(ewb31i)[:140]))
+
+# vehicle op on the IRN-born EWB must hit the EIVITAL wire ONLY
+st31a = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+s, veh31i = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31i['id']}/vehicle", {"vehicleNo": "MH31IR1111", "fromPlace": "Pune", "fromState": "27"})
+st31b = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R31: vehicle op on IRN-born EWB -> 200", s == 200 and veh31i.get("ok") is True, (s, str(veh31i)[:140]))
+check("R31: IRN-born vehicle op rode eivital (vehewbCalls +1, ewbVehCalls +0)",
+      st31b["vehewbCalls"] == st31a["vehewbCalls"] + 1 and st31b["ewbVehCalls"] == st31a["ewbVehCalls"],
+      (st31a["vehewbCalls"], st31b["vehewbCalls"], st31a["ewbVehCalls"], st31b["ewbVehCalls"]))
+
+# ---- direct-born EWB (ewayapi): B2C sale → direct GENEWB ----
+s, b2c31 = r03(sA, "POST", f"{R31}/ledgers", {"name": "R31 Walk-in", "groupId": g31["Sundry Debtors"], "partyAddress": "6 Bazaar Rd", "partyState": "Karnataka", "partyPincode": "560005"})
+s, sale31d = r03(sA, "POST", f"{R31}/vouchers", {"voucherTypeId": vt31["Sales"], "date": "2026-09-15", "partyLedgerId": b2c31["id"], "placeOfSupply": "Karnataka",
+    "entries": [{"ledgerId": sales31["id"], "amount": -800}, {"ledgerId": gm31["id"], "amount": -144}, {"ledgerId": b2c31["id"], "amount": 944}],
+    "inventoryEntries": [{"itemId": item31["id"], "qty": -1, "rate": 800, "amount": 800, "hsnSac": "8471", "gstRate": 18}]})
+s, ewb31d = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/generate-direct?vehicleNo=MH31DR2222")
+check("R31: direct EWB born (ewayapi birth)", s == 200 and ewb31d.get("ok") is True, (s, str(ewb31d)[:140]))
+
+# vehicle op on the direct-born EWB must hit the V1.03 wire ONLY
+st31c = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+s, veh31d = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/vehicle", {"vehicleNo": "MH31DV3333", "fromPlace": "Pune", "fromState": "27"})
+st31d = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R31: vehicle op on direct-born EWB -> 200", s == 200 and veh31d.get("ok") is True, (s, str(veh31d)[:140]))
+check("R31: direct-born vehicle op rode v1.03 (ewbVehCalls +1, vehewbCalls +0)",
+      st31d["ewbVehCalls"] == st31c["ewbVehCalls"] + 1 and st31d["vehewbCalls"] == st31c["vehewbCalls"],
+      (st31c["ewbVehCalls"], st31d["ewbVehCalls"], st31c["vehewbCalls"], st31d["vehewbCalls"]))
+
+# extend on the v1.03 path: first succeeds on the ewayapi wire, second is
+# refused by the EAGER once-ever guard (ZERO wire calls)
+st31e = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+s, ext31 = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/extend", {"reasonCode": "others", "remainFrom": "Satara", "remainFromState": "27", "remainingDistance": 120})
+st31f = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R31: extension on direct-born EWB -> 200 via v1.03", s == 200 and ext31.get("ok") is True, (s, str(ext31)[:140]))
+check("R31: extension rode v1.03 (ewbExtendCalls +1, extendCalls +0)",
+      st31f["ewbExtendCalls"] == st31e["ewbExtendCalls"] + 1 and st31f["extendCalls"] == st31e["extendCalls"],
+      (st31e["ewbExtendCalls"], st31f["ewbExtendCalls"], st31e["extendCalls"], st31f["extendCalls"]))
+s, ext31b = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/extend", {"reasonCode": "others", "remainFrom": "Satara", "remainFromState": "27", "remainingDistance": 100})
+st31g = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
+check("R31: second extension -> eager 422 (once-ever guard on v1.03 path)", s == 422 and "Only one extension" in str(ext31b.get("validationErrors", "")), (s, str(ext31b)[:150]))
+check("R31: refused second extension made ZERO wire calls", st31g["ewbExtendCalls"] == st31f["ewbExtendCalls"], (st31f["ewbExtendCalls"], st31g["ewbExtendCalls"]))
+
+# legal cancel FIRST (fresh EWB, inside the window): flips to cancelled, ops row recorded, rebirth opens
+s, can31 = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/cancel", {"reasonCode": "data_entry_mistake", "remark": "r31 v1.03 cancel"})
+check("R31: legal cancel on direct-born EWB -> 200", s == 200 and can31.get("ok") is True, (s, str(can31)[:140]))
+row31 = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C31) + " AND voucher_id = " + str(sale31d["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R31: direct-born submission status now 'cancelled'", row31 == "cancelled", row31)
+ops31 = docker_exec("SELECT count(*) FROM irp_ewb_ops o JOIN irp_submissions s ON s.id = o.submission_id WHERE s.company_id = " + str(C31) + " AND s.voucher_id = " + str(sale31d["id"]) + " AND o.op IN ('vehewb','extend','cancel');")
+check("R31: ops ledger rows recorded for v1.03-path ops (veh+extend+cancel)", int(ops31) >= 3, ops31)
+s, reb31 = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/generate-direct?vehicleNo=MH31RB4444")
+check("R31: fresh direct birth after v1.03 cancel (rebirth)", s == 200 and reb31.get("ok") is True, (s, str(reb31)[:140]))
+
+# NIC-side 24h window surfaces verbatim on the v1.03 path too — force-age the
+# REBORN EWB (its own ewbNo; the expired set in the mock is per-ewbNo), then
+# cancel must refuse on the wire and change nothing.
+urllib.request.urlopen(urllib.request.Request(MOCK + "/__expire", data=json.dumps({"ewbNo": (reb31.get("submission") or {}).get("ewbNo")}).encode(), headers={"Content-Type": "application/json"}, method="POST"))
+s, can31x = r03(sA, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/cancel", {"reasonCode": "duplicate", "remark": "expired on the wire"})
+check("R31: cancel past 24h on v1.03 -> 502 verbatim NIC error", s == 502 and ("24 hours" in str(can31x.get("error", "")) or "elapsed" in str(can31x.get("error", ""))), (s, str(can31x)[:160]))
+# the row must STILL be accepted (the wire refused; nothing changed)
+row31x = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C31) + " AND voucher_id = " + str(sale31d["id"]) + " AND kind = 'ewaybill' ORDER BY id DESC LIMIT 1;")
+check("R31: refused cancel left the submission accepted", row31x == "accepted", row31x)
+
+# authorization: non-member lifecycle on the direct-born EWB -> 404
+s, _ = r03(sB, "POST", f"{R31}/reports/ewaybill/{sale31d['id']}/vehicle", {"vehicleNo": "MH31XX0000"})
+check("R31: non-member vehicle op -> 404", s == 404, s)
+
+# accounting untouched: TB still balances on the R31 books
+s, tb31 = r03(sA, "GET", f"{R31}/reports/trial-balance")
+_tb31 = tb31 if isinstance(tb31, list) else (tb31.get("rows") or tb31.get("accounts") or [])
+_dr31 = round(sum(abs(r.get("debit", 0)) for r in _tb31), 2); _cr31 = round(sum(abs(r.get("credit", 0)) for r in _tb31), 2)
+check("R31: trial balance balances (no accounting drift)", _dr31 == _cr31, (_dr31, _cr31))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

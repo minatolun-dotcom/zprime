@@ -35,7 +35,7 @@ const priv = privKeyPath
   ? crypto.createPrivateKey(fs.readFileSync(privKeyPath, "utf8"))
   : crypto.createPrivateKey(crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs1", format: "pem" }));
 
-const stats = { authCalls: 0, genirnCalls: 0, genewbCalls: 0, vehewbCalls: 0, extendCalls: 0, cancelCalls: 0, ewbAuthCalls: 0, ewbDirectCalls: 0 };
+const stats = { authCalls: 0, genirnCalls: 0, genewbCalls: 0, vehewbCalls: 0, extendCalls: 0, cancelCalls: 0, ewbAuthCalls: 0, ewbDirectCalls: 0, ewbVehCalls: 0, ewbExtendCalls: 0, ewbCancelCalls: 0 };
 const sessions = new Map(); // authtoken → { sek: Buffer }
 const rejectNext = new Set(); // invoice numbers to reject once
 const failAction = new Map(); // action → pending IRP-style failure (one shot)
@@ -181,6 +181,38 @@ const server = http.createServer(async (req, res) => {
   // registered so the R-29 lifecycle ops work on direct-born EWBs too
   // (they are row-shaped, not birth-path-shaped).
   if (req.url === "/v1.03/ewayapi") {
+    // ---- R-31: lifecycle verbs on the v1.03 wire (direct-born EWBs must
+    // ride THEIR OWN system end-to-end; the suite asserts via these counters
+    // that each birth path hits its own wire) ----
+    if (json.action === "VEHEWB") {
+      stats.ewbVehCalls++;
+      if (failAndClear("VEHEWB")) return;
+      if (!payload?.ewbNo) return send(200, { status: "0", errorDetails: [{ errorCode: "4002", errorMessage: "ewbNo required" }] });
+      if (!payload?.vehicleNo) return send(200, { status: "0", errorDetails: [{ errorCode: "3001", errorMessage: "vehicleNo required" }] });
+      return send(200, { status: "1", data: ecbEnc(sess.sek, { infoDtls: [{ infCd: "VEH", desc: { vehicleNo: payload.vehicleNo } }], warnDtls: [] }) });
+    }
+    if (json.action === "EXTENDVALIDITY") {
+      stats.ewbExtendCalls++;
+      if (failAndClear("EXTENDVALIDITY")) return;
+      if (!payload?.ewbNo) return send(200, { status: "0", errorDetails: [{ errorCode: "4002", errorMessage: "ewbNo required" }] });
+      if (extended.has(payload.ewbNo)) return send(200, { status: "0", errorDetails: [{ errorCode: "3120", errorMessage: "E-way bill already extended once — extension not allowed" }] });
+      if (!payload?.remainingDistance || payload.remainingDistance <= 0) return send(200, { status: "0", errorDetails: [{ errorCode: "3011", errorMessage: "remainingDistance required" }] });
+      extended.add(payload.ewbNo);
+      return send(200, { status: "1", data: ecbEnc(sess.sek, { validUpto: "2026-09-22 23:59:00", warnDtls: [] }) });
+    }
+    if (json.action === "CANEWB") {
+      stats.ewbCancelCalls++;
+      if (failAndClear("CANEWB")) return;
+      if (!payload?.ewbNo) return send(200, { status: "0", errorDetails: [{ errorCode: "4002", errorMessage: "ewbNo required" }] });
+      if (!payload?.remark) return send(200, { status: "0", errorDetails: [{ errorCode: "3012", errorMessage: "remark required" }] });
+      if (expired.has(payload.ewbNo)) return send(200, { status: "0", errorDetails: [{ errorCode: "3105", errorMessage: "Cannot cancel — 24 hours have elapsed since generation" }] });
+      const born = ewbBornAt.get(payload.ewbNo) ?? Date.now();
+      if (Date.now() - born > 24 * 60 * 60 * 1000) return send(200, { status: "0", errorDetails: [{ errorCode: "3105", errorMessage: "Cannot cancel — 24 hours have elapsed since generation" }] });
+      return send(200, { status: "1", data: ecbEnc(sess.sek, { canFlag: "Y", cancellingTime: new Date().toISOString() }) });
+    }
+    // ---- R-30: direct GENEWB (non-IRN) — lowercase envelope, ewbBornAt
+    // registered so the lifecycle ops work on direct-born EWBs too
+    // (they are row-shaped, not birth-path-shaped).
     if (json.action === "GENEWB") {
       stats.ewbDirectCalls++;
       if (failAndClear("GENEWB")) return;

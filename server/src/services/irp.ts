@@ -471,7 +471,31 @@ export async function submissionHistory(companyId: number, voucherId?: number) {
 const EWB_EXTEND_REASONS = ["vehicle_breakdown", "law_and_order", "accident", "natural_calamity", "transshipment", "others"];
 const EWB_CANCEL_REASONS = ["duplicate", "data_entry_mistake", "order_cancelled", "others"];
 
-interface EwbCtx { creds: IrpCredsRow; ewbRow: any; ewbNo: string }
+interface EwbCtx { creds: IrpCredsRow; ewbRow: any; ewbNo: string; birth: EwbBirthPath }
+
+// ---- R-31: birth-path routing ----
+// A lifecycle op must address the NIC system the EWB was BORN on: IRN-born
+// EWBs live on the e-invoice system (eivital v1.10), direct-born EWBs (R-30,
+// B2C) live on the EWB-API (v1.03) — separate portals, separate credentials.
+// The discriminator is the accepted row's verbatim response casing, stored at
+// birth: `ewayBillNo` (v1.03 lowercase) vs `EwbNo` (v1.10 PascalCase). Every
+// pre-R-30 row (IRN-born by definition) falls back to eivital — byte-for-byte
+// the pre-R-31 behavior.
+type EwbBirthPath = "eivital" | "ewayapi";
+function ewbBirthPath(ewbRow: any): EwbBirthPath {
+  const r = ewbRow?.response ?? {};
+  return r.ewayBillNo != null ? "ewayapi" : "eivital";
+}
+
+/** Wire + path for a lifecycle op on the EWB's own birth system. eivital ops
+ *  each own a URL; v1.03 dispatches everything through /v1.03/ewayapi with
+ *  `action` carrying the verb (exactly how GENEWB worked at birth). */
+async function ewbLifecycleWire(
+  ctx: EwbCtx, action: string, payload: unknown, eivitalPath: string,
+): Promise<any> {
+  if (ctx.birth === "ewayapi") return ewbAction(ctx.creds, action, payload, "/v1.03/ewayapi");
+  return irpAction(ctx.creds, action, payload, eivitalPath);
+}
 
 async function loadAcceptedEwb(companyId: number, voucherId: number, env: string): Promise<EwbCtx> {
   const rows = await db
@@ -483,8 +507,10 @@ async function loadAcceptedEwb(companyId: number, voucherId: number, env: string
     throw Object.assign(new Error("No accepted e-way bill for this voucher — generate one first (GSTR-1 → ewb)."), { statusCode: 400 });
   }
   // Credentials resolve per (company, env) exactly as GENEWB did at birth —
-  // the routes pass the operator's active environment through.
-  return { creds: await loadCreds(companyId, env), ewbRow, ewbNo: String(ewbRow.ewbNo) };
+  // the routes pass the operator's active environment through. The EWB-pair
+  // check happens inside ewbAction when the birth path is ewayapi (a direct-
+  // born EWB cannot exist without those credentials, but fail fast anyway).
+  return { creds: await loadCreds(companyId, env), ewbRow, ewbNo: String(ewbRow.ewbNo), birth: ewbBirthPath(ewbRow) };
 }
 
 async function recordEwbOp(companyId: number, submissionId: number, requestedBy: number, op: string, request: unknown, patch: { response?: unknown; error?: unknown }) {
@@ -505,7 +531,7 @@ function opError(e: any): { ok: false; irpErrors?: unknown; error?: string; subm
 export async function updateEwbVehicle(
   companyId: number, voucherId: number, requestedBy: number, partB: Record<string, unknown>, env = "sandbox",
 ): Promise<SubmitResult> {
-  const { creds, ewbRow, ewbNo } = await loadAcceptedEwb(companyId, voucherId, env);
+  const { creds, ewbRow, ewbNo, birth } = await loadAcceptedEwb(companyId, voucherId, env);
   const vehicleNo = String(partB.vehicleNo ?? "").trim();
   if (!vehicleNo) return { ok: false, validationErrors: ["vehicleNo is required"] };
   if (partB.transMode && String(partB.transMode).toLowerCase() !== "road") {
@@ -515,7 +541,7 @@ export async function updateEwbVehicle(
   const inserted = await db.insert(irpEwbOps).values({ companyId, submissionId: ewbRow.id, op: "vehewb", request: req as any, requestedBy }).returning();
   const opId = inserted[0].id;
   try {
-    const resp = (await irpAction(creds, "VEHEWB", req, "/eivital/v1.10/vehewb")) as any;
+    const resp = (await ewbLifecycleWire({ creds, ewbRow, ewbNo, birth }, "VEHEWB", req, "/eivital/v1.10/vehewb")) as any;
     await db.update(irpEwbOps).set({ response: resp }).where(eq(irpEwbOps.id, opId));
     return { ok: true, submission: maskSubmission({ ...ewbRow, response: resp }) };
   } catch (e: any) {
@@ -530,7 +556,7 @@ export async function updateEwbVehicle(
 export async function extendEwbValidity(
   companyId: number, voucherId: number, requestedBy: number, args: Record<string, unknown>, env = "sandbox",
 ): Promise<SubmitResult> {
-  const { creds, ewbRow, ewbNo } = await loadAcceptedEwb(companyId, voucherId, env);
+  const { creds, ewbRow, ewbNo, birth } = await loadAcceptedEwb(companyId, voucherId, env);
   const reasonCode = String(args.reasonCode ?? "");
   const remainFrom = String(args.remainFrom ?? "").trim();
   if (!EWB_EXTEND_REASONS.includes(reasonCode)) return { ok: false, validationErrors: [`reasonCode must be one of: ${EWB_EXTEND_REASONS.join(", ")}`] };
@@ -553,7 +579,7 @@ export async function extendEwbValidity(
   const inserted = await db.insert(irpEwbOps).values({ companyId, submissionId: ewbRow.id, op: "extend", request: req as any, requestedBy }).returning();
   const opId = inserted[0].id;
   try {
-    const resp = (await irpAction(creds, "EXTENDVALIDITY", req, "/eivital/v1.10/extendvalidity")) as any;
+    const resp = (await ewbLifecycleWire({ creds, ewbRow, ewbNo, birth }, "EXTENDVALIDITY", req, "/eivital/v1.10/extendvalidity")) as any;
     await db.update(irpEwbOps).set({ response: resp }).where(eq(irpEwbOps.id, opId));
     // Persist the recalculated validity when NIC returns it.
     const validUpto = resp.ValidUpto ?? resp.validUpto ?? null;
@@ -573,7 +599,7 @@ export async function extendEwbValidity(
 export async function cancelEwb(
   companyId: number, voucherId: number, requestedBy: number, args: Record<string, unknown>, env = "sandbox",
 ): Promise<SubmitResult> {
-  const { creds, ewbRow, ewbNo } = await loadAcceptedEwb(companyId, voucherId, env);
+  const { creds, ewbRow, ewbNo, birth } = await loadAcceptedEwb(companyId, voucherId, env);
   const reasonCode = String(args.reasonCode ?? "");
   if (!EWB_CANCEL_REASONS.includes(reasonCode)) return { ok: false, validationErrors: [`reasonCode must be one of: ${EWB_CANCEL_REASONS.join(", ")}`] };
   const remark = String(args.remark ?? "").trim();
@@ -588,7 +614,7 @@ export async function cancelEwb(
   const inserted = await db.insert(irpEwbOps).values({ companyId, submissionId: ewbRow.id, op: "cancel", request: req as any, requestedBy }).returning();
   const opId = inserted[0].id;
   try {
-    const resp = (await irpAction(creds, "CANEWB", req, "/eivital/v1.10/canewb")) as any;
+    const resp = (await ewbLifecycleWire({ creds, ewbRow, ewbNo, birth }, "CANEWB", req, "/eivital/v1.10/canewb")) as any;
     await db.update(irpEwbOps).set({ response: resp }).where(eq(irpEwbOps.id, opId));
     const updated = await db.update(irpSubmissions).set({ status: "cancelled", error: { message: `cancelled on the NIC: ${reasonCode} — ${remark}` } }).where(eq(irpSubmissions.id, ewbRow.id)).returning();
     return { ok: true, submission: maskSubmission(updated[0]) };
