@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out) RELEASED as v1.38.0 and pushed.** Release commit `5337507b7b927079a2b0748c077270aebf8e32c3`, annotated tag `3ba4aae482349bb00edf3cc30dbe6366cbadb979`, pushed — `origin/main` = `5337507` = `v1.38.0^{}` verified via ls-remote. Test/docs only: R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables, live vs restored) + schema fingerprint (pg_dump-16 `\restrict` normalization); README gains cron scheduling + restore-drill guidance. Zero production code. Python 1229/1229 (final regression 947), browser estate 494/494 unchanged. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-40 (docs hygiene after ALREADY-SHIPPED verdict) IMPLEMENTED, holding at RELEASE_REVIEW.** R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified on v1.38.0); implementation is ROADMAP.md hygiene only — phase line current (was "R-34/v1.33.0"), candidates region marked FULLY DISPOSITIONED with evidence, 3 stale "later" duplicate rows removed. No code, no tests, no schema. Estate 1229/494 unchanged. Baseline remains v1.38.0 (`5337507`, pushed). See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

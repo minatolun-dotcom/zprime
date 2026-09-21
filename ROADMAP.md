@@ -1,6 +1,6 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.3.0.
+The permanent development roadmap. Current at v1.39.0.
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
@@ -18,6 +18,7 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.9.0 | **R-09** ⚠ | Fail-fast deployment secrets (B-08: JWT_SECRET required + insecure-value denylist at boot, ADMIN_PASSWORD required at first-boot seeding, compose `:?` interpolation — BREAKING: default-secret deployments refuse to boot) |
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
 | v1.38.0 | **R-39** | Backup/restore close-out (approved Option A, B-12 verified ALREADY RESOLVED — test/docs only, zero production code): R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables row-for-row live vs restored) + schema fingerprint (pg_dump-16 `\restrict` token lines normalized); README cron scheduling example + restore-drill paragraph; +12 Python checks (947 final-regression total) → 1229/494 |
+| v1.39.0 | **R-40** | Docs hygiene (investigation-only cycle): R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0 — live-verified on v1.38.0: `?dryRun=1` identical-transaction server path + client Validate button/banner, 10+13 checks green); ROADMAP candidates region refreshed — phase line current, shipped candidates (B-12, R-21 A+B, INV probes) dispositioned, stale R-09/R-10/R-11 "later" duplicate rows removed; no code, no tests, no schema → 1229/494 |
 | v1.37.0 | **R-38** | Payee-threshold report UI (approved Option A, R-37 Option B): `FyPayeeThresholdCard` on the TDS/TCS report pages rendering the existing `fyAggregates` payload — per-payee rows (Payee · PAN · This FY · Largest single · Status) with the server-mirrored over/near formula (aggregate/single modes, 80% near band, amber-strong OVER); across-payees rollup; no-threshold honest wording; advisory-only footer; pure client addition, no server/schema/accounting surface; +14 browser checks (r38_ui, real report pages) → 1222/494 |
 | v1.36.0 | **R-37** | Per-payee FY TDS/TCS aggregates (approved Option A, R-33 Option C): `payees[]` per section aggregate (per-ledger payee grain, hasPan from GSTIN chars 3–12); threshold-check over/near evaluated per payee with payee-naming wording (single mode names the largest payment's payee; honest "PAN/GSTIN not recorded — verify" note when over without PAN); section rollup labeled "across payees"; TDS/TCS reports carry payees[] additively; advisory-only, nothing blocks; no schema/migration/accounting change; +20 Python checks (935 total) → 1222/480 |
 | v1.35.0 | **R-36** | Arrow-key grid navigation (approved Option A, D-4): same-column ArrowDown/Up across rows in entries + inventory grids via `data-col` mapping (numeric select-on-arrival; disabled cells and selects skipped by construction; Total row ends the walk); TypeAhead arrows own the dropdown only when matches are open (stopPropagation in that branch — zero-match arrows bubble to the grid); Enter-adds-row preserved, Down-on-last-row does not add, modifier chords no-ops, Left/Right caret keys; client-only, no server/schema/accounting surface; +25 browser checks (r36_ui, real key presses) → 1197/480 |
@@ -48,11 +49,11 @@ The permanent development roadmap. Current at v1.3.0.
 | v1.22.0 | **R-23** | Reverse charge mechanism (RCM — approved product decision, previously listed out of scope): migration 0009 `vouchers.is_rcm` per-transaction flag; dutyHead RCM + seeded RCM Payable starter ledger (TDS report pattern); GSTR-3B Table 4(A)(3) inwardRcm + rcmItc additive sections with regular-ITC exclusion and net-cash-nil reconciliation; Alt+R voucher toggle + Day Book badge + 3B view rows; no posting-engine change; +33+14 checks → 964/267 |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
-## Current phase: IDLE — R-34 released (v1.33.0); next item pending investigation
+## Current phase: IDLE — R-40 released (v1.39.0, docs hygiene); next item pending investigation
 
 **R-11 is RELEASED as v1.11.0** (investigated → reviewed → approved [test-only] → implemented → verified → release-reviewed → released; no browser deltas required — zero client changes). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
-Highest-value remaining candidates (from `ZLEDGER_PRODUCTION_ACTION_PLAN.md`, still NOT tasks): B-12 (backup/restore UX), plus non-bug hardening (VoucherScreen negative-stock warning, import pre-validation feedback).
+The action-plan-derived candidate list is **FULLY DISPOSITIONED** (verified by the R-39/R-40 investigations): B-12 backup/restore closed (R-39, v1.38.0), import pre-validation UI + VoucherScreen negative-stock advisory shipped (R-21, v1.20.0), INV probes graduated into permanent regression blocks (R-06/R-21/R-22). New R-items must come from real operator feedback or fresh investigation — not from this retired list.
 
 ## Upcoming candidates (derived from ZLEDGER_PRODUCTION_ACTION_PLAN.md — NOT yet tasks)
 
@@ -65,12 +66,9 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 | R-09 ✅ DONE (v1.9.0) | Fail-fast deployment secrets (B-08 P1) | action plan, source-traced | bug | breaking change accepted; login rate limiting (P3) remains postponed |
 | R-10 ✅ DONE (v1.10.0) | Duplicate-submission protection (B-10 P2) | action plan, live-reproduced | bug | idempotency key + client single-shot guard; keyless behavior unchanged |
 | R-11 ✅ DONE (v1.11.0) | Purchase-side settlement coverage (B-11 P3) | action plan, live-probed | tests | test-only: +24 checks; no defect found (F-11-1/2/3 NOT A BUG — VERIFIED) |
-| later | Deployment secrets hardening (B-08 P1*) | action plan | bug/ops | fail-fast on default JWT_SECRET for exposed deployments |
-| later | Duplicate-submission protection (B-10 P2) | action plan | bug | idempotency |
-| later | Purchase-return/DN test coverage (B-11 P2) | action plan | tests | coverage gap, not a demonstrated defect |
 | B-12 ✅ DONE (v1.12.0) | Backup/restore (B-12, closed as P4 ops — R-19 re-verified live on v1.18.0 incl. 0007 schema) | action plan | ops | Verified runbook in README + 6-check drift guard in final_regression (R-12); in-product surface declined (F-12-3, documented security rationale: full-DB dump needs a global-admin tier zprime deliberately lacks) |
 
-Non-bug hardening candidates (from R-04 investigation, §13/§14): graduate the audit's INV probes into permanent regression blocks; import pre-validation feedback in the UI; negative-stock warning in VoucherScreen.
+Non-bug hardening candidates (from R-04 investigation, §13/§14): **✅ fully delivered** — INV probes graduated (R-06/R-21/R-22), import pre-validation UI (R-21 part B), VoucherScreen negative-stock warning (R-21 part A).
 
 Full audit trail **✅ DONE (v1.18.0)** — the "full audit trail" entry above is hereby retired: R-17+R-18 delivered per-voucher lifecycle history (who/what/when, delete-surviving). Still out of scope: company-wide timeline page, masters events, retention/export.
 

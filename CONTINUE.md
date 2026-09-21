@@ -1,13 +1,15 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out) RELEASED as v1.38.0 and pushed.** Process state: RELEASED → IDLE.
+**Last updated:** 2026-09-21 — **R-40 (docs hygiene after ALREADY-SHIPPED verdict) IMPLEMENTED, holding at RELEASE_REVIEW.** Baseline: v1.38.0 pushed (HEAD `09a71e2` = ledger commit on release `5337507`); tree carries R-40 scope (ROADMAP hygiene + ledger docs) + `R-40_INVESTIGATION.md` + the intentional untracked action plan.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.38.0 (R-39 backup/restore close-out) — release commit `5337507b7b927079a2b0748c077270aebf8e32c3` ("Release v1.38.0: backup/restore verification depth + ops runbook completion", 8 files, +154/−6), annotated tag `3ba4aae482349bb00edf3cc30dbe6366cbadb979` ("zprime v1.38.0 — the guard proves the data, the runbook proves the operator"); pushed — `origin/main` = `5337507` = `v1.38.0^{}` verified via ls-remote; 40 tags; see RELEASES.md
-- **Current phase:** `IDLE` — R-39 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
+- **Current release:** v1.38.0 (R-39 backup/restore close-out) — release commit `5337507b7b927079a2b0748c077270aebf8e32c3` ("Release v1.38.0: backup/restore verification depth + ops runbook completion", 8 files, +154/−6), annotated tag `3ba4aae482349bb00edf3cc30dbe6366cbadb979` ("zprime v1.38.0 — the guard proves the data, the runbook proves the operator"); pushed — `origin/main` = `09a71e2` (ledger commit on the release commit) verified via ls-remote; 40 tags; see RELEASES.md
+- **Current phase:** `RELEASE_REVIEW` — R-40 implemented (approved Option A, docs-only): ROADMAP.md phase line current (was stale at "R-34 released (v1.33.0)"), candidates region marked FULLY DISPOSITIONED (B-12 → R-39; import pre-validation + negative-stock advisory → R-21; INV probes → R-06/R-21/R-22) with verification evidence, 3 stale "later" rows duplicating ✅ DONE R-09/R-10/R-11 removed · proposed release v1.39.0
+- **Verification (final tree):** zero production diff (no server/client/schema/test file touched) — typechecks trivially clean, Python **1229/1229** + browser **494/494** unchanged (R-11/R-39 precedent) · `git diff --check` clean
+- **Investigation report:** `R-40_INVESTIGATION.md`
 - **What was implemented (R-39, approved Option A — test/docs only, zero production code):** R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables row-for-row live vs restored, order-independent md5 over sorted row_to_json) + schema-fingerprint check (pg_dump-16 `\restrict`/`\unrestrict` random-token lines normalized before byte comparison) · README §Data & backups: host-cron scheduling example (daily, 14-day retention, copy-off-host warning) + restore-drill paragraph with exact scratch-DB commands
 - **Verification (final tree):** typecheck server + client clean · Python **1229/1229** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **947** incl. 12 new R-39 checks, attack-the-fixes 29) · browser **494/494** unchanged (zero client/server files touched — R-11 precedent) · `git diff --check` clean
 - **Investigation report:** `R-39_INVESTIGATION.md`

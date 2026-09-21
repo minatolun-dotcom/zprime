@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.39.0 — R-40 docs hygiene (RELEASE_REVIEW)
+
+R-40 was an investigation-only cycle: the selected candidate ("import pre-validation UI") verified **ALREADY SHIPPED as R-21 (v1.20.0)** — live-verified on v1.38.0 (server `?dryRun=1` identical-transaction path, client Validate button + nothing-imported banner, 10 Python + 13 browser checks green). The R-04-derived hardening list is fully dispositioned.
+
+The implementation is therefore **docs hygiene only** — ROADMAP.md: the phase line was ten releases stale ("R-34 released (v1.33.0)") and is now current; the candidates region marks B-12 + the two R-21 items + INV probes as dispositioned (with the verification evidence); three leftover "later" rows duplicating already-marked ✅ DONE R-09/R-10/R-11 removed. No code, no tests, no schema. Zero production diff — the 1229/494 estate stands unchanged.
+
 ## v1.38.0 — R-39 backup/restore close-out (RELEASED)
 
 R-39 closes B-12 properly: the action plan's "backup/restore MISSING" claim was verified **outdated** (README runbook + R-12 round-trip guard shipped in v1.14.0), so the remaining work is verification depth + ops guidance — **test/docs only, zero production code**.
