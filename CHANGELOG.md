@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.37.0 — R-38 payee-threshold report UI (RELEASE_REVIEW)
+
+R-38 implements the approved Option A scope (R-37's deferred Option B): the per-payee FY threshold data shipped in v1.36.0 is now **visible on the TDS and TCS report pages**. Pure client addition — no server file, no schema, no accounting surface.
+
+- **`FyPayeeThresholdCard` (Reports.tsx):** a "FY Threshold Status (per payee)" card rendered by both `TdsView` and `TcsView`, driven entirely by the `fyAggregates` the report payloads already carry — one block per section, one row per payee (Payee · PAN · This FY · Largest single · Status).
+- **Status math mirrors the server exactly:** aggregate mode compares the payee FY base, single mode the payee's largest single payment; near = the 80% band. OVER carries the amber-strong styling from the R-33 advisory-strip family; the section header shows threshold/mode/FY-to-date; PAN reads "on file"/"not recorded" honestly.
+- **The sum never masquerades:** when a section has multiple payees, a rollup line states `Section total ₹X across payees — the statutory threshold binds per payee, not on this sum`. No-threshold sections show the honest "confirm applicability manually" wording. Footer: "nothing is withheld or blocked; TDS/TCS judgment remains the operator's" (A-04 posture, stated in the product).
+- **En-route fix (test-side):** the first cut had the wrapper `div` structure miscounted in TdsView/TcsView (JSX imbalance caught immediately by typecheck); locators that matched an ancestor `div` were rewritten to read the Card via its unique header's parent.
+- **Tests:** new `scripts/acceptance/r38_ui.js` (**14** checks, real report pages): card renders on both pages; two-payee 194J fixture shows near (₹40k of ₹50k) and OVER (₹72k) statuses with correct PAN honesty; rollup + footer + threshold figures present; OVER badge carries the amber-strong class; TCS page shows the collection wording with honest empty state.
+- **Verification (final tree):** typecheck server + client clean; Python **1222/1222** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 935, attack-the-fixes 29); browser **494/494** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r38 = 341 scenario checks, r38 14/14); `git diff --check` clean.
+
 ## v1.36.0 — R-37 per-payee FY TDS/TCS aggregates (RELEASED)
 
 > Commit `740d0160c883242da7fbd77c7b26183c54075c12` · annotated tag `1926296c050a745b1491c355de29f4068c7a6a42` · pushed 2026-09-21.

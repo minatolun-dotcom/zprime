@@ -840,7 +840,8 @@ function Gstr3bView({ data }: { data: any }) {
 function TdsView({ data }: { data: any }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Deductions by Section</div>
         <table className="report-table">
@@ -877,7 +878,78 @@ function TdsView({ data }: { data: any }) {
           </table>
         </Card>
       </div>
+      </div>
+      <FyPayeeThresholdCard fyAggregates={data.fyAggregates} dutyHead="TDS" />
     </div>
+  );
+}
+
+// ---------- R-38: FY threshold status, per payee (R-37 data, report surface) ----------
+// Renders the fyAggregates the TDS/TCS report payloads already carry (R-33/
+// R-37): one block per section, one row per payee. Status math MIRRORS the
+// server's advisory formula exactly (aggregate mode compares the payee FY
+// base; single mode the payee's largest single payment; near = 80% band).
+// Advisory-only: the card informs; nothing is withheld or blocked.
+function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] | undefined; dutyHead: "TDS" | "TCS" }) {
+  const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  const secs = Array.isArray(fyAggregates) ? fyAggregates : [];
+  const base = dutyHead === "TCS" ? "collection" : "payment";
+  return (
+    <Card className="p-0 overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">FY Threshold Status (per payee)</div>
+      {secs.length === 0 && (
+        <div className="px-3 py-4 text-center text-slate-400 text-[13px]">No section declarations with FY {base} activity</div>
+      )}
+      {secs.map((s: any) => {
+        const mode = s.thresholdMode ?? "aggregate";
+        const compareOf = (p: any) => (mode === "single" ? p.maxSingle : p.fyAmount);
+        const statusOf = (p: any): { label: string; cls: string } => {
+          if (s.threshold <= 0) return { label: "no threshold recorded — confirm applicability manually", cls: "text-slate-500" };
+          const cmp = compareOf(p);
+          if (cmp >= s.threshold) return { label: "OVER — TDS/TCS due on further payments", cls: "text-amber-700 bg-amber-50 border border-amber-200" };
+          if (cmp > 0 && cmp >= s.threshold * 0.8) return { label: "near threshold", cls: "text-amber-600" };
+          return { label: "under threshold", cls: "text-slate-500" };
+        };
+        return (
+          <div key={s.sectionId} className="px-3 py-2.5 border-b border-slate-100 last:border-b-0">
+            <div className="text-[12px] font-medium text-slate-600 mb-1">
+              Section {s.section} · threshold {s.threshold > 0 ? `₹${s.threshold.toLocaleString("en-IN")}` : "not recorded"} · {mode === "single" ? "per-payment threshold" : `FY ${base} aggregate`} · FY-to-date {money(s.fyAmount)}
+            </div>
+            <table className="report-table">
+              <thead>
+                <tr><th>Payee</th><th className="w-24">PAN</th><th className="w-28 text-right">This FY</th><th className="w-32 text-right">Largest single</th><th className="w-72">Status</th></tr>
+              </thead>
+              <tbody>
+                {(s.payees ?? []).map((p: any) => {
+                  const st = statusOf(p);
+                  return (
+                    <tr key={p.ledgerId}>
+                      <td>{p.ledgerName}</td>
+                      <td className={p.hasPan ? "text-slate-500" : "text-slate-400"}>{p.hasPan ? "on file" : "not recorded"}</td>
+                      <td className="num">{money(p.fyAmount)}</td>
+                      <td className="num">{money(p.maxSingle)}</td>
+                      <td><span className={`text-[12px] px-2 py-0.5 rounded ${st.cls}`}>{st.label}</span></td>
+                    </tr>
+                  );
+                })}
+                {(s.payees ?? []).length === 0 && (
+                  <tr><td colSpan={5} className="text-center text-slate-400 py-3">No payee-level {base} activity this FY</td></tr>
+                )}
+              </tbody>
+            </table>
+            {(s.payees ?? []).length > 1 && (
+              <div className="text-[11px] text-slate-400 mt-1">Section total ₹{s.fyAmount.toLocaleString("en-IN")} across payees — the statutory threshold binds per payee, not on this sum.</div>
+            )}
+            {s.threshold <= 0 && (
+              <div className="text-[11px] text-slate-400 mt-1">No threshold recorded for this section — confirm applicability manually.</div>
+            )}
+          </div>
+        );
+      })}
+      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
+        FY-to-date informational thresholds — nothing is withheld or blocked; TDS/TCS judgment remains the operator's.
+      </div>
+    </Card>
   );
 }
 
@@ -885,7 +957,8 @@ function TdsView({ data }: { data: any }) {
 function TcsView({ data }: { data: any }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Collections by Section</div>
         <table className="report-table">
@@ -927,6 +1000,8 @@ function TcsView({ data }: { data: any }) {
           <div className="flex justify-between text-[13px] border-t border-slate-200 mt-1 pt-1"><span className="text-slate-600 font-medium">Outstanding (collected − remitted)</span><span className="num font-semibold">{money(data.totals.outstanding)}</span></div>
         </Card>
       </div>
+      </div>
+      <FyPayeeThresholdCard fyAggregates={data.fyAggregates} dutyHead="TCS" />
     </div>
   );
 }

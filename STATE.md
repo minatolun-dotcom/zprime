@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-37 (per-payee FY TDS/TCS aggregates) RELEASED as v1.36.0.** Release commit `740d0160c883242da7fbd77c7b26183c54075c12`, annotated tag `1926296c050a745b1491c355de29f4068c7a6a42`, pushed — `origin/main` = `v1.36.0^{}` verified via ls-remote. `payees[]` per section aggregate · per-payee over/near + payee-naming wording · "across payees" rollup label · hasPan from GSTIN · advisory-only, nothing blocks. No schema/migration/accounting change. 1222/1222 automated + 480/480 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI, R-37 Option B) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-38 changes; v1.36.0 remains the last tagged release. `FyPayeeThresholdCard` on the TDS/TCS report pages — per-payee FY threshold status (server-mirrored over/near formula, amber styling, across-payees rollup, advisory-only footer). Pure client addition. 1222/1222 automated + 494/494 browser. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -11,6 +11,10 @@
 Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway → Voucher → Report → Drill-down workflow, original UI). Fastify 5 + React 18 + PostgreSQL 16 + Drizzle ORM, single app container + Postgres via Docker Compose.
 
 ## Release status
+
+### R-38 (IMPLEMENTED — RELEASE_REVIEW): payee-threshold report UI
+
+Investigation (`R-38_INVESTIGATION.md`) confirmed the gap (R-37's deferred Option B): the per-payee `fyAggregates`/`payees[]` data shipped in v1.36.0 was API-only — `grep -r fyAggregates client/src` returned zero hits; the TDS/TCS report pages never showed it. Enabling discovery: zero server diff needed — the payload already carries everything. **Option A approved:** `FyPayeeThresholdCard` rendered by TdsView + TcsView, status math mirroring the server's advisory formula (aggregate/single modes, 80% near band), across-payees rollup line, advisory-only footer. En-route: JSX wrapper-div imbalance caught by typecheck; ancestor-matching locators replaced with header-parent scoping.
 
 ### R-37 (RELEASED as v1.36.0): per-payee FY TDS/TCS aggregates
 
