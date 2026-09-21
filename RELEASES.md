@@ -7,7 +7,7 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 ## v1.37.0
 
 - **Version:** 1.37.0
-- **Commit:** `<commit-sha>` (annotated tag `<tag-sha>` → commit verified at release; pushed — `origin/main` = `<short>` = `v1.37.0^{}` verified via ls-remote)
+- **Commit:** `d850fc8a5e97bb315566c346fb84d38a8b1199fd` (annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d` → commit verified at release; pushed — `origin/main` = `d850fc8` = `v1.37.0^{}` verified via ls-remote)
 - **Purpose:** R-38 — payee-threshold report UI (approved Option A, R-37's deferred Option B): the per-payee FY threshold data shipped in v1.36.0 is now **visible on the TDS and TCS report pages**. `FyPayeeThresholdCard` rendered by TdsView + TcsView from the existing `fyAggregates` payload — one block per section (threshold/mode/FY-to-date header), one row per payee (Payee · PAN · This FY · Largest single · Status), status math mirroring the server's advisory formula exactly (aggregate vs single mode, 80% near band; OVER in the R-33 amber-strong family); across-payees rollup line ("the statutory threshold binds per payee, not on this sum"); no-threshold honest wording; advisory-only footer ("nothing is withheld or blocked"). **Pure client addition — no server file, no schema, no accounting surface.**
 - **Verification:** 1222/1222 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 935, attack-the-fixes 29); 494/494 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r38 = 341 scenario checks, new r38_ui 14/14); typecheck server + client clean.
 - **Immutable: YES** — pushed to origin 2026-09-21.

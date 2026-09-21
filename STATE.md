@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI, R-37 Option B) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-38 changes; v1.36.0 remains the last tagged release. `FyPayeeThresholdCard` on the TDS/TCS report pages — per-payee FY threshold status (server-mirrored over/near formula, amber styling, across-payees rollup, advisory-only footer). Pure client addition. 1222/1222 automated + 494/494 browser. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI) RELEASED as v1.37.0.** Release commit `d850fc8a5e97bb315566c346fb84d38a8b1199fd`, annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d`, pushed — `origin/main` = `v1.37.0^{}` verified via ls-remote. `FyPayeeThresholdCard` on the TDS/TCS report pages — per-payee FY threshold status (server-mirrored over/near formula, amber styling, across-payees rollup, advisory-only footer). Pure client addition. 1222/1222 automated + 494/494 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-38 (IMPLEMENTED — RELEASE_REVIEW): payee-threshold report UI
+### R-38 (RELEASED as v1.37.0): payee-threshold report UI
 
 Investigation (`R-38_INVESTIGATION.md`) confirmed the gap (R-37's deferred Option B): the per-payee `fyAggregates`/`payees[]` data shipped in v1.36.0 was API-only — `grep -r fyAggregates client/src` returned zero hits; the TDS/TCS report pages never showed it. Enabling discovery: zero server diff needed — the payload already carries everything. **Option A approved:** `FyPayeeThresholdCard` rendered by TdsView + TcsView, status math mirroring the server's advisory formula (aggregate/single modes, 80% near band), across-payees rollup line, advisory-only footer. En-route: JSX wrapper-div imbalance caught by typecheck; ancestor-matching locators replaced with header-parent scoping.
 

@@ -1,17 +1,17 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI) IMPLEMENTED and fully verified; holding at RELEASE_REVIEW per protocol.** v1.36.0 is the last tagged release; the working tree carries the R-38 changes.
+**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI) RELEASED as v1.37.0 and pushed.** Process state: RELEASED → IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.36.0 (R-37 per-payee FY TDS/TCS aggregates) — release commit `740d0160c883242da7fbd77c7b26183c54075c12`, annotated tag `1926296c050a745b1491c355de29f4068c7a6a42`; pushed — 38 tags; see RELEASES.md
-- **Current HEAD:** the v1.36.0 ledger-docs commit `231a486`; the working tree carries the R-38 implementation (Reports.tsx + r38_ui.js) plus docs at RELEASE_REVIEW and the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md`
-- **Current phase:** `RELEASE_REVIEW` — R-38 implemented, all gates green. **Proposed release: v1.37.0** — commit "Release v1.37.0: payee threshold status on the TDS/TCS reports", annotated tag v1.37.0, then push per the RELEASED protocol
+- **Current release:** v1.37.0 (R-38 payee-threshold report UI) — release commit `d850fc8a5e97bb315566c346fb84d38a8b1199fd` ("Release v1.37.0: payee threshold status on the TDS/TCS reports", 8 files, +296/−7), annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d` ("zprime v1.37.0 — the answer, where the operator looks"); pushed — `origin/main` = `d850fc8` = `v1.37.0^{}` verified via ls-remote; 39 tags; see RELEASES.md
+- **Current HEAD:** the v1.37.0 release commit; tree clean apart from the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md` (and `scripts/__pycache__/`)
+- **Current phase:** `IDLE` — R-38 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
 - **What was implemented (R-38, approved Option A):** `FyPayeeThresholdCard` in Reports.tsx rendered by TdsView + TcsView from the existing `fyAggregates` payload · per-payee rows (Payee · PAN · This FY · Largest single · Status) with the server-mirrored over/near formula (aggregate vs single mode, 80% band; OVER in the R-33 amber-strong family) · section header shows threshold/mode/FY-to-date · across-payees rollup line · no-threshold honest wording · advisory-only footer · r38_ui.js 14 checks on the real pages
 - **Verification (final tree):** typecheck server + client clean · Python **1222/1222** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 935, attack-the-fixes 29) · browser **494/494** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r38 = 341 scenario checks, **r38_ui 14/14**) · `git diff --check` clean
-- **Next permitted action:** on your instruction — RELEASES/ROADMAP ledger entries + release-gate re-run + commit + tag + push + immutability/remote verification + post-release ledger update
+- **Next permitted action:** per protocol — the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
 - **What was implemented (R-37, approved Option A):** `payees[]` per section in `tdsTcsFyAggregates` (ledgerId/Name/hasPan from GSTIN chars 3–12/fyAmount/maxSingle/count, sorted by amount) · threshold-check evaluates over/near per payee with payee-naming wording (single mode names the payee of the largest payment; honest "PAN/GSTIN not recorded — verify" note when over without PAN) · section rollup wording labeled "across payees" · TDS/TCS reports carry `payees[]` (additive) · advisory-only, nothing blocks · no schema/migration/accounting change
 - **Verification (final tree):** typecheck server + client clean · Python **1222/1222** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **935** incl. 22 R-33 unchanged + 20 R-37, attack-the-fixes 29) · browser **480/480** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r36 = 327 scenario checks, r33_ui 13/13 wording contract intact) · `git diff --check` clean
 - **Known open threads (NOT tasks):** IRP/EWB production onboarding feedback from real operators · payee-threshold table on the TDS/TCS report pages (R-37 Option B, deferred) · hold steady

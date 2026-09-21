@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.37.0 — R-38 payee-threshold report UI (RELEASE_REVIEW)
+## v1.37.0 — R-38 payee-threshold report UI (RELEASED)
 
 R-38 implements the approved Option A scope (R-37's deferred Option B): the per-payee FY threshold data shipped in v1.36.0 is now **visible on the TDS and TCS report pages**. Pure client addition — no server file, no schema, no accounting surface.
 
