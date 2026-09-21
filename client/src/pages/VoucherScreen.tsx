@@ -37,6 +37,9 @@ export default function VoucherScreen() {
   const [entries, setEntries] = useState<LedgerRow[]>([{ ledgerId: null, ledgerName: "", amount: 0 }]);
   const [inv, setInv] = useState<InvRow[]>([]);
   const [error, setError] = useState("");
+  // R-33: threshold advisories (non-blocking) — populated when applyTds/
+  // applyTcs fires; the voucher saves normally regardless.
+  const [thresholdAdvisories, setThresholdAdvisories] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   // R-10 (B-10): ref mirror of `saving` — the Ctrl+A hotkey closure must read
   // the live value, not the one captured at effect registration time.
@@ -238,6 +241,17 @@ export default function VoucherScreen() {
     setError("");
   };
 
+  // ---- R-33: threshold advisory fetch (non-blocking) — hits the read-only
+  // endpoint and keeps only the actionable wordings (over/near). Silent-degrade
+  // on failure: the advisory is a convenience, never a workflow gate.
+  const fetchThresholdAdvisory = async (dutyHead: "TDS" | "TCS") => {
+    setThresholdAdvisories([]);
+    try {
+      const res = await get<{ advisories: { section: string; over: boolean; near: boolean; wording: string }[] }>(`/api/c/${cid}/reports/tds-threshold-check?dutyHead=${dutyHead}`);
+      setThresholdAdvisories((res.advisories ?? []).filter((a) => a.over || a.near).map((a) => a.wording));
+    } catch { /* advisory is optional — never block the workflow */ }
+  };
+
   // ---- TDS helper ----
   const applyTds = () => {
     const withTds = entries.filter((e) => {
@@ -247,6 +261,10 @@ export default function VoucherScreen() {
     if (withTds.length === 0) { setError("No expense line has a TDS section (set it on the expense ledger)"); return; }
     const tdsLedger = (allLedgers ?? []).find((l: any) => l.dutyHead === "TDS");
     if (!tdsLedger) { setError("Create a 'TDS Payable' ledger under Duties & Taxes with Duty Head = TDS"); return; }
+    // R-33: threshold advisories — non-blocking; the server computes the
+    // per-section FY aggregates from the postings and this just surfaces the
+    // wording alongside the computation. Nothing is refused on a threshold.
+    fetchThresholdAdvisory("TDS");
     const base = entries.filter((e) => {
       const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
       return !(l?.dutyHead === "TDS");
@@ -270,6 +288,8 @@ export default function VoucherScreen() {
       const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
       return l?.tcsSectionId;
     });
+    // R-33: same non-blocking threshold advisory as applyTds (TCS head).
+    fetchThresholdAdvisory("TCS");
     if (withTcs.length === 0) { setError("No party line has a TCS section (set it on the party ledger)"); return; }
     const tcsLedger = (allLedgers ?? []).find((l: any) => l.dutyHead === "TCS");
     if (!tcsLedger) { setError("Create a 'TCS Payable' ledger under Duties & Taxes with Duty Head = TCS"); return; }
@@ -406,6 +426,12 @@ export default function VoucherScreen() {
       fkeys={fkeys}
     >
       <ErrorBanner error={error} />
+      {/* R-33: threshold advisories — honest amber nudges; nothing blocks. */}
+      {thresholdAdvisories.length > 0 && (
+        <div className="mb-2 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[12px] px-3 py-2">
+          {thresholdAdvisories.map((t, i) => (<div key={i}>⚠ {t}</div>))}
+        </div>
+      )}
       {!vType ? (
         <div className="text-slate-400 text-[13px]">Loading…</div>
       ) : (

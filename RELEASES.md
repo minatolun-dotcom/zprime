@@ -4,10 +4,18 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.32.0
+
+- **Version:** 1.32.0
+- **Commit:** (filled after tag — see CONTINUE.md session record)
+- **Purpose:** R-33 — TDS/TCS threshold advisories (approved Option A, advisory never blocking): migration 0015 (additive `threshold_mode` `'aggregate'` default / `'single'` on `tds_sections` + `tcs_sections` — encodes the legal FY-aggregate (194J ₹50k) vs per-payment (194C ₹30k) distinction), read-only cid-gated `GET /reports/tds-threshold-check` measuring the per-section FY **payment base** (expense debits for TDS, party credits for TCS — duty credits, remittances, cancelled vouchers excluded; `maxSingle` for single-mode; threshold=0 → honest "confirm applicability manually"), mode/over/near-aware wording, `fyAggregates[]` on the TDS and TCS reports, VoucherScreen amber ⚠ advisory strip on Deduct TDS/Collect TCS (silent-degrade on fetch failure, **voucher saves normally through it**), threshold-mode selector in the masters UI with the honest hint. The design flaw the suite caught: the aggregate measures the **payment base**, not the duty credited — the law binds the threshold on payments (₹72,000 of fees vs the ₹50,000 threshold), not on TDS credits (₹7,200). Corrected before release, locked by tests. **No voucher is ever blocked; no posting-math change.**
+- **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915 incl. 22 R-33, attack-the-fixes 29); 399/399 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r33 scenarios = 246, new r33_ui 13/13); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin (date in CONTINUE.md session record).
+
 ## v1.31.0
 
 - **Version:** 1.31.0
-- **Commit:** (recorded at tag verification below)
+- **Commit:** `88e89d25bfaea19ec14e5f405b90be0656ee8114` (annotated tag `0fb9709ea2af0e5a4867aff2f469404ac7d2ba71` → commit verified at release; pushed — `origin/main` = `88e89d2` = `v1.31.0^{}` verified via ls-remote)
 - **Purpose:** R-32 — IRP/EWB production onboarding runbook (approved Option A, docs-first): new `ONBOARDING_IRP_EWB.md` (prerequisites incl. the separate EWB-portal registration and `IRP_ENC_KEY` DR warning; host table — sandbox IRP built-in default, production IRP + EWB-API from the endpoint override; per-env setup with masked read-back + retype rule; 8-step sandbox first-submit walkthrough; NIC error-code decode table; rotation/revocation; record locations), README connectivity pointer section, **PROJECT.md truth-pass** to v1.30.0 reality (GST/Connectivity/Payroll+TCS/Reports/Import/scope/verification counts), one honest CompanySettings host-facts note, +4 runbook-grounding checks. **No schema, no server code paths, no accounting surface.**
 - **Verification:** 1175/1175 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 893 incl. 4 R-32, attack-the-fixes 29); 386/386 browser (rebuilt image + fresh volume, every suite exactly once: run.js 153 + r03…r31 scenarios = 233); typecheck server + client clean.
 - **Immutable: YES** — pushed to origin 2026-09-20.

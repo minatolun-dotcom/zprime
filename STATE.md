@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-20 — **R-32 (IRP/EWB production onboarding runbook) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** New `ONBOARDING_IRP_EWB.md` runbook + README pointer + PROJECT.md truth-pass to v1.30.0 reality + settings host-facts note + 4 grounding checks (1175/1175 automated + 386/386 browser). Working tree contains the R-32 changes; v1.30.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-20 — **R-33 (TDS/TCS threshold advisories) IMPLEMENTED AND FULLY VERIFIED — holding at RELEASE_REVIEW per protocol.** Migration `0015` (additive `threshold_mode` on tds/tcs sections) · read-only `GET /reports/tds-threshold-check` (FY payment-base aggregates, mode-aware, honest threshold-0) · `fyAggregates[]` on TDS/TCS reports · VoucherScreen amber advisory strip on Deduct TDS/Collect TCS (non-blocking, saves through it) · masters mode selector · **no voucher ever blocked, no posting math changed**. 1197/1197 automated + 399/399 browser (r33_ui 13/13). Working tree contains the R-33 changes; v1.31.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,13 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-32 (implemented 2026-09-20, holding at RELEASE_REVIEW): IRP/EWB production onboarding runbook
+### R-33 (implemented, holding at RELEASE_REVIEW → v1.32.0): TDS/TCS threshold advisories
+
+Investigation (`R-33_INVESTIGATION.md`) classified the finding honestly: thresholds are stored per section and surfaced as reference data, **never enforced** — a documented product posture (operator judgment), not a defect. Grounded in law, hard enforcement is wrong more often than right: thresholds bind per-PAYEE per-FY **payment aggregates** (194J ₹50k, 194C ₹30k single/₹1L aggregate, 194I ₹6L), churn by Finance Act, and edge semantics (206AA PAN-less rates) make a block dangerous. **NO P1/P2 DEFECT — PRODUCT-DECISION INVESTIGATION**; Option A (advisory) approved.
+
+Implemented per approved **Option A (advisory, never blocking)**: migration `0015_r33_threshold_mode.sql` (additive `threshold_mode` — `'aggregate'` default / `'single'` — on `tds_sections` + `tcs_sections`, snapshot idx 15); read-only `GET /reports/tds-threshold-check?dutyHead=TDS|TCS` computing per-section FY **payment base** (expense debits for TDS, party credits for TCS; duty credits, remittances, cancelled excluded), `maxSingle` for single-mode, mode/over/near-aware wording, `threshold=0` → "confirm applicability manually" (never a guess); `fyAggregates[]` on the TDS + TCS reports; VoucherScreen amber ⚠ advisory strip on Deduct TDS / Collect TCS (over/near only, silent-degrade, **saves normally through it**); threshold-mode selector in the masters UI. **No voucher ever blocked; no posting math changed.** Design decision recorded during implementation: the FY aggregate measures the payment base, not the duty credited (₹72,000 of fees vs the ₹50,000 threshold, not ₹7,200 of TDS) — caught by the R-33 suite and corrected before release. Python **1197/1197** (final regression **915** incl. 22 R-33); browser **399/399** (verified-fresh volume — first run silently reused a stale volume via a suppressed `--remove-orphan` typo; root-caused and re-run clean; new `r33_ui.js` 13/13); typecheck clean.
+
+### R-32 (released as v1.31.0, 2026-09-20): IRP/EWB production onboarding runbook
 
 Investigation (`R-32_INVESTIGATION.md`) established the R-28…R-31 connectivity stack as machine-complete but operator-blind: README never mentioned connectivity; PROJECT.md still listed e-invoice/EWB/RCM/TCS/GSTR-9 as absent (stale by ten releases); no onboarding doc, error-code decode, or rotation procedure existed. Not a defect — R-28's documented out-of-scope line becoming the highest-value work.
 

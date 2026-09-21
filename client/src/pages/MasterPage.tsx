@@ -404,6 +404,11 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
         { name: "description", label: "Description", type: "text", full: true },
         { name: "rate", label: "TDS Rate %", type: "number" },
         { name: "threshold", label: "Threshold ₹", type: "number" },
+        { name: "thresholdMode", label: "Threshold Mode (advisory)", type: "select", options: [
+          { value: "", label: "— Advisory wording only —" },
+          { value: "aggregate", label: "Aggregate per payee per FY (e.g. 194J ₹50k)" },
+          { value: "single", label: "Single payment (e.g. 194C ₹30k per payment)" },
+        ], hint: "Drives the wording of non-blocking advisories — TDS is never auto-applied or refused" },
       ],
       columns: [{ key: "section", label: "Section" }, { key: "rate", label: "Rate %", sub: "num" }],
       newRow: () => ({ rate: "0", threshold: "0" }),
@@ -415,6 +420,11 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
         { name: "description", label: "Description", type: "text", full: true },
         { name: "rate", label: "TCS Rate %", type: "number" },
         { name: "threshold", label: "Threshold ₹ (reference)", type: "number" },
+        { name: "thresholdMode", label: "Threshold Mode (advisory)", type: "select", options: [
+          { value: "", label: "— Advisory wording only —" },
+          { value: "aggregate", label: "Aggregate per buyer per FY (e.g. 206C(1H) ₹50L)" },
+          { value: "single", label: "Single receipt" },
+        ], hint: "Drives the wording of non-blocking advisories — TCS is never auto-applied or refused" },
       ],
       columns: [{ key: "section", label: "Section" }, { key: "rate", label: "Rate %", sub: "num" }],
       newRow: () => ({ rate: "0", threshold: "0" }),

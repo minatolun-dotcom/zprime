@@ -14,6 +14,68 @@ import { eInvoicePayload } from "../services/einvoice.js";
 import { ewaybillPayload, EwaybillParams } from "../services/ewaybill.js";
 import { gstr9 } from "../services/gstr9.js";
 import { submitEInvoice, submitEwayBillFromIrn, generateEwbDirect, submissionHistory, updateEwbVehicle, extendEwbValidity, cancelEwb } from "../services/irp.js";
+import { tdsSections, tcsSections } from "../db/schema.js";
+
+// ---- R-33: threshold advisories (ADVISORY-ONLY — nothing blocks) ----
+// The law measures a per-PAYEE per-FY aggregate (or per-payment single limit);
+// these helpers make that measurable from the postings themselves — no new
+// state, no enforcement, no behavior change. The books record; the operator
+// judges; the advisory surfaces what the books already know.
+function fyWindow(booksBegin?: string): { from: string; to: string } {
+  return { from: booksBegin ?? fyStart(today()), to: today() };
+}
+
+/** Per-section FY aggregates for one duty head ("TDS" | "TCS") + the books-
+ *  begin FY window. The aggregate measures the PAYMENT/COLLECTION BASE — the
+ *  statutory thresholds (194C/194J/194I/206C…) bind on what was PAID or
+ *  COLLECTED, not on the duty credited; summing the duty lines would compare
+ *  10% of the base against a base-sized threshold (the unit mismatch the R-33
+ *  test caught). Base lines are found via the ledger's section DECLARATION
+ *  (ledgers.tds/tcs_section_id — set on the expense/party master), because the
+ *  entry-level snapshot is stamped only on the duty line itself. Sections
+ *  without postings still appear (threshold=0 or unset → no advisory). Rows
+ *  are keyed by section, not payee — the per-payee split is documented out of
+ *  scope (R-33_INVESTIGATION.md). */
+async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
+  const { from, to } = fyWindow();
+  const sectionTable = dutyHead === "TDS" ? tdsSections : tcsSections;
+  const sectionCol = dutyHead === "TDS" ? ledgers.tdsSectionId : ledgers.tcsSectionId;
+  const sections = await db.select().from(sectionTable).where(eq(sectionTable.companyId, companyId));
+  const rows = await db
+    .select({
+      sectionId: sectionCol,
+      amount: voucherEntries.amount,
+    })
+    .from(voucherEntries)
+    .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+    .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+    .where(and(
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      // Defense-in-depth: the ledger itself must belong to this company.
+      eq(ledgers.companyId, companyId),
+      gte(vouchers.date, from), lte(vouchers.date, to),
+    ));
+  const bySection = new Map<number, { sectionId: number; section: string; threshold: number; thresholdMode: string | null; fyAmount: number; maxSingle: number; count: number }>();
+  for (const sec of sections) {
+    bySection.set(sec.id, { sectionId: sec.id, section: sec.section, threshold: num(sec.threshold), thresholdMode: (sec as any).thresholdMode ?? null, fyAmount: 0, maxSingle: 0, count: 0 });
+  }
+  for (const row of rows) {
+    const key = row.sectionId ?? 0;
+    const cur = bySection.get(key);
+    if (!cur) continue; // ledger references a since-deleted section, or a duty/remittance line (no section on the ledger)
+    // TDS base: expense DEBIT lines (amount > 0). TCS base: party CREDIT lines
+    // (amount < 0). The opposite direction is never a base event; duty lines
+    // live on duty-head ledgers without a section declaration and never match.
+    const amt = dutyHead === "TDS" ? num(row.amount) : -num(row.amount);
+    if (amt <= 0) continue;
+    cur.fyAmount = r2(cur.fyAmount + amt);
+    if (amt > cur.maxSingle) cur.maxSingle = amt;
+    cur.count += 1;
+  }
+  return [...bySection.values()]
+    .filter((s) => s.threshold > 0 || s.count > 0)
+    .sort((a, b) => a.section.localeCompare(b.section));
+}
 
 function period(q: any, booksBegin?: string): { from: string; to: string } {
   return {
@@ -406,6 +468,11 @@ export default async function reportRoutes(app: FastifyInstance) {
       collections: collections.map((x) => ({ ...x, amount: Math.abs(num(x.amount)) })),
       remittances: remittances.map((x) => ({ ...x, amount: num(x.amount) })),
       totals: { collected, remitted, outstanding: r2(collected - remitted) },
+      // R-33: per-section FY aggregates — same advisory purpose as the TDS
+      // report (the 206C(1H) trigger is per-buyer turnover; the per-section FY
+      // total is the honest company-level approximation; per-buyer tracking
+      // stays out of scope, documented in R-33_INVESTIGATION.md).
+      fyAggregates: await tdsTcsFyAggregates(c, "TCS"),
     };
   });
 
@@ -476,7 +543,50 @@ export default async function reportRoutes(app: FastifyInstance) {
       payableLedgers: tdsLedgers.map((l) => ({ ...l })),
       deductions: deductions.map((d2) => ({ ...d2, amount: Math.abs(num(d2.amount)) })),
       remittances: remittances.map((r3) => ({ ...r3, amount: num(r3.amount) })),
+      // R-33: per-section FY aggregates so the stored threshold becomes
+      // actionable advisory data (what the law actually measures), not an
+      // orphaned reference column. Derived from the same postings — no new
+      // state, no enforcement.
+      fyAggregates: await tdsTcsFyAggregates(c, "TDS"),
     };
+  });
+
+  // R-33: threshold advisory check — read-only, NON-BLOCKING. Given a duty
+  // head and the voucher's section lines, returns per-section FY aggregates
+  // plus the advisory wording the client may show. The client decides what to
+  // surface; the server never refuses a voucher on a threshold (the operator
+  // judges; the books record — A-04 posture, R-33_INVESTIGATION.md).
+  app.get("/tds-threshold-check", async (req) => {
+    const c = await cid(req);
+    const q = req.query as any;
+    const dutyHead = String(q.dutyHead ?? "TDS") === "TCS" ? "TCS" : "TDS";
+    const aggregates = await tdsTcsFyAggregates(c, dutyHead);
+    const sections = await db.select().from(dutyHead === "TDS" ? tdsSections : tcsSections).where(eq((dutyHead === "TDS" ? tdsSections : tcsSections).companyId, c));
+    const advisories = aggregates.map((s) => {
+      // Mode-aware comparison. aggregate mode (default): the FY BASE is
+      // compared with the threshold. single mode: the threshold binds PER
+      // PAYMENT — the advisory reflects the LARGEST single base line this FY
+      // (maxSingle), the payment most plainly at risk; the FY total is still
+      // shown for context. threshold=0 never triggers (no recorded threshold
+      // — no guessing).
+      const mode = s.thresholdMode ?? "aggregate";
+      const compare = mode === "single" ? s.maxSingle : s.fyAmount;
+      const over = s.threshold > 0 && compare >= s.threshold;
+      const near = !over && s.threshold > 0 && compare > 0 && compare >= s.threshold * 0.8;
+      const wording = s.threshold <= 0
+        ? `Section ${s.section}: no threshold recorded — confirm applicability manually`
+        : over
+          ? mode === "single"
+            ? `Section ${s.section}: largest single payment ₹${s.maxSingle.toLocaleString("en-IN")} meets/exceeds the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode) — TDS/TCS applies to payments at or above it`
+            : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY (threshold ₹${s.threshold.toLocaleString("en-IN")}) — TDS/TCS due on further payments`
+          : near
+            ? mode === "single"
+              ? `Section ${s.section}: largest single payment ₹${s.maxSingle.toLocaleString("en-IN")} is near the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode)`
+              : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY — approaching the ₹${s.threshold.toLocaleString("en-IN")} threshold`
+            : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY — threshold ₹${s.threshold.toLocaleString("en-IN")} not yet reached${mode === "single" ? " (single mode: threshold applies per payment)" : ""}`;
+      return { ...s, over, near, wording };
+    });
+    return { dutyHead, advisories, sectionCount: sections.length };
   });
 
   // Salary register. R-02: payslips whose voucher is cancelled must not display —

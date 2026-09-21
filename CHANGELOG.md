@@ -1,6 +1,20 @@
 # Changelog
 
-## v1.31.0 — R-32 IRP/EWB production onboarding runbook
+## v1.32.0 — R-33 TDS/TCS threshold advisories (RELEASE_REVIEW)
+
+R-33 implements the approved Option A scope: honest, non-blocking threshold **advisories** — the operator judges, the books record, and now the app *tells*. Advisory data becomes actionable. No voucher is ever blocked; no posting math changes; no behavior change for operators who ignore the feature.
+
+- **Migration `0015_r33_threshold_mode.sql`** (additive): `threshold_mode` (text, `'aggregate'` default, `'single'` allowed) on `tds_sections` + `tcs_sections` — the schema (NOT the app) now encodes the legal distinction between FY-aggregate thresholds (194J: ₹50k of *payments* this FY) and per-payment thresholds (194C: ₹30k on a single payment). Snapshot idx 15.
+- **New read-only endpoint `GET /reports/tds-threshold-check?dutyHead=TDS|TCS`** — cid-gated, per-section: FY **payment base** (the legal threshold unit — expense debits for TDS, party credits for TCS, duty credits excluded, remittances excluded, cancelled excluded), `maxSingle` for single-mode comparison, and mode/over/near-aware wording. `threshold=0` never triggers — "no threshold recorded — confirm applicability manually", never a guess.
+- **TDS + TCS reports gain `fyAggregates[]`** — the per-section FY aggregates ride the reports operators already use.
+- **VoucherScreen: amber ⚠ advisory strip** — fires on **Deduct TDS** / **Collect TCS**; shows only over/near wordings; **saves normally through it** (non-blocking, silent-degrade on fetch failure); sections with no threshold never appear. A-04 note: the base is payment-base, not the duty credited — ₹72,000 of professional fees vs the ₹50,000 threshold, not ₹7,200 of TDS.
+- **Masters UI:** threshold mode selector on TDS/TCS section editors.
+- **Tests:** `final_regression.py` +22 R-33 checks (**915**) — mode schema honesty (bogus mode 400), below/over posting (nothing blocked), base-semantics aggregates (20,000 → 72,000), over/aggregate wording, single-mode wording, TCS-head reachability, reports carry `fyAggregates`, non-member 404, cancel exclusion (A-04), TB still balances; new `scripts/acceptance/r33_ui.js` (**13** checks) driving the advisory through the real UI (amber strip on Deduct TDS with the FY figure + "TDS/TCS due" wording, save-through, honest 194I absence, helper still computes the ₹800 duty line without a threshold).
+- **Verification (final tree):** Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **915** incl. 22 R-33, attack-the-fixes 29); browser **399/399** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153/153 + r03…r33 = 246 scenario checks, r33 13/13); typecheck server + client clean; `git diff --check` clean.
+
+## v1.31.0 — R-32 IRP/EWB production onboarding runbook (RELEASED)
+
+> Commit `88e89d25bfaea19ec14e5f405b90be0656ee8114` · annotated tag `0fb9709ea2af0e5a4867aff2f469404ac7d2ba71` · pushed 2026-09-20.
 
 R-32 implements the approved Option A scope: the operator-facing path to production connectivity. No schema change, no server code change, no accounting surface — docs-first with one honest client help note.
 

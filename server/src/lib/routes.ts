@@ -156,6 +156,9 @@ export const tdsSectionSchema = z.object({
   description: z.string().max(1000).nullable().optional(),
   rate: z.preprocess(numF, z.number().finite().min(0, "rate cannot be negative").max(100, "rate cannot exceed 100%").nullable().optional()),
   threshold: z.preprocess(numF, z.number().finite().min(0, "threshold cannot be negative").nullable().optional()),
+  // R-33: 'single' (per payment) | 'aggregate' (per payee per FY) | null =
+  // advisory wording only. Advisory metadata — never enforced (no blocking).
+  thresholdMode: z.enum(["single", "aggregate"]).nullable().optional(),
 });
 
 export const tcsSectionSchema = tdsSectionSchema;

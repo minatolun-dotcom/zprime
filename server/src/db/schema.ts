@@ -138,6 +138,11 @@ export const tdsSections = pgTable("tds_sections", {
   description: text("description"),
   rate: numeric("rate", { precision: 5, scale: 2 }).notNull().default("0"),
   threshold: numeric("threshold", { precision: 18, scale: 2 }).notNull().default("0"),
+  // R-33: how the threshold legally binds — 'single' (per payment, e.g. 194C's
+  // ₹30k-per-payment leg), 'aggregate' (per payee per FY, e.g. 194J's ₹50k),
+  // null = advisory wording only. NEVER used to block a voucher (R-33 Option A:
+  // advisories are honest nudges; the operator judges; the books record).
+  thresholdMode: text("threshold_mode"),
 }, (t) => [uniqueIndex("tds_company_section_uq").on(t.companyId, t.section)]);
 
 // R-27: TCS sections (Income-tax s. 206C) — mirror of tds_sections. Rates
@@ -151,6 +156,8 @@ export const tcsSections = pgTable("tcs_sections", {
   description: text("description"),
   rate: numeric("rate", { precision: 5, scale: 2 }).notNull().default("0"),
   threshold: numeric("threshold", { precision: 18, scale: 2 }).notNull().default("0"),
+  // R-33: same advisory-only mode field as tds_sections (see above).
+  thresholdMode: text("threshold_mode"),
 }, (t) => [uniqueIndex("tcs_company_section_uq").on(t.companyId, t.section)]);
 
 // ---------- Inventory Masters ----------

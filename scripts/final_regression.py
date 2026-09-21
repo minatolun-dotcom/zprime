@@ -3600,5 +3600,95 @@ except FileNotFoundError:
     pass
 check("R32: README carries the connectivity pointer to the runbook", "ONBOARDING_IRP_EWB.md" in _readme and "IRP" in _readme, "readme")
 
+# ============================================================================
+# R-33: TDS/TCS THRESHOLD ADVISORIES (approved Option A) — thresholds become
+# actionable per-section FY aggregates (single read-only route + advisory
+# wording on the client); NOTHING is ever blocked and no posting changes. The
+# books record; the operator judges.
+# ============================================================================
+print("-- R-33: threshold advisories (advisory-only) --")
+
+s, c33 = r03(sA, "POST", "/api/companies", {"name": "R33-Thresholds", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R33THRESH1L2M3", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R33: company created", s == 200 and c33.get("id"), (s, str(c33)[:90]))
+C33 = c33["id"]; R33 = f"/api/c/{C33}"
+
+# sections: 194J aggregate ₹50,000 (advisory mode), 194C single ₹30,000
+s, sec33j = r03(sA, "POST", f"{R33}/tds-sections", {"section": "194J", "description": "Professional fees", "rate": 10, "threshold": 50000, "thresholdMode": "aggregate"})
+check("R33: 194J section with aggregate mode saved", s == 200 and (sec33j.get("thresholdMode") in ("aggregate", None) or sec33j.get("thresholdMode") == "aggregate"), (s, str(sec33j)[:120]))
+s, sec33c = r03(sA, "POST", f"{R33}/tds-sections", {"section": "194C", "description": "Contractors", "rate": 2, "threshold": 30000, "thresholdMode": "single"})
+check("R33: 194C section with single mode saved", s == 200, (s, str(sec33c)[:120]))
+s, sec33bad = r03(sA, "POST", f"{R33}/tds-sections", {"section": "194H", "rate": 2, "thresholdMode": "bogus"})
+check("R33: bogus thresholdMode rejected by schema", s == 400, (s, str(sec33bad)[:100]))
+
+# fixture ledgers: expense ledgers carrying the sections + TDS Payable
+s, vts33 = r03(sA, "GET", f"{R33}/voucher-types")
+vt33 = {t["name"]: t["id"] for t in (vts33 or [])}
+s, grps33 = r03(sA, "GET", f"{R33}/groups")
+g33 = {g["name"]: g["id"] for g in (grps33 or [])}
+s, prof33 = r03(sA, "POST", f"{R33}/ledgers", {"name": "R33 Prof Fees", "groupId": g33["Indirect Expenses"], "tdsSectionId": sec33j["id"]})
+s, contr33 = r03(sA, "POST", f"{R33}/ledgers", {"name": "R33 Contractor", "groupId": g33["Indirect Expenses"], "tdsSectionId": sec33c["id"]})
+check("R33: expense ledgers with sections created", s == 200 and prof33.get("id") and contr33.get("id"), (s, str(prof33)[:80], str(contr33)[:80]))
+led33 = {l["name"]: l["id"] for l in (r03(sA, "GET", f"{R33}/ledgers")[1] or [])}
+tdsLed33 = led33["TDS Payable"]
+cash33 = led33["Cash"]
+
+# ---- below-threshold postings: no advisory over/near; nothing blocked ----
+s, v = r03(sA, "POST", f"{R33}/vouchers", {"voucherTypeId": vt33["Payment"], "date": "2026-04-10",
+    "entries": [{"ledgerId": prof33["id"], "amount": 20000}, {"ledgerId": tdsLed33, "amount": -2000, "tdsSectionId": sec33j["id"]}, {"ledgerId": cash33, "amount": -18000}]})
+check("R33: below-threshold voucher posts normally", s == 200, (s, str(v)[:120]))
+
+s, chk33 = r03(sA, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TDS")
+check("R33: threshold-check endpoint reachable", s == 200 and isinstance(chk33, dict) and "advisories" in chk33, (s, str(chk33)[:120]))
+adv33j = next((a for a in (chk33.get("advisories") or []) if a["section"] == "194J"), None)
+check("R33: 194J FY aggregate = 20000 (payment base, not the duty credited)", adv33j is not None and abs(adv33j["fyAmount"] - 20000) < 0.01, adv33j)
+check("R33: 194J below threshold -> not over/not near", adv33j is not None and adv33j["over"] is False and adv33j["near"] is False, adv33j)
+
+# ---- crossing the aggregate threshold: advisory flips to 'over' ----
+s, v = r03(sA, "POST", f"{R33}/vouchers", {"voucherTypeId": vt33["Payment"], "date": "2026-05-10",
+    "entries": [{"ledgerId": prof33["id"], "amount": 52000}, {"ledgerId": tdsLed33, "amount": -5200, "tdsSectionId": sec33j["id"]}, {"ledgerId": cash33, "amount": -46800}]})
+check("R33: over-threshold voucher ALSO posts normally (nothing blocked)", s == 200, (s, str(v)[:120]))
+s, chk33b = r03(sA, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TDS")
+adv33j2 = next((a for a in (chk33b.get("advisories") or []) if a["section"] == "194J"), None)
+check("R33: 194J FY aggregate = 72000 (payment base; A-04: cancelled excluded)", adv33j2 is not None and abs(adv33j2["fyAmount"] - 72000) < 0.01, adv33j2)
+check("R33: 194J over -> over=True with aggregate wording", adv33j2 is not None and adv33j2["over"] is True and "TDS/TCS due" in adv33j2["wording"], adv33j2)
+
+# ---- single-mode wording for 194C (per-payment) ----
+s, chk33c = r03(sA, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TDS")
+adv33c = next((a for a in (chk33c.get("advisories") or []) if a["section"] == "194C"), None)
+check("R33: 194C single-mode advisory wording present", adv33c is not None and "single" in adv33c["wording"], adv33c)
+
+# ---- TCS head: empty but reachable; no crash ----
+s, chk33t = r03(sA, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TCS")
+check("R33: TCS head advisory reachable (empty ok)", s == 200 and isinstance((chk33t.get("advisories") or []), list), (s, str(chk33t)[:100]))
+
+# ---- reports carry fyAggregates (deductions only, remittances excluded) ----
+s, tds33 = r03(sA, "GET", f"{R33}/reports/tds?from=2026-04-01&to=2026-05-31")
+check("R33: TDS report fetch", s == 200 and isinstance(tds33, dict), (s, str(tds33)[:100]))
+fyj33 = next((a for a in (tds33.get("fyAggregates") or []) if a["section"] == "194J"), None)
+check("R33: TDS report fyAggregates carry 194J", fyj33 is not None and abs(fyj33["fyAmount"] - 72000) < 0.01, fyj33)
+s, tcs33 = r03(sA, "GET", f"{R33}/reports/tcs?from=2026-04-01&to=2026-05-31")
+check("R33: TCS report fetch with fyAggregates field", s == 200 and isinstance(tcs33, dict) and "fyAggregates" in tcs33, (s, str(tcs33)[:100]))
+
+# ---- authorization: non-member 404 on the advisory surface ----
+s, _ = r03(sB, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TDS")
+check("R33: non-member threshold-check -> 404", s == 404, s)
+
+# ---- cancel semantics: cancelled vouchers leave the FY aggregate ----
+s, v = r03(sA, "POST", f"{R33}/vouchers", {"voucherTypeId": vt33["Payment"], "date": "2026-06-10",
+    "entries": [{"ledgerId": prof33["id"], "amount": 30000}, {"ledgerId": tdsLed33, "amount": -3000, "tdsSectionId": sec33j["id"]}, {"ledgerId": cash33, "amount": -27000}]})
+check("R33: third voucher posted for cancel test", s == 200 and v.get("id"), (s, str(v)[:100]))
+s, _ = r03(sA, "POST", f"{R33}/vouchers/{v['id']}/cancel", {"reason": "r33 aggregate exclusion"})
+check("R33: voucher cancelled", s == 200, (s, str(_)[:100]))
+s, chk33d = r03(sA, "GET", f"{R33}/reports/tds-threshold-check?dutyHead=TDS")
+adv33j3 = next((a for a in (chk33d.get("advisories") or []) if a["section"] == "194J"), None)
+check("R33: cancelled voucher excluded from FY aggregate (72000 unchanged)", adv33j3 is not None and abs(adv33j3["fyAmount"] - 72000) < 0.01, adv33j3)
+
+# ---- accounting untouched: TB balances on the R33 books ----
+s, tb33 = r03(sA, "GET", f"{R33}/reports/trial-balance")
+_tb33 = tb33 if isinstance(tb33, list) else (tb33.get("rows") or tb33.get("accounts") or [])
+_dr33 = round(sum(abs(r.get("debit", 0)) for r in _tb33), 2); _cr33 = round(sum(abs(r.get("credit", 0)) for r in _tb33), 2)
+check("R33: trial balance balances (no accounting drift)", _dr33 == _cr33, (_dr33, _cr33))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)
