@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — R-39 backup/restore close-out (RELEASE_REVIEW)
+## v1.38.0 — R-39 backup/restore close-out (RELEASED)
 
 R-39 closes B-12 properly: the action plan's "backup/restore MISSING" claim was verified **outdated** (README runbook + R-12 round-trip guard shipped in v1.14.0), so the remaining work is verification depth + ops guidance — **test/docs only, zero production code**.
 

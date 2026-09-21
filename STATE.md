@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out) IMPLEMENTED, holding at RELEASE_REVIEW.** Verdict: B-12 ALREADY RESOLVED, no defect — so Option A shipped test/docs only: R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables, live vs restored) + schema fingerprint (pg_dump-16 `\restrict` normalization); README gains cron scheduling + restore-drill guidance. Zero production code. Python 1229/1229 (final regression 947), browser estate 494/494 unchanged (no client/server files touched). Baseline remains v1.37.0 (`d850fc8`, pushed; HEAD on docs commits). See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out) RELEASED as v1.38.0 and pushed.** Release commit `5337507b7b927079a2b0748c077270aebf8e32c3`, annotated tag `3ba4aae482349bb00edf3cc30dbe6366cbadb979`, pushed — `origin/main` = `5337507` = `v1.38.0^{}` verified via ls-remote. Test/docs only: R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables, live vs restored) + schema fingerprint (pg_dump-16 `\restrict` normalization); README gains cron scheduling + restore-drill guidance. Zero production code. Python 1229/1229 (final regression 947), browser estate 494/494 unchanged. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
