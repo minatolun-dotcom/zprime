@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-40 (docs hygiene after ALREADY-SHIPPED verdict) IMPLEMENTED, holding at RELEASE_REVIEW.** R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified on v1.38.0); implementation is ROADMAP.md hygiene only — phase line current (was "R-34/v1.33.0"), candidates region marked FULLY DISPOSITIONED with evidence, 3 stale "later" duplicate rows removed. No code, no tests, no schema. Estate 1229/494 unchanged. Baseline remains v1.38.0 (`5337507`, pushed). See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-40 (docs hygiene) RELEASED as v1.39.0 and pushed.** Release commit `0443d1c172df329c54a1925ebbaa8ab3405ce4ec`, annotated tag `fd2fe9b3cb923a51a858d73149870fa76a9c47e0`, pushed — `origin/main` = `0443d1c` = `v1.39.0^{}` verified via ls-remote. R-40 verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified); implementation is ROADMAP.md hygiene only (phase line current, candidates FULLY DISPOSITIONED, stale rows removed). No code, no tests, no schema. Estate 1229/494 unchanged. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

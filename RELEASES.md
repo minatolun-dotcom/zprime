@@ -4,6 +4,13 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.39.0
+
+- **Version:** 1.39.0
+- **Commit:** `0443d1c172df329c54a1925ebbaa8ab3405ce4ec` (annotated tag `fd2fe9b3cb923a51a858d73149870fa76a9c47e0` → commit verified at release; pushed — `origin/main` = `0443d1c` = `v1.39.0^{}` verified via ls-remote)
+- **Purpose:** R-40 — docs hygiene after an ALREADY-SHIPPED verdict (investigation-only cycle): the selected candidate ("import pre-validation UI") verified **ALREADY SHIPPED as R-21 (v1.20.0)** — live-verified on v1.38.0 (server `?dryRun=1` identical-transaction path + client Validate button/banner, 10 Python + 13 browser checks green); the R-04-derived hardening list is fully dispositioned. Implementation: ROADMAP.md refreshed — header "Current at v1.39.0", phase line updated (was ten releases stale at "R-34/v1.33.0"), candidates region marked FULLY DISPOSITIONED with evidence, 3 stale "later" rows duplicating ✅-DONE R-09/R-10/R-11 removed, R-40 row added to the release table. **No code, no tests, no schema — zero production diff.**
+- **Verification:** estate unchanged — Python **1229/1229** + browser **494/494** (zero client/server/test files touched; R-11/R-39 precedent); typecheck server + client clean; `git diff --check` clean.
+
 ## v1.38.0
 
 - **Version:** 1.38.0

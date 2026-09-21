@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.39.0 — R-40 docs hygiene (RELEASE_REVIEW)
+## v1.39.0 — R-40 docs hygiene (RELEASED)
 
 R-40 was an investigation-only cycle: the selected candidate ("import pre-validation UI") verified **ALREADY SHIPPED as R-21 (v1.20.0)** — live-verified on v1.38.0 (server `?dryRun=1` identical-transaction path, client Validate button + nothing-imported banner, 10 Python + 13 browser checks green). The R-04-derived hardening list is fully dispositioned.
 
