@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI) RELEASED as v1.37.0.** Release commit `d850fc8a5e97bb315566c346fb84d38a8b1199fd`, annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d`, pushed — `origin/main` = `v1.37.0^{}` verified via ls-remote. `FyPayeeThresholdCard` on the TDS/TCS report pages — per-payee FY threshold status (server-mirrored over/near formula, amber styling, across-payees rollup, advisory-only footer). Pure client addition. 1222/1222 automated + 494/494 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out) IMPLEMENTED, holding at RELEASE_REVIEW.** Verdict: B-12 ALREADY RESOLVED, no defect — so Option A shipped test/docs only: R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables, live vs restored) + schema fingerprint (pg_dump-16 `\restrict` normalization); README gains cron scheduling + restore-drill guidance. Zero production code. Python 1229/1229 (final regression 947), browser estate 494/494 unchanged (no client/server files touched). Baseline remains v1.37.0 (`d850fc8`, pushed; HEAD on docs commits). See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 

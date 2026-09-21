@@ -2093,6 +2093,39 @@ _vrst = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d
                  "SELECT count(*) FROM vouchers"], capture_output=True, text=True).stdout.strip()
 check("R-12: restored voucher count matches source", _vrst == _vsrc, (_vsrc, _vrst))
 
+# 3b. R-39: content equality — a restore must preserve DATA, not just shape.
+# Row counts can match while values are corrupted, so the postings-bearing
+# tables are compared row-for-row: md5 over the sorted set of row_to_json
+# texts is order-independent content equality (both sides sorted identically).
+_TABLES12 = ["vouchers", "voucher_entries", "ledgers", "bill_allocations",
+             "inventory_entries", "stock_items", "payslips", "pay_heads",
+             "companies", "user_companies", "users"]
+for _t in _TABLES12:
+    _q12 = (f"SELECT md5(COALESCE(string_agg(row_text, E'\\n' ORDER BY row_text), '')) FROM "
+            f"(SELECT row_to_json(t.*)::text AS row_text FROM {_t} t) s")
+    _live12 = _sql(_q12)
+    _rst12 = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip",
+                      "-tAc", _q12], capture_output=True, text=True).stdout.strip()
+    check(f"R-12: {_t} content identical after restore", _live12 != "" and _live12 == _rst12,
+          (_live12[:16], _rst12[:16]))
+
+# 3c. R-39: schema fingerprint — the restored schema must be identical to the
+# live one. pg_dump 16 emits a RANDOM `\restrict <token>` line per invocation
+# (same length, different bytes), so both dumps are normalized by dropping
+# those lines before the byte comparison. The plain-format dump embeds no
+# database name, so identical schemas dump identically otherwise. Catches
+# constraint/extension/ownership drift that content hashes cannot see.
+def _schema12(db):
+    import re as _re
+    out = _sp.run(["docker", "exec", "zprime-test-pg", "pg_dump", "-U", "zprime",
+                   "--schema-only", db], capture_output=True).stdout.decode()
+    return _re.sub(r"^\\(un)?restrict.*$", "", out, flags=_re.M)
+_sch_live12 = _schema12("zprime")
+_sch_rst12 = _schema12("r12_roundtrip")
+check("R-12: schema fingerprint identical after restore",
+      len(_sch_live12) > 10000 and _sch_live12 == _sch_rst12,
+      (len(_sch_live12), len(_sch_rst12)))
+
 # 4. drop scratch
 _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
          "DROP DATABASE r12_roundtrip;"], capture_output=True)

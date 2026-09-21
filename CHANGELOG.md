@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — R-39 backup/restore close-out (RELEASE_REVIEW)
+
+R-39 closes B-12 properly: the action plan's "backup/restore MISSING" claim was verified **outdated** (README runbook + R-12 round-trip guard shipped in v1.14.0), so the remaining work is verification depth + ops guidance — **test/docs only, zero production code**.
+
+- **Content equality (final_regression.py R-12 block, +11 checks):** the restore round-trip now hash-compares row-for-row content of the postings-bearing tables (`vouchers`, `voucher_entries`, `ledgers`, `bill_allocations`, `inventory_entries`, `stock_items`, `payslips`, `pay_heads`, `companies`, `user_companies`, `users`) between live and restored databases — order-independent md5 over sorted `row_to_json` texts. Row counts matching while values are corrupted no longer passes.
+- **Schema fingerprint (+1 check):** the restored schema must dump byte-identically to the live one (pg_dump 16's random `\restrict`/`\unrestrict` token lines normalized away). Catches constraint/extension/ownership drift that content hashes cannot see.
+- **README §Data & backups:** cron scheduling example (daily dump, 14-day retention, copy-off-host warning) and a restore-drill paragraph with the exact scratch-database drill commands — "a backup that has never been restored is a hope, not a backup."
+- Verification: Python **1229/1229** (final regression **947** incl. the 12 new R-39 checks), typechecks clean; browser estate unchanged at **494/494** (zero client/server files touched — R-11 precedent).
+
 ## v1.37.0 — R-38 payee-threshold report UI (RELEASED)
 
 R-38 implements the approved Option A scope (R-37's deferred Option B): the per-payee FY threshold data shipped in v1.36.0 is now **visible on the TDS and TCS report pages**. Pure client addition — no server file, no schema, no accounting surface.

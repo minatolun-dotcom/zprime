@@ -104,7 +104,25 @@ docker compose start app         # 3. start the app
 docker compose exec db psql -U zprime -d zprime -tAc "SELECT count(*) FROM vouchers; SELECT count(*) FROM companies;"
 ```
 
-This exact round-trip is regression-guarded by the test suite (`R-12` block in `scripts/final_regression.py`), so schema changes that would break a plain-SQL restore are caught before release.
+This exact round-trip is regression-guarded by the test suite (`R-12` block in `scripts/final_regression.py`) — and since R-39 that guard compares **content, not just row counts**: postings-bearing tables (`vouchers`, `voucher_entries`, `ledgers`, `bill_allocations`, `inventory_entries`, `stock_items`, `payslips`, `pay_heads`, `companies`, `user_companies`, `users`) are hash-compared row-for-row between the live and restored databases, and the restored schema must be byte-identical to the live one. Schema or data drift that would break a plain-SQL restore is caught before release.
+
+**Schedule backups (host cron):** the runbook assumes a human runs the dump — automate it on the Docker host so it actually happens:
+
+```cron
+# /etc/cron.d/zprime-backup — daily 02:30, keep 14 days
+30 2 * * * root cd /srv/zprime && docker compose exec db pg_dump -U zprime zprime > /var/backups/zprime/$(date +\%F).sql && find /var/backups/zprime -name '*.sql' -mtime +14 -delete
+```
+
+(Create `/var/backups/zprime` first; adjust the app directory to where your `docker-compose.yml` lives. Copy that file off the host — a backup on the same disk as the database is not a backup.)
+
+**Drill the restore:** a backup that has never been restored is a hope, not a backup. The suite proves the *path* works on every release; only a drill proves *your* backup file restores. Quarterly (and after any restore-relevant change: Postgres major version, disk migration), restore the latest real backup file into a scratch database and spot-check a report before you ever need it in anger:
+
+```bash
+docker compose exec db psql -U zprime -d postgres -c "CREATE DATABASE r39_drill;"
+cat /var/backups/zprime/2026-09-21.sql | docker compose exec -T db psql -U zprime -d r39_drill -v ON_ERROR_STOP=1
+docker compose exec db psql -U zprime -d r39_drill -tAc "SELECT count(*) FROM vouchers"
+docker compose exec db psql -U zprime -d postgres -c "DROP DATABASE r39_drill;"
+```
 
 **Whole-volume alternative:** to snapshot everything (including volume metadata), stop the stack and copy the named volume, e.g. `docker run --rm -v zprime_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/pgdata.tgz -C /data .` — restore by reversing the copy into a fresh volume. Prefer `pg_dump` for version-safe, human-readable backups.
 

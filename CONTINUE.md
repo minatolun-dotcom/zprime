@@ -1,14 +1,15 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-38 (payee-threshold report UI) RELEASED as v1.37.0 and pushed.** Process state: RELEASED → IDLE.
+**Last updated:** 2026-09-21 — **R-39 (B-12 backup/restore close-out, approved Option A) IMPLEMENTED, holding at RELEASE_REVIEW.** Baseline: v1.37.0 pushed (`2ab0703` docs commit on release `d850fc8`); tree carries R-39 scope (test + README + docs) + `R-39_INVESTIGATION.md` + the intentional untracked action plan.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.37.0 (R-38 payee-threshold report UI) — release commit `d850fc8a5e97bb315566c346fb84d38a8b1199fd` ("Release v1.37.0: payee threshold status on the TDS/TCS reports", 8 files, +296/−7), annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d` ("zprime v1.37.0 — the answer, where the operator looks"); pushed — `origin/main` = `d850fc8` = `v1.37.0^{}` verified via ls-remote; 39 tags; see RELEASES.md
-- **Current HEAD:** the v1.37.0 release commit; tree clean apart from the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md` (and `scripts/__pycache__/`)
-- **Current phase:** `IDLE` — R-38 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
+- **Current release:** v1.37.0 (R-38 payee-threshold report UI) — release commit `d850fc8a5e97bb315566c346fb84d38a8b1199fd` ("Release v1.37.0: payee threshold status on the TDS/TCS reports", 8 files, +296/−7), annotated tag `0e0ae61d0f50513d47454ed7cffe6b193c4a971d` ("zprime v1.37.0 — the answer, where the operator looks"); pushed — `origin/main` = `2ab0703` (docs commit on the release commit) verified via ls-remote; 39 tags; see RELEASES.md
+- **Current phase:** `RELEASE_REVIEW` — R-39 implemented (approved Option A, test/docs only, zero production code): final_regression.py R-12 block extended with content-equality checksums (11 postings-bearing tables compared row-for-row live vs restored via order-independent md5 over sorted row_to_json) + schema-fingerprint check (pg_dump-16 `\restrict`/`\unrestrict` random-token lines normalized before byte comparison) · README §Data & backups gains a cron scheduling example (daily, 14-day retention, copy-off-host warning) and a restore-drill paragraph with exact commands · proposed release v1.38.0
+- **Verification (final tree):** typecheck server + client clean · Python **1229/1229** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **947** incl. 12 new R-39 checks, attack-the-fixes 29) · browser **494/494** unchanged (zero client/server files touched — R-11 precedent) · `git diff --check` clean
+- **Investigation report:** `R-39_INVESTIGATION.md`
 - **What was implemented (R-38, approved Option A):** `FyPayeeThresholdCard` in Reports.tsx rendered by TdsView + TcsView from the existing `fyAggregates` payload · per-payee rows (Payee · PAN · This FY · Largest single · Status) with the server-mirrored over/near formula (aggregate vs single mode, 80% band; OVER in the R-33 amber-strong family) · section header shows threshold/mode/FY-to-date · across-payees rollup line · no-threshold honest wording · advisory-only footer · r38_ui.js 14 checks on the real pages
 - **Verification (final tree):** typecheck server + client clean · Python **1222/1222** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 935, attack-the-fixes 29) · browser **494/494** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r38 = 341 scenario checks, **r38_ui 14/14**) · `git diff --check` clean
 - **Next permitted action:** per protocol — the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.

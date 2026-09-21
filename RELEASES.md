@@ -4,6 +4,13 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.38.0
+
+- **Version:** 1.38.0
+- **Commit:** `R39_COMMIT_SHA` (annotated tag `R39_TAG_SHA` → commit verified at release; pushed — `origin/main` = `R39_COMMIT_SHORT` = `v1.38.0^{}` verified via ls-remote)
+- **Purpose:** R-39 — backup/restore close-out (approved Option A, test/docs only, zero production code): B-12 verified ALREADY RESOLVED (README runbook + R-12 round-trip guard shipped in v1.14.0), so the release is verification depth + ops guidance. R-12 guard upgraded with **content-equality checksums** — 11 postings-bearing tables (`vouchers`, `voucher_entries`, `ledgers`, `bill_allocations`, `inventory_entries`, `stock_items`, `payslips`, `pay_heads`, `companies`, `user_companies`, `users`) hash-compared row-for-row live vs restored (order-independent md5 over sorted `row_to_json`) — plus a **schema-fingerprint** check (pg_dump-16 `\restrict`/`\unrestrict` random-token lines normalized before byte comparison; drift caught live en route). README §Data & backups gains a host-cron scheduling example (daily, 14-day retention, copy-off-host warning) and a restore-drill paragraph with exact scratch-DB commands. No server file, no client file, no schema, no accounting surface.
+- **Verification:** 1229/1229 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **947** incl. all 12 new R-39 checks, attack-the-fixes 29); 494/494 browser unchanged (zero client/server files touched — R-11 precedent); typecheck server + client clean.
+
 ## v1.37.0
 
 - **Version:** 1.37.0
