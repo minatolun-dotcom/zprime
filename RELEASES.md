@@ -7,7 +7,7 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 ## v1.34.0
 
 - **Version:** 1.34.0
-- **Commit:** `<commit-sha>` (annotated tag `<tag-sha>` → commit verified at release; pushed — `origin/main` = `<short>` = `v1.34.0^{}` verified via ls-remote)
+- **Commit:** `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e` (annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5` → commit verified at release; pushed — `origin/main` = `d3ecfc6` = `v1.34.0^{}` verified via ls-remote)
 - **Purpose:** R-35 — ledger-on-the-fly (approved Option A): Tally's most-loved data-entry affordance — **Alt+C mid-voucher ledger creation without losing the half-entered voucher**. Quick-create modal (Name/Under Group/Taxability/GST Rate %) prefilled from the focused cell (entry row or Party A/c); pick-in on success into the triggering row + focus return; Esc closes only the modal, Ctrl+A/Enter accept the modal (voucher semantics restored when closed); TypeAhead `＋ Create "<text>"` row on zero matches + Enter-on-zero-matches opens the modal instead of discarding text; duplicate-name 409 surfaces verbatim, voucher untouched. Entry-ready masters here; GSTIN/bill-wise/TDS-sections stay on the masters page. **Zero server diff** (`POST /c/:cid/ledgers` was already cid-gated, validated, R-08 ref-checked, 409-honest); no schema, no migration, no accounting surface.
 - **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); 440/440 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r35 scenarios = 287, new r35_ui 23/23 with real key presses); typecheck server + client clean.
 - **Immutable: YES** — pushed to origin 2026-09-21.

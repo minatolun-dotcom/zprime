@@ -1,19 +1,19 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-35 (Alt+C ledger-on-the-fly) IMPLEMENTED and fully verified; holding at RELEASE_REVIEW per protocol.** v1.33.0 is the last tagged release; the working tree carries the R-35 changes.
+**Last updated:** 2026-09-21 — **R-35 (Alt+C ledger-on-the-fly) RELEASED as v1.34.0 and pushed.** Process state: RELEASED → IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.33.0 (R-34 keyboard integrity) — release commit `b4bdd90e81788ab7d64ace8eb921b94a46846cb0` ("Release v1.33.0: keyboard integrity"), annotated tag `8b591b12f1a30bb8f29a4d747fbaec0ea5dac217`; pushed — 35 tags; see RELEASES.md
-- **Current HEAD:** the v1.33.0 release commit; the working tree carries the R-35 implementation (2 client files + r35_ui.js) plus docs at RELEASE_REVIEW and the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md`
-- **Current phase:** `RELEASE_REVIEW` — R-35 implemented, all gates green. **Proposed release: v1.34.0** — commit "Release v1.34.0: ledger-on-the-fly (Alt+C)", annotated tag v1.34.0, then push per the RELEASED protocol
+- **Current release:** v1.34.0 (R-35 ledger-on-the-fly) — release commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e` ("Release v1.34.0: ledger-on-the-fly (Alt+C)", 9 files, +511/−15), annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5` ("zprime v1.34.0 — masters at the speed of entry"); pushed — `origin/main` = `d3ecfc6` = `v1.34.0^{}` verified via ls-remote; 36 tags; see RELEASES.md
+- **Current HEAD:** the v1.34.0 release commit; tree clean apart from the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md` (and `scripts/__pycache__/`)
+- **Current phase:** `IDLE` — R-35 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
 - **What was implemented (R-35, approved Option A):** Alt+C quick-create modal on VoucherScreen (Name/Under Group/Taxability/GST Rate %) prefilled from the focused cell · pick-in on success into the triggering entry/party row + focus return · Esc closes only the modal, Ctrl+A/Enter accept the modal (voucher semantics restored when closed) · TypeAhead `＋ Create "<text>"` row on zero matches + Enter-on-zero-matches opens the modal · duplicate-name 409 surfaces verbatim, voucher untouched · focus-returns-to-trigger fix found by the suite
 - **Verification (final tree):** typecheck server + client clean · Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29) · browser **440/440** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r35 = 287 scenario checks, **r35_ui 23/23**) · `git diff --check` clean
-- **Next permitted action:** on your instruction — RELEASES/ROADMAP ledger entries + release-gate re-run + commit + tag + push + immutability/remote verification + post-release ledger update
+- **Next permitted action:** per protocol — the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
 
-## Previous state (R-35 investigation session)
+## Previous state (R-35 investigation + implementation session — released as v1.34.0)
 
 - **Phase at the time:** `RELEASE_REVIEW` — R-34 implementation complete, all gates green
 - **What was implemented (R-34, approved Option A — keyboard integrity):** D-1 Alt+G/Alt+T wired (chips get `onClick`, hotkey map gets the chords with the same type guards) · D-2 six Day Book chords registered (Alt+F5 Debit Note, Alt+F6 Credit Note, Alt+F7 Stock Journal, Alt+F8 Delivery Note, Alt+F9 Receipt Note, Ctrl+F7 Physical Stock) — the driver's "App quirk" `CLICK_OPEN` workaround deleted, suites press real keys · D-3 Day Book row click → voucher edit, `e.stopPropagation()` on Uncancel/Cancel/Del · **F-34-1 (found during implementation):** intrastate Apply-GST had inserted only the CGST half since v1.0 (`dutyOf("SGST/UTGST")` never matched the seeded `dutyHead:"SGST"`) — fixed to `dutyOf("SGST")`, locked by tests

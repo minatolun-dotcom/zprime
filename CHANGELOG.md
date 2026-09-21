@@ -1,6 +1,8 @@
 # Changelog
 
-## v1.34.0 — R-35 ledger-on-the-fly (RELEASE_REVIEW)
+## v1.34.0 — R-35 ledger-on-the-fly (RELEASED)
+
+> Commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e` · annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5` · pushed 2026-09-21.
 
 R-35 implements the approved Option A scope: Tally's most-loved data-entry affordance — **Alt+C mid-voucher ledger creation without losing the half-entered voucher**. Client-only: no server file, no schema, no migration, no accounting-math change (`POST /c/:cid/ledgers` was already cid-gated, Zod-validated, R-08 ref-checked, 409-honest).
 

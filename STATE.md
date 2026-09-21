@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-35 (ledger-on-the-fly) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-35 changes; v1.33.0 remains the last tagged release. Alt+C quick-create modal (Name/Under/Taxability/Rate) prefilled from the focused cell · pick-in on success + focus return · Esc closes only the modal, Ctrl+A/Enter accept · TypeAhead `＋ Create` row · 409 verbatim. Client-only. 1197/1197 automated + 440/440 browser. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-35 (ledger-on-the-fly) RELEASED as v1.34.0.** Release commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e`, annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5`, pushed — `origin/main` = `v1.34.0^{}` verified via ls-remote. Alt+C quick-create modal (Name/Under/Taxability/Rate) prefilled from the focused cell · pick-in on success + focus return · Esc closes only the modal, Ctrl+A/Enter accept · TypeAhead `＋ Create` row · 409 verbatim. Zero server diff, no schema, no accounting surface. 1197/1197 automated + 440/440 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-35 (IMPLEMENTED — RELEASE_REVIEW): ledger-on-the-fly
+### R-35 (RELEASED as v1.34.0): ledger-on-the-fly
 
 Investigation (`R-35_INVESTIGATION.md`) confirmed the missing Tally affordance (D-5, deferred from R-34): no mid-voucher ledger creation; Enter on a zero-match TypeAhead silently discards typed text. Enabling discovery: the server already has everything (`POST /c/:cid/ledgers` cid-gated, validated, R-08 ref-checked, 409-honest) — zero server diff. **Option A approved:** Alt+C modal (Name/Group/Taxability/Rate), pick-in on success, conditional Esc/Ctrl+A layering, TypeAhead `＋ Create` row, r35_ui.js. Implementation added the Tally behavior the first cut lacked: focus returns to the triggering cell on modal close.
 
