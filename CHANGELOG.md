@@ -1,6 +1,8 @@
 # Changelog
 
-## v1.36.0 — R-37 per-payee FY TDS/TCS aggregates (RELEASE_REVIEW)
+## v1.36.0 — R-37 per-payee FY TDS/TCS aggregates (RELEASED)
+
+> Commit `740d0160c883242da7fbd77c7b26183c54075c12` · annotated tag `1926296c050a745b1491c355de29f4068c7a6a42` · pushed 2026-09-21.
 
 R-37 implements the approved Option A scope (R-33's deferred Option C): the threshold advisory now measures the **statutory unit — per payee per FY** — instead of the per-section cross-payee sum. Read-only advisory data; nothing blocks; no schema, no migration, no accounting-math change.
 

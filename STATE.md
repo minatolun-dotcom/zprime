@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-37 (per-payee FY TDS/TCS aggregates, R-33 Option C) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-37 changes; v1.35.0 remains the last tagged release. `payees[]` per section aggregate · per-payee over/near + payee-naming wording · "across payees" rollup label · hasPan from GSTIN · advisory-only, nothing blocks. No schema/migration/accounting change. 1222/1222 automated + 480/480 browser. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-37 (per-payee FY TDS/TCS aggregates) RELEASED as v1.36.0.** Release commit `740d0160c883242da7fbd77c7b26183c54075c12`, annotated tag `1926296c050a745b1491c355de29f4068c7a6a42`, pushed — `origin/main` = `v1.36.0^{}` verified via ls-remote. `payees[]` per section aggregate · per-payee over/near + payee-naming wording · "across payees" rollup label · hasPan from GSTIN · advisory-only, nothing blocks. No schema/migration/accounting change. 1222/1222 automated + 480/480 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-37 (IMPLEMENTED — RELEASE_REVIEW): per-payee FY TDS/TCS aggregates
+### R-37 (RELEASED as v1.36.0): per-payee FY TDS/TCS aggregates
 
 Investigation (`R-37_INVESTIGATION.md`) confirmed the gap (R-33's documented Option C deferral): the threshold advisory summed all payees under one section while the law binds per payee per FY — ₹40k+₹40k under 194J read "TDS due" when neither payee crossed ₹50k. Enabling discovery: the postings already know the payee (the section-declaring expense/party ledger IS the payee) — a nested GROUP BY ledger on R-33's existing query, zero schema. **Option A approved:** `payees[]` per section aggregate, per-payee over/near + payee-naming wording (hasPan from GSTIN chars 3–12; honest "verify" note when absent), section rollup labeled "across payees". En-route test correction only: at ₹40k of ₹50k the payees are near (80%), not far-under — the assertion was corrected to the honest reading.
 
