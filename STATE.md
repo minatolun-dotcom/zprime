@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) RELEASED as v1.35.0.** Release commit `dc758aa19994ee6de4af554a749d82dee6b13f80`, annotated tag `deb1e003e63a5c9c3b0a826c32f99afc245e7897`, pushed — `origin/main` = `v1.35.0^{}` verified via ls-remote. Same-column ArrowDown/Up in the entries + inventory grids · TypeAhead arrows own the dropdown only when matches are open · Enter-adds-row unchanged · modifier chords are no-ops. Client-only, no server/schema/accounting surface. 1197/1197 automated + 480/480 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-37 (per-payee FY TDS/TCS aggregates, R-33 Option C) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-37 changes; v1.35.0 remains the last tagged release. `payees[]` per section aggregate · per-payee over/near + payee-naming wording · "across payees" rollup label · hasPan from GSTIN · advisory-only, nothing blocks. No schema/migration/accounting change. 1222/1222 automated + 480/480 browser. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -11,6 +11,10 @@
 Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway → Voucher → Report → Drill-down workflow, original UI). Fastify 5 + React 18 + PostgreSQL 16 + Drizzle ORM, single app container + Postgres via Docker Compose.
 
 ## Release status
+
+### R-37 (IMPLEMENTED — RELEASE_REVIEW): per-payee FY TDS/TCS aggregates
+
+Investigation (`R-37_INVESTIGATION.md`) confirmed the gap (R-33's documented Option C deferral): the threshold advisory summed all payees under one section while the law binds per payee per FY — ₹40k+₹40k under 194J read "TDS due" when neither payee crossed ₹50k. Enabling discovery: the postings already know the payee (the section-declaring expense/party ledger IS the payee) — a nested GROUP BY ledger on R-33's existing query, zero schema. **Option A approved:** `payees[]` per section aggregate, per-payee over/near + payee-naming wording (hasPan from GSTIN chars 3–12; honest "verify" note when absent), section rollup labeled "across payees". En-route test correction only: at ₹40k of ₹50k the payees are near (80%), not far-under — the assertion was corrected to the honest reading.
 
 ### R-36 (RELEASED as v1.35.0): arrow-key grid navigation
 

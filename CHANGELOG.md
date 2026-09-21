@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.36.0 — R-37 per-payee FY TDS/TCS aggregates (RELEASE_REVIEW)
+
+R-37 implements the approved Option A scope (R-33's deferred Option C): the threshold advisory now measures the **statutory unit — per payee per FY** — instead of the per-section cross-payee sum. Read-only advisory data; nothing blocks; no schema, no migration, no accounting-math change.
+
+- **`payees[]` in every section aggregate (`tdsTcsFyAggregates`):** the same postings query gains `ledgerId` and nests a per-ledger (payee) map under each section — `{ ledgerId, ledgerName, hasPan (GSTIN chars 3–12 present), fyAmount, maxSingle, count }`, sorted by amount. The payee grain is the ledger (zprime's ledger master IS the payee master; a payee spread over several ledgers reports per ledger — documented). Section totals remain the rollup across payees — shape-compatible with every existing consumer.
+- **Per-payee over/near + wording (threshold-check):** each payee is evaluated individually against the threshold (aggregate mode: payee FY base; single mode: payee's largest single payment). Over wording names the payee: `Payee "X" (194J): ₹72,000 this FY (threshold ₹50,000) — TDS/TCS due on further payments`. Payees without GSTIN carry an honest `PAN/GSTIN not recorded for this payee; verify before remitting` note when over — never a guess. The section rollup keeps its own wording, now labeled **"across payees"** so the per-section sum can never masquerade as the per-payee truth.
+- **The false-positive is gone:** ₹40k to Architect A + ₹40k to Consultant B under 194J now reads per-payee truth (neither over, both near at 80%) where the section sum read "₹80,000 — TDS due". Conversely, one payee crossing (₹72k) reads over **naming that payee** while the other stays not-over — the actionable question ("to whom do I owe TDS from the next payment?") is now answerable.
+- **TDS/TCS reports:** `fyAggregates` carry the new `payees[]` arrays — additive, no shape break; cancel-exclusion and A-04 remittance-exclusion carry over verbatim (same query).
+- **Tests:** `final_regression.py` +20 R-37 checks (**935**): two-payee-under-threshold per-payee truth (over=false, near=true at 80%, hasPan true/false by GSTIN presence), section rollup preserved at ₹80,000 with "across payees" label, one-payee-over isolation with payee-naming wording, TDS-report fixture sanity, non-member 404 on the enriched surface, TB still balances; all 22 R-33 checks unchanged and green; r33_ui 13/13 (wording-substring contract survived).
+- **Verification (final tree):** typecheck server + client clean; Python **1222/1222** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **935** incl. 22 R-33 + 20 R-37, attack-the-fixes 29); browser **480/480** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r36 = 327 scenario checks); `git diff --check` clean.
+
 ## v1.35.0 — R-36 arrow-key grid navigation (RELEASED)
 
 > Commit `dc758aa19994ee6de4af554a749d82dee6b13f80` · annotated tag `deb1e003e63a5c9c3b0a826c32f99afc245e7897` · pushed 2026-09-21.

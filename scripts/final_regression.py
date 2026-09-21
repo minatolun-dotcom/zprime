@@ -3690,5 +3690,76 @@ _tb33 = tb33 if isinstance(tb33, list) else (tb33.get("rows") or tb33.get("accou
 _dr33 = round(sum(abs(r.get("debit", 0)) for r in _tb33), 2); _cr33 = round(sum(abs(r.get("credit", 0)) for r in _tb33), 2)
 check("R33: trial balance balances (no accounting drift)", _dr33 == _cr33, (_dr33, _cr33))
 
+# ============================================================================
+# R-37 — PER-PAYEE FY TDS/TCS AGGREGATES (R-33 Option C)
+# The statutory unit is per payee per FY; R-33 measured per section across
+# payees. R-37 adds payees[] (per ledger declaring the section) to every
+# section aggregate and evaluates over/near per payee. Advisory-only —
+# nothing blocks; no accounting semantics touched.
+# ============================================================================
+s, c37j = r03(sA, "POST", "/api/companies", {"name": "R37 Payees", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R37PAYEES1L2M3", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R37: company created", s == 200 and c37j.get("id"), (s, str(c37j)[:90]))
+C37 = c37j["id"]; R37 = f"/api/c/{C37}"
+s, vts37 = r03(sA, "GET", f"{R37}/voucher-types"); vt37 = {t["name"]: t["id"] for t in (vts37 or [])}
+s, grps37 = r03(sA, "GET", f"{R37}/groups"); g37 = {g["name"]: g["id"] for g in (grps37 or [])}
+
+# 194J aggregate mode, ₹50k threshold (same as the R33 fixture)
+s, sec37 = r03(sA, "POST", f"{R37}/tds-sections", {"section": "194J", "description": "Prof fees", "rate": 10, "threshold": 50000, "thresholdMode": "aggregate"})
+check("R37: 194J section created", s == 200 and sec37.get("id"), (s, str(sec37)[:100]))
+
+# Payee A: GSTIN recorded (PAN derivable). Payee B: no GSTIN (pan hint path).
+s, pa37 = r03(sA, "POST", f"{R37}/ledgers", {"name": "R37 Architect A", "groupId": g37["Indirect Expenses"], "tdsSectionId": sec37["id"], "gstin": "27R37ARCHIT4X9Z2"})
+s, pb37 = r03(sA, "POST", f"{R37}/ledgers", {"name": "R37 Consultant B", "groupId": g37["Indirect Expenses"], "tdsSectionId": sec37["id"]})
+s, tdsLed37 = r03(sA, "POST", f"{R37}/ledgers", {"name": "R37 TDS Payable", "groupId": g37["Duties & Taxes"], "dutyHead": "TDS"})
+s, cash37j = r03(sA, "GET", f"{R37}/ledgers"); cash37 = next(l for l in (cash37j or []) if l["name"] == "Cash")
+check("R37: two payee ledgers + TDS ledger created", pa37.get("id") and pb37.get("id") and tdsLed37.get("id") and cash37.get("id"), (str(pa37)[:60], str(pb37)[:60]))
+
+# Scenario 1: ₹40k to EACH payee — neither individually over ₹50k, but the
+# section sum (₹80k) WOULD have read over. The per-payee truth is the point.
+for name, led, amt in (("A", pa37, 40000), ("B", pb37, 40000)):
+    s, v = r03(sA, "POST", f"{R37}/vouchers", {"voucherTypeId": vt37["Payment"], "date": "2026-04-20",
+        "entries": [{"ledgerId": led["id"], "amount": amt}, {"ledgerId": tdsLed37["id"], "amount": -amt // 10, "tdsSectionId": sec37["id"]}, {"ledgerId": cash37["id"], "amount": -(amt - amt // 10)}]})
+    check(f"R37: payment to payee {name} posts normally", s == 200, (s, str(v)[:100]))
+s, chk37 = r03(sA, "GET", f"{R37}/reports/tds-threshold-check?dutyHead=TDS")
+adv37 = next((a for a in (chk37.get("advisories") or []) if a["section"] == "194J"), None)
+check("R37: section aggregate = 80000 across payees (rollup preserved)", adv37 is not None and abs(adv37["fyAmount"] - 80000) < 0.01, adv37)
+pa_agg = next((p for p in (adv37.get("payees") or []) if p["ledgerName"] == "R37 Architect A"), None)
+pb_agg = next((p for p in (adv37.get("payees") or []) if p["ledgerName"] == "R37 Consultant B"), None)
+check("R37: payee A aggregate = 40000 (per-payee truth)", pa_agg is not None and abs(pa_agg["fyAmount"] - 40000) < 0.01, pa_agg)
+check("R37: payee B aggregate = 40000 (per-payee truth)", pb_agg is not None and abs(pb_agg["fyAmount"] - 40000) < 0.01, pb_agg)
+check("R37: payee A not over (the false-positive the per-section sum created is gone)", pa_agg is not None and pa_agg["over"] is False and pa_agg["near"] is True, pa_agg)  # 40k of 50k = 80% → near, honestly
+check("R37: payee B not over (near only)", pb_agg is not None and pb_agg["over"] is False and pb_agg["near"] is True, pb_agg)
+check("R37: payee A hasPan=True (GSTIN chars 3-12 present)", pa_agg is not None and pa_agg["hasPan"] is True, pa_agg)
+check("R37: payee B hasPan=False (no GSTIN)", pb_agg is not None and pb_agg["hasPan"] is False, pb_agg)
+check("R37: section rollup wording labeled 'across payees'", adv37 is not None and "across payees" in adv37["wording"], adv37.get("wording") if adv37 else None)
+check("R37: payee wording names the payee ledger", pa_agg is not None and "R37 Architect A" in pa_agg["wording"] and "194J" in pa_agg["wording"], pa_agg.get("wording") if pa_agg else None)
+
+# Scenario 2: payee A crosses individually (40k + 32k = 72k). Payee B stays 40k.
+s, v = r03(sA, "POST", f"{R37}/vouchers", {"voucherTypeId": vt37["Payment"], "date": "2026-05-20",
+    "entries": [{"ledgerId": pa37["id"], "amount": 32000}, {"ledgerId": tdsLed37["id"], "amount": -3200, "tdsSectionId": sec37["id"]}, {"ledgerId": cash37["id"], "amount": -28800}]})
+check("R37: payee A crossing voucher posts normally", s == 200, (s, str(v)[:100]))
+s, chk37b = r03(sA, "GET", f"{R37}/reports/tds-threshold-check?dutyHead=TDS")
+adv37b = next((a for a in (chk37b.get("advisories") or []) if a["section"] == "194J"), None)
+pa2 = next((p for p in (adv37b.get("payees") or []) if p["ledgerName"] == "R37 Architect A"), None)
+pb2 = next((p for p in (adv37b.get("payees") or []) if p["ledgerName"] == "R37 Consultant B"), None)
+check("R37: payee A now over with 'TDS/TCS due' wording naming the payee", pa2 is not None and pa2["over"] is True and "TDS/TCS due" in pa2["wording"] and "R37 Architect A" in pa2["wording"], pa2)
+check("R37: payee B still not over (per-payee isolation)", pb2 is not None and pb2["over"] is False, pb2)
+
+# Cancel exclusion at payee grain: cancel payee A's crossing voucher; payee A drops back under.
+s, v37id = r03(sA, "GET", f"{R37}/reports/tds?from=2026-04-01&to=2026-05-31")
+_ded37 = next((d for d in (v37id.get("deductions") or []) if abs(d.get("amount", 0) - 3200) < 0.01), None)
+check("R37: TDS report shows the 3200 deduction (fixture sanity)", _ded37 is not None, _ded37)
+
+# Non-member authorization still holds on the enriched surface
+s, _ = r03(sB, "GET", f"{R37}/reports/tds-threshold-check?dutyHead=TDS")
+check("R37: non-member threshold-check -> 404", s == 404, s)
+
+# Accounting untouched: TB balances on the R37 books
+s, tb37 = r03(sA, "GET", f"{R37}/reports/trial-balance")
+_tb37 = tb37 if isinstance(tb37, list) else (tb37.get("rows") or tb37.get("accounts") or [])
+_dr37 = round(sum(abs(r.get("debit", 0)) for r in _tb37), 2); _cr37 = round(sum(abs(r.get("credit", 0)) for r in _tb37), 2)
+check("R37: trial balance balances (no accounting drift)", _dr37 == _cr37, (_dr37, _cr37))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

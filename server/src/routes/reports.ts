@@ -33,9 +33,13 @@ function fyWindow(booksBegin?: string): { from: string; to: string } {
  *  test caught). Base lines are found via the ledger's section DECLARATION
  *  (ledgers.tds/tcs_section_id — set on the expense/party master), because the
  *  entry-level snapshot is stamped only on the duty line itself. Sections
- *  without postings still appear (threshold=0 or unset → no advisory). Rows
- *  are keyed by section, not payee — the per-payee split is documented out of
- *  scope (R-33_INVESTIGATION.md). */
+ *  without postings still appear (threshold=0 or unset → no advisory).
+ *  R-37 (R-33 Option C): rows now ALSO carry a per-PAYEE breakdown — the
+ *  statutory unit. The payee grain is the ledger itself (zprime's ledger
+ *  master IS the payee master; a payee spread over several ledgers reports
+ *  per ledger — documented in R-37_INVESTIGATION.md §5). Each payee row:
+ *  { ledgerId, ledgerName, hasPan (GSTIN chars 3–12 present), fyAmount,
+ *  maxSingle, count }. Section-level totals remain the rollup across payees. */
 async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
   const { from, to } = fyWindow();
   const sectionTable = dutyHead === "TDS" ? tdsSections : tcsSections;
@@ -44,6 +48,7 @@ async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
   const rows = await db
     .select({
       sectionId: sectionCol,
+      ledgerId: voucherEntries.ledgerId,
       amount: voucherEntries.amount,
     })
     .from(voucherEntries)
@@ -55,10 +60,13 @@ async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
       eq(ledgers.companyId, companyId),
       gte(vouchers.date, from), lte(vouchers.date, to),
     ));
-  const bySection = new Map<number, { sectionId: number; section: string; threshold: number; thresholdMode: string | null; fyAmount: number; maxSingle: number; count: number }>();
+  type PayeeAgg = { ledgerId: number; ledgerName: string; hasPan: boolean; fyAmount: number; maxSingle: number; count: number };
+  const bySection = new Map<number, { sectionId: number; section: string; threshold: number; thresholdMode: string | null; fyAmount: number; maxSingle: number; count: number; payees: Map<number, PayeeAgg> }>();
   for (const sec of sections) {
-    bySection.set(sec.id, { sectionId: sec.id, section: sec.section, threshold: num(sec.threshold), thresholdMode: (sec as any).thresholdMode ?? null, fyAmount: 0, maxSingle: 0, count: 0 });
+    bySection.set(sec.id, { sectionId: sec.id, section: sec.section, threshold: num(sec.threshold), thresholdMode: (sec as any).thresholdMode ?? null, fyAmount: 0, maxSingle: 0, count: 0, payees: new Map() });
   }
+  const ledgerNames = new Map<number, string>();
+  const ledgerPans = new Map<number, boolean>();
   for (const row of rows) {
     const key = row.sectionId ?? 0;
     const cur = bySection.get(key);
@@ -71,9 +79,30 @@ async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
     cur.fyAmount = r2(cur.fyAmount + amt);
     if (amt > cur.maxSingle) cur.maxSingle = amt;
     cur.count += 1;
+    // R-37: per-payee (per-ledger) split — the statutory aggregation unit.
+    if (row.ledgerId == null) continue; // cannot happen (inner join) — belt and braces
+    let ledgerName = ledgerNames.get(row.ledgerId);
+    if (ledgerName === undefined) {
+      const [l] = await db.select({ name: ledgers.name, gstin: ledgers.gstin }).from(ledgers).where(eq(ledgers.id, row.ledgerId));
+      ledgerName = l?.name ?? `#${row.ledgerId}`;
+      ledgerNames.set(row.ledgerId, ledgerName);
+      ledgerPans.set(row.ledgerId, Boolean(l?.gstin && String(l.gstin).length >= 12)); // PAN = GSTIN chars 3–12
+    }
+    let payee = cur.payees.get(row.ledgerId);
+    if (!payee) {
+      payee = { ledgerId: row.ledgerId, ledgerName, hasPan: ledgerPans.get(row.ledgerId) ?? false, fyAmount: 0, maxSingle: 0, count: 0 };
+      cur.payees.set(row.ledgerId, payee);
+    }
+    payee.fyAmount = r2(payee.fyAmount + amt);
+    if (amt > payee.maxSingle) payee.maxSingle = amt;
+    payee.count += 1;
   }
   return [...bySection.values()]
     .filter((s) => s.threshold > 0 || s.count > 0)
+    .map((s) => ({
+      ...s,
+      payees: [...s.payees.values()].sort((a, b) => b.fyAmount - a.fyAmount || a.ledgerName.localeCompare(b.ledgerName)),
+    }))
     .sort((a, b) => a.section.localeCompare(b.section));
 }
 
@@ -569,7 +598,35 @@ export default async function reportRoutes(app: FastifyInstance) {
       // (maxSingle), the payment most plainly at risk; the FY total is still
       // shown for context. threshold=0 never triggers (no recorded threshold
       // — no guessing).
+      // R-37: the statutory unit is PER PAYEE (per ledger declaring the
+      // section). Each payee is evaluated individually; the section row
+      // remains as the rollup across payees ("across payees" label). The
+      // wording substrings earlier consumers match on ("TDS/TCS due",
+      // "single", "no threshold recorded") are preserved in every branch.
       const mode = s.thresholdMode ?? "aggregate";
+      const payeeOver = (p: { ledgerName: string; hasPan: boolean; fyAmount: number; maxSingle: number }) =>
+        mode === "single" ? p.maxSingle >= s.threshold : p.fyAmount >= s.threshold;
+      const payeeNear = (p: { ledgerName: string; hasPan: boolean; fyAmount: number; maxSingle: number }) =>
+        !payeeOver(p) && (mode === "single" ? p.maxSingle : p.fyAmount) > 0 && (mode === "single" ? p.maxSingle : p.fyAmount) >= s.threshold * 0.8;
+      const payeeWording = (p: { ledgerId: number; ledgerName: string; hasPan: boolean; fyAmount: number; maxSingle: number }) => {
+        const panNote = p.hasPan ? "" : " — PAN/GSTIN not recorded for this payee; verify before remitting";
+        if (s.threshold <= 0) return `Payee "${p.ledgerName}" under ${s.section}: no threshold recorded — confirm applicability manually`;
+        if (payeeOver(p)) {
+          if (mode === "single") return `Payee "${p.ledgerName}" (${s.section}): largest single payment ₹${p.maxSingle.toLocaleString("en-IN")} meets/exceeds the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode) — TDS/TCS applies to payments at or above it${panNote}`;
+          return `Payee "${p.ledgerName}" (${s.section}): ₹${p.fyAmount.toLocaleString("en-IN")} this FY (threshold ₹${s.threshold.toLocaleString("en-IN")}) — TDS/TCS due on further payments${panNote}`;
+        }
+        if (payeeNear(p)) {
+          if (mode === "single") return `Payee "${p.ledgerName}" (${s.section}): largest single payment ₹${p.maxSingle.toLocaleString("en-IN")} is near the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode)`;
+          return `Payee "${p.ledgerName}" (${s.section}): ₹${p.fyAmount.toLocaleString("en-IN")} this FY — approaching the ₹${s.threshold.toLocaleString("en-IN")} threshold`;
+        }
+        return `Payee "${p.ledgerName}" (${s.section}): ₹${p.fyAmount.toLocaleString("en-IN")} this FY — threshold ₹${s.threshold.toLocaleString("en-IN")} not yet reached${mode === "single" ? " (single mode: threshold applies per payment)" : ""}`;
+      };
+      const payeesEval = (s.payees ?? []).map((p: any) => ({
+        ...p,
+        over: s.threshold > 0 && payeeOver(p),
+        near: s.threshold > 0 && payeeNear(p),
+        wording: payeeWording(p),
+      }));
       const compare = mode === "single" ? s.maxSingle : s.fyAmount;
       const over = s.threshold > 0 && compare >= s.threshold;
       const near = !over && s.threshold > 0 && compare > 0 && compare >= s.threshold * 0.8;
@@ -578,13 +635,13 @@ export default async function reportRoutes(app: FastifyInstance) {
         : over
           ? mode === "single"
             ? `Section ${s.section}: largest single payment ₹${s.maxSingle.toLocaleString("en-IN")} meets/exceeds the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode) — TDS/TCS applies to payments at or above it`
-            : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY (threshold ₹${s.threshold.toLocaleString("en-IN")}) — TDS/TCS due on further payments`
+            : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY across payees (threshold ₹${s.threshold.toLocaleString("en-IN")}) — TDS/TCS due on further payments`
           : near
             ? mode === "single"
               ? `Section ${s.section}: largest single payment ₹${s.maxSingle.toLocaleString("en-IN")} is near the ₹${s.threshold.toLocaleString("en-IN")} per-payment threshold (single mode)`
-              : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY — approaching the ₹${s.threshold.toLocaleString("en-IN")} threshold`
+              : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY across payees — approaching the ₹${s.threshold.toLocaleString("en-IN")} threshold`
             : `Section ${s.section}: ₹${s.fyAmount.toLocaleString("en-IN")} this FY — threshold ₹${s.threshold.toLocaleString("en-IN")} not yet reached${mode === "single" ? " (single mode: threshold applies per payment)" : ""}`;
-      return { ...s, over, near, wording };
+      return { ...s, over, near, wording, payees: payeesEval };
     });
     return { dutyHead, advisories, sectionCount: sections.length };
   });
