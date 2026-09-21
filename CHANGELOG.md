@@ -1,6 +1,8 @@
 # Changelog
 
-## v1.35.0 — R-36 arrow-key grid navigation (RELEASE_REVIEW)
+## v1.35.0 — R-36 arrow-key grid navigation (RELEASED)
+
+> Commit `dc758aa19994ee6de4af554a749d82dee6b13f80` · annotated tag `deb1e003e63a5c9c3b0a826c32f99afc245e7897` · pushed 2026-09-21.
 
 R-36 implements the approved Option A scope (D-4, the last R-34 deferral): **the voucher grid moves like a spreadsheet** — ArrowDown/ArrowUp navigate the same column across rows in the entries and inventory grids, real Tally-parity keyboard flow. Client-only: no server file, no schema, no migration, no accounting-math change.
 

@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-36 changes; v1.34.0 remains the last tagged release. Same-column ArrowDown/Up in the entries + inventory grids · TypeAhead arrows own the dropdown only when matches are open · Enter-adds-row unchanged · modifier chords are no-ops. Client-only. 1197/1197 automated + 480/480 browser. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) RELEASED as v1.35.0.** Release commit `dc758aa19994ee6de4af554a749d82dee6b13f80`, annotated tag `deb1e003e63a5c9c3b0a826c32f99afc245e7897`, pushed — `origin/main` = `v1.35.0^{}` verified via ls-remote. Same-column ArrowDown/Up in the entries + inventory grids · TypeAhead arrows own the dropdown only when matches are open · Enter-adds-row unchanged · modifier chords are no-ops. Client-only, no server/schema/accounting surface. 1197/1197 automated + 480/480 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,7 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-36 (IMPLEMENTED — RELEASE_REVIEW): arrow-key grid navigation
+### R-36 (RELEASED as v1.35.0): arrow-key grid navigation
 
 Investigation (`R-36_INVESTIGATION.md`) confirmed the gap (D-4, the last R-34 deferral): the voucher grid navigated by mouse/Tab only; arrows moved nothing between rows. Enabling discovery: the interaction model was already arrow-safe (hotkeys.ts registers no arrows; TypeAhead owns arrows only with matches open; zero existing suites press arrows — no locator churn). **Option A approved:** same-column Up/Down via `data-col` mapping in both grids, disabled cells and selects skipped, TypeAhead `stopPropagation` only on the dropdown-open branch, Enter/Tab/Left-Right unchanged, r36_ui.js. En-route test corrections only — the app behaved as designed throughout.
 

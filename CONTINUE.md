@@ -1,17 +1,16 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) IMPLEMENTED and fully verified; holding at RELEASE_REVIEW per protocol.** v1.34.0 is the last tagged release; the working tree carries the R-36 changes.
+**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) RELEASED as v1.35.0 and pushed.** Process state: RELEASED → IDLE.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.34.0 (R-35 ledger-on-the-fly) — release commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e` ("Release v1.34.0: ledger-on-the-fly (Alt+C)"), annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5`; pushed — 36 tags; see RELEASES.md
-- **Current HEAD:** the v1.34.0 ledger-docs commit `2c912fc`; the working tree carries the R-36 implementation (2 client files + r36_ui.js) plus docs at RELEASE_REVIEW and the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md`
-- **Current phase:** `RELEASE_REVIEW` — R-36 implemented, all gates green. **Proposed release: v1.35.0** — commit "Release v1.35.0: arrow-key grid navigation", annotated tag v1.35.0, then push per the RELEASED protocol
+- **Current release:** v1.35.0 (R-36 arrow-key grid navigation) — release commit `dc758aa19994ee6de4af554a749d82dee6b13f80` ("Release v1.35.0: arrow-key grid navigation", 9 files, +389/−13), annotated tag `deb1e003e63a5c9c3b0a826c32f99afc245e7897` ("zprime v1.35.0 — the grid moves like a spreadsheet"); pushed — `origin/main` = `dc758aa` = `v1.35.0^{}` verified via ls-remote; 37 tags; see RELEASES.md
+- **Current HEAD:** the v1.35.0 release commit; tree clean apart from the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md` (and `scripts/__pycache__/`)
+- **Current phase:** `IDLE` — R-36 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
 - **What was implemented (R-36, approved Option A):** same-column ArrowDown/Up in the entries + inventory grids via `data-col` mapping (numeric cells select-on-arrival) · disabled inputs and selects skipped by construction · TypeAhead arrows own the dropdown only when matches are open (stopPropagation in that branch), zero-match arrows bubble to the grid · Enter-adds-row preserved, Down-on-last-row does not add, modifier chords no-ops, Left/Right caret keys · r36_ui.js 25 checks with real key presses
 - **Verification (final tree):** typecheck server + client clean · Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29) · browser **480/480** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r36 = 327 scenario checks, **r36_ui 25/25**) · `git diff --check` clean
-- **Next permitted action:** on your instruction — RELEASES/ROADMAP ledger entries + release-gate re-run + commit + tag + push + immutability/remote verification + post-release ledger update
 - **Known open threads (NOT tasks):** TDS/TCS per-payee FY engine (R-33 Option C) · IRP/EWB production onboarding feedback from real operators · hold steady
 - **What was implemented (R-35, approved Option A):** Alt+C quick-create modal on VoucherScreen (Name/Under Group/Taxability/GST Rate %) prefilled from the focused cell · pick-in on success into the triggering entry/party row + focus return · Esc closes only the modal, Ctrl+A/Enter accept the modal (voucher semantics restored when closed) · TypeAhead `＋ Create "<text>"` row on zero matches + Enter-on-zero-matches opens the modal · duplicate-name 409 surfaces verbatim, voucher untouched · focus-returns-to-trigger fix found by the suite
 - **Verification (final tree):** typecheck server + client clean · Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29) · browser **440/440** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r35 = 287 scenario checks, **r35_ui 23/23**) · `git diff --check` clean
