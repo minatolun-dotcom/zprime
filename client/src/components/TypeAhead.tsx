@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export interface Option { id: number; name: string; }
 
 export default function TypeAhead({
-  items, value, onPick, placeholder, inputRef, className = "", createLabel, onCreate,
+  items, value, onPick, placeholder, inputRef, className = "", createLabel, onCreate, dataCol,
 }: {
   items: Option[];
   value: string; // selected name
@@ -17,6 +17,8 @@ export default function TypeAhead({
   // existing match-commit behavior/tests are untouched.
   createLabel?: string;
   onCreate?: (text: string) => void;
+  // R-36: column tag for the voucher-grid arrow navigation (tbody handler).
+  dataCol?: string;
 }) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
@@ -44,12 +46,17 @@ export default function TypeAhead({
         className={`w-full ${className}`}
         value={text}
         placeholder={placeholder}
+        data-col={dataCol}
         onChange={(e) => { setText(e.target.value); setOpen(true); setHi(0); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") { e.preventDefault(); setHi(Math.min(hi + 1, matches.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setHi(Math.max(hi - 1, 0)); }
+          // R-36: arrows own the dropdown highlight ONLY when matches are open;
+          // stopPropagation keeps the grid's tbody arrow handler from also
+          // moving the cell. With zero matches the keys bubble through so the
+          // grid can navigate rows.
+          if (e.key === "ArrowDown" && matches.length > 0) { e.preventDefault(); e.stopPropagation(); setHi(Math.min(hi + 1, matches.length - 1)); }
+          else if (e.key === "ArrowUp" && matches.length > 0) { e.preventDefault(); e.stopPropagation(); setHi(Math.max(hi - 1, 0)); }
           else if (e.key === "Enter") {
             if (matches.length > 0) { e.preventDefault(); commit(matches[hi]); }
             // R-35: Enter with typed text and zero matches opens quick-create

@@ -4,6 +4,14 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.35.0
+
+- **Version:** 1.35.0
+- **Commit:** `<commit-sha>` (annotated tag `<tag-sha>` → commit verified at release; pushed — `origin/main` = `<short>` = `v1.35.0^{}` verified via ls-remote)
+- **Purpose:** R-36 — arrow-key grid navigation (approved Option A, D-4 the last R-34 deferral): **the voucher grid moves like a spreadsheet** — same-column ArrowDown/Up across rows in the entries and inventory grids via `data-col` mapping (`ledger`/`bill`/`dr`/`cr`, `item`/`qty`/`rate`; numeric cells select-on-arrival); disabled inputs (non-bill-wise bill cell) and selects skipped by construction; the Total strip row ends the walk. TypeAhead arrows own the dropdown highlight **only when matches are open** (stopPropagation in that branch alone — zero-match arrows bubble to the grid); Enter semantics untouched (R-35's Enter-on-zero-matches quick-create included); Enter-on-last-amount-row still adds a row while ArrowDown on the last row does not; modifier chords explicit no-ops; Left/Right stay caret keys. **Client-only: no server file, no schema, no migration, no accounting surface.**
+- **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); 480/480 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r36 scenarios = 327, new r36_ui 25/25 with real key presses); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-21.
+
 ## v1.34.0
 
 - **Version:** 1.34.0

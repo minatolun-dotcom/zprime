@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-35 (ledger-on-the-fly) RELEASED as v1.34.0.** Release commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e`, annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5`, pushed — `origin/main` = `v1.34.0^{}` verified via ls-remote. Alt+C quick-create modal (Name/Under/Taxability/Rate) prefilled from the focused cell · pick-in on success + focus return · Esc closes only the modal, Ctrl+A/Enter accept · TypeAhead `＋ Create` row · 409 verbatim. Zero server diff, no schema, no accounting surface. 1197/1197 automated + 440/440 browser on the release tree. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-36 (arrow-key grid navigation) IMPLEMENTED and fully verified — holding at RELEASE_REVIEW per protocol.** Working tree contains the R-36 changes; v1.34.0 remains the last tagged release. Same-column ArrowDown/Up in the entries + inventory grids · TypeAhead arrows own the dropdown only when matches are open · Enter-adds-row unchanged · modifier chords are no-ops. Client-only. 1197/1197 automated + 480/480 browser. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -11,6 +11,10 @@
 Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway → Voucher → Report → Drill-down workflow, original UI). Fastify 5 + React 18 + PostgreSQL 16 + Drizzle ORM, single app container + Postgres via Docker Compose.
 
 ## Release status
+
+### R-36 (IMPLEMENTED — RELEASE_REVIEW): arrow-key grid navigation
+
+Investigation (`R-36_INVESTIGATION.md`) confirmed the gap (D-4, the last R-34 deferral): the voucher grid navigated by mouse/Tab only; arrows moved nothing between rows. Enabling discovery: the interaction model was already arrow-safe (hotkeys.ts registers no arrows; TypeAhead owns arrows only with matches open; zero existing suites press arrows — no locator churn). **Option A approved:** same-column Up/Down via `data-col` mapping in both grids, disabled cells and selects skipped, TypeAhead `stopPropagation` only on the dropdown-open branch, Enter/Tab/Left-Right unchanged, r36_ui.js. En-route test corrections only — the app behaved as designed throughout.
 
 ### R-35 (RELEASED as v1.34.0): ledger-on-the-fly
 

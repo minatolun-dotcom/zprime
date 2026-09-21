@@ -404,6 +404,37 @@ export default function VoucherScreen() {
     }
   };
 
+  // ---- R-36: arrow-key grid navigation ----
+  // Same-column row movement for the voucher grids: ArrowDown/ArrowUp move
+  // focus to the input with the same data-col in the next/previous row.
+  // Disabled inputs (non-bill-wise bill cell) and selects carry no data-col
+  // and are skipped by construction. Modifier chords are ignored (window
+  // hotkeys have already consumed Alt chords in capture; this guard keeps
+  // Ctrl/Shift/meta combos explicit no-ops).
+  const gridArrowNav = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const target = e.target as HTMLElement;
+    const col = target.getAttribute?.("data-col");
+    if (!col) return; // selects, buttons, ✕ — never arrow targets
+    const cell = target.closest("td") as HTMLTableCellElement | null;
+    const row = cell?.closest("tr") as HTMLTableRowElement | null;
+    if (!cell || !row) return;
+    const rows = Array.from(row.parentElement?.querySelectorAll("tr") ?? []);
+    const idx = rows.indexOf(row);
+    const candidates = e.key === "ArrowDown" ? rows.slice(idx + 1) : rows.slice(0, idx).reverse();
+    for (const tr of candidates) {
+      if (tr.textContent?.trim() === "Total") break; // summary strip row
+      const next = tr.querySelector<HTMLInputElement>(`[data-col="${col}"]`);
+      if (next && !next.disabled) {
+        e.preventDefault();
+        next.focus();
+        if (next.type === "number") next.select();
+        return;
+      }
+    }
+  };
+
   // ---- save ----
   const save = async () => {
     if (savingRef.current) return; // R-10: single-shot save (hotkey path)
@@ -632,11 +663,11 @@ export default function VoucherScreen() {
                       <th className="w-8"></th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody onKeyDown={gridArrowNav}>
                     {inv.map((row, i) => (
                       <tr key={i}>
                         <td>
-                          <TypeAhead items={itemOptions} value={row.itemName} onPick={(o) => {
+                          <TypeAhead items={itemOptions} value={row.itemName} dataCol="item" onPick={(o) => {
                             if (!o) { setInv(inv.map((r, j) => (j === i ? { ...r, itemId: null, itemName: "" } : r))); return; }
                             const item = (allItems ?? []).find((x: any) => x.id === o.id);
                             const defRate = sign > 0 ? num(item?.standardCost) : num(item?.standardSalePrice);
@@ -659,12 +690,12 @@ export default function VoucherScreen() {
                             </select>
                           </td>
                         )}
-                        <td><input className="w-full text-right" type="number" step="any" value={row.qty || ""} onChange={(e) => setInv(inv.map((r, j) => {
+                        <td><input className="w-full text-right" type="number" step="any" data-col="qty" value={row.qty || ""} onChange={(e) => setInv(inv.map((r, j) => {
                           if (j !== i) return r;
                           const qty = num(e.target.value);
                           return { ...r, qty, amount: r2(Math.abs(qty) * r.rate) };
                         }))} /></td>
-                        <td><input className="w-full text-right" type="number" step="any" value={row.rate || ""} onChange={(e) => setInv(inv.map((r, j) => {
+                        <td><input className="w-full text-right" type="number" step="any" data-col="rate" value={row.rate || ""} onChange={(e) => setInv(inv.map((r, j) => {
                           if (j !== i) return r;
                           const rate = num(e.target.value);
                           return { ...r, rate, amount: r2(Math.abs(r.qty) * rate) };
@@ -702,7 +733,7 @@ export default function VoucherScreen() {
                     <th className="w-8"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody onKeyDown={gridArrowNav}>
                   {entries.map((row, i) => {
                     const l = row.ledgerId ? ledgerById.get(row.ledgerId) : null;
                     return (
@@ -712,6 +743,7 @@ export default function VoucherScreen() {
                             items={ledgerOptions}
                             value={row.ledgerName}
                             inputRef={(el: HTMLInputElement | null) => { ledgerInputRefs.current[i] = el; }}
+                            dataCol="ledger"
                             onPick={(o) => {
                               setEntries(entries.map((r, j) => (j === i ? { ...r, ledgerId: o?.id ?? null, ledgerName: o?.name ?? "" } : r)));
                               if (o && i === entries.length - 1) setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
@@ -724,6 +756,7 @@ export default function VoucherScreen() {
                           <td>
                             <input
                               className="w-full"
+                              data-col="bill"
                               placeholder={l?.billWise ? "bill ref / blank = on account" : "—"}
                               disabled={!l?.billWise}
                               value={row.againstBill ?? ""}
@@ -735,6 +768,7 @@ export default function VoucherScreen() {
                           <input
                             className="w-full text-right"
                             type="number" step="any"
+                            data-col="dr"
                             value={row.amount > 0 ? row.amount : ""}
                             onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: Math.abs(num(e.target.value)) } : r)))}
                             onKeyDown={(e) => {
@@ -749,6 +783,7 @@ export default function VoucherScreen() {
                           <input
                             className="w-full text-right"
                             type="number" step="any"
+                            data-col="cr"
                             value={row.amount < 0 ? -row.amount : ""}
                             onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: -Math.abs(num(e.target.value)) } : r)))}
                           />

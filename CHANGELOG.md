@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.35.0 — R-36 arrow-key grid navigation (RELEASE_REVIEW)
+
+R-36 implements the approved Option A scope (D-4, the last R-34 deferral): **the voucher grid moves like a spreadsheet** — ArrowDown/ArrowUp navigate the same column across rows in the entries and inventory grids, real Tally-parity keyboard flow. Client-only: no server file, no schema, no migration, no accounting-math change.
+
+- **Same-column arrow navigation (VoucherScreen):** a tbody-level handler moves focus to the input with the same `data-col` in the next/previous row — `ledger`/`bill`/`dr`/`cr` on the entries grid, `item`/`qty`/`rate` on the inventory grid. Numeric cells select their content on arrival (type-to-replace). Disabled inputs (the non-bill-wise bill cell) and selects (godown, kind) carry no `data-col` and are skipped by construction. The Total strip row ends the walk.
+- **TypeAhead ownership rule:** arrows own the dropdown highlight **only when matches are open** (`stopPropagation` in that branch only); with zero matches the keys bubble to the grid. Enter semantics untouched — including R-35's Enter-on-zero-matches quick-create.
+- **Advertised affordances preserved:** Enter on the last amount row still adds a row (the hint text); ArrowDown on the last row does **not** add one; modifier chords (Alt/Ctrl/Shift/meta + arrow) are explicit grid no-ops; Left/Right remain caret keys.
+- **Tests:** new `scripts/acceptance/r36_ui.js` (**25** checks, real key presses): same-column Down/Up across three rows on Dr and ledger columns; disabled-bill skip; last-row Down-doesn't-add vs Enter-adds anchor; modifier no-ops; dropdown-open vs dropdown-closed arrow ownership; inventory-grid same-column qty navigation and never-select targeting; same-column invariant (Up from Dr returns to Dr, never sideways); end-to-end arrow-first voucher save.
+- **En-route test corrections (app correct throughout):** a ledger cell holding matching text legitimately reopens the dropdown on focus (arrows belong to the TypeAhead there — tests clear the cell first); the same-column invariant assertion was written sideways once and corrected to the approved semantics.
+- **Verification (final tree):** typecheck server + client clean; Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); browser **480/480** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r36 scenarios = 327, r36 25/25); `git diff --check` clean.
+
 ## v1.34.0 — R-35 ledger-on-the-fly (RELEASED)
 
 > Commit `d3ecfc6bfd026eaddfb1bad1e8fdd6eed1198a2e` · annotated tag `fcd69c68744a2b3d4f6e6d594a265ace5cd39ec5` · pushed 2026-09-21.
