@@ -4,13 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.34.0
+
+- **Version:** 1.34.0
+- **Commit:** `<commit-sha>` (annotated tag `<tag-sha>` → commit verified at release; pushed — `origin/main` = `<short>` = `v1.34.0^{}` verified via ls-remote)
+- **Purpose:** R-35 — ledger-on-the-fly (approved Option A): Tally's most-loved data-entry affordance — **Alt+C mid-voucher ledger creation without losing the half-entered voucher**. Quick-create modal (Name/Under Group/Taxability/GST Rate %) prefilled from the focused cell (entry row or Party A/c); pick-in on success into the triggering row + focus return; Esc closes only the modal, Ctrl+A/Enter accept the modal (voucher semantics restored when closed); TypeAhead `＋ Create "<text>"` row on zero matches + Enter-on-zero-matches opens the modal instead of discarding text; duplicate-name 409 surfaces verbatim, voucher untouched. Entry-ready masters here; GSTIN/bill-wise/TDS-sections stay on the masters page. **Zero server diff** (`POST /c/:cid/ledgers` was already cid-gated, validated, R-08 ref-checked, 409-honest); no schema, no migration, no accounting surface.
+- **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); 440/440 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r35 scenarios = 287, new r35_ui 23/23 with real key presses); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin 2026-09-21.
+
 ## v1.33.0
 
 - **Version:** 1.33.0
-- **Commit:** (filled after tag — see CONTINUE.md session record)
+- **Commit:** `b4bdd90e81788ab7d64ace8eb921b94a46846cb0` (annotated tag `8b591b12f1a30bb8f29a4d747fbaec0ea5dac217` → commit verified at release; pushed — `origin/main` = `b4bdd90` = `v1.33.0^{}` verified via ls-remote)
 - **Purpose:** R-34 — keyboard integrity (approved Option A): the keyboard-first contract made real. D-1 Alt+G/Alt+T wired (panel chips get `onClick`, hotkey map gets the chords with the same type guards — both were dead since v1.0); D-2 six Day Book chords registered (Alt+F5 Debit Note, Alt+F6 Credit Note, Alt+F7 Stock Journal, Alt+F8 Delivery Note, Alt+F9 Receipt Note, Ctrl+F7 Physical Stock — printed but never wired; the browser driver had documented the gap as an "App quirk" and clicked buttons — workaround deleted, suites press real keys); D-3 Day Book row click → voucher editor with `e.stopPropagation()` on Uncancel/Cancel/Del. **F-34-1 (found during implementation):** intrastate Apply-GST had inserted only the CGST half since v1.0 — `dutyOf("SGST/UTGST")` never matched the seeded `dutyHead:"SGST"`; fixed to `dutyOf("SGST")` and locked by tests (both halves asserted at ₹900+₹900 on the ₹10,000 @18% base, via chip and via the real chord). **Client-only: no server file, no schema, no migration, no accounting-math change.**
 - **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); 432/432 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r34 scenarios = 279, new r34_ui 20/20 with real key presses); typecheck server + client clean.
-- **Immutable: YES** — pushed to origin (date in CONTINUE.md session record).
+- **Immutable: YES** — pushed to origin 2026-09-21.
 
 ## v1.32.0
 

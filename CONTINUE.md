@@ -1,13 +1,21 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-34 (keyboard integrity) IMPLEMENTED AND FULLY VERIFIED; holding at RELEASE_REVIEW.**
+**Last updated:** 2026-09-21 — **R-35 (Alt+C ledger-on-the-fly) IMPLEMENTED and fully verified; holding at RELEASE_REVIEW per protocol.** v1.33.0 is the last tagged release; the working tree carries the R-35 changes.
 
 ---
 
 ## Current state
 
-- **Current release (at the time):** v1.32.0 (R-33 TDS/TCS threshold advisories) — release commit `ec8b1301bff6de36e83752ef1d76d68d33eaf58e`, annotated tag `45bdec62a8317e72150b6628c009f8e7fb46c503`; pushed; 34 tags; see RELEASES.md
-- **Current phase:** `RELEASE_REVIEW` — R-34 implementation complete, all gates green
+- **Current release:** v1.33.0 (R-34 keyboard integrity) — release commit `b4bdd90e81788ab7d64ace8eb921b94a46846cb0` ("Release v1.33.0: keyboard integrity"), annotated tag `8b591b12f1a30bb8f29a4d747fbaec0ea5dac217`; pushed — 35 tags; see RELEASES.md
+- **Current HEAD:** the v1.33.0 release commit; the working tree carries the R-35 implementation (2 client files + r35_ui.js) plus docs at RELEASE_REVIEW and the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md`
+- **Current phase:** `RELEASE_REVIEW` — R-35 implemented, all gates green. **Proposed release: v1.34.0** — commit "Release v1.34.0: ledger-on-the-fly (Alt+C)", annotated tag v1.34.0, then push per the RELEASED protocol
+- **What was implemented (R-35, approved Option A):** Alt+C quick-create modal on VoucherScreen (Name/Under Group/Taxability/GST Rate %) prefilled from the focused cell · pick-in on success into the triggering entry/party row + focus return · Esc closes only the modal, Ctrl+A/Enter accept the modal (voucher semantics restored when closed) · TypeAhead `＋ Create "<text>"` row on zero matches + Enter-on-zero-matches opens the modal · duplicate-name 409 surfaces verbatim, voucher untouched · focus-returns-to-trigger fix found by the suite
+- **Verification (final tree):** typecheck server + client clean · Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29) · browser **440/440** on rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r35 = 287 scenario checks, **r35_ui 23/23**) · `git diff --check` clean
+- **Next permitted action:** on your instruction — RELEASES/ROADMAP ledger entries + release-gate re-run + commit + tag + push + immutability/remote verification + post-release ledger update
+
+## Previous state (R-35 investigation session)
+
+- **Phase at the time:** `RELEASE_REVIEW` — R-34 implementation complete, all gates green
 - **What was implemented (R-34, approved Option A — keyboard integrity):** D-1 Alt+G/Alt+T wired (chips get `onClick`, hotkey map gets the chords with the same type guards) · D-2 six Day Book chords registered (Alt+F5 Debit Note, Alt+F6 Credit Note, Alt+F7 Stock Journal, Alt+F8 Delivery Note, Alt+F9 Receipt Note, Ctrl+F7 Physical Stock) — the driver's "App quirk" `CLICK_OPEN` workaround deleted, suites press real keys · D-3 Day Book row click → voucher edit, `e.stopPropagation()` on Uncancel/Cancel/Del · **F-34-1 (found during implementation):** intrastate Apply-GST had inserted only the CGST half since v1.0 (`dutyOf("SGST/UTGST")` never matched the seeded `dutyHead:"SGST"`) — fixed to `dutyOf("SGST")`, locked by tests
 - **Verification (final tree):** typecheck server + client clean; Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); browser **432/432** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 — `ux/apply-gst-base` strengthened to both-halves ₹900+₹900 — + r03…r34 = 279 scenario checks, new `r34_ui.js` **20/20** with real key presses); `git diff --check` clean
 - **En-route findings (test-side, app correct):** the compose stack serves the *built* image — client edits need `docker compose build app` before any browser run (the first r34 run tested stale JS); Playwright key name is `Control+F7`, not `Ctrl+F7` (previously masked by the button-click workaround); an API-seeded voucher with no party name needs a narration for Day Book row matching (rows show party/narration)
@@ -21,7 +29,7 @@
 
 ## Previous state (R-33 implementation session — released as v1.32.0)
 - **Current HEAD:** the v1.32.0 release commit; the working tree carries only the ledger docs recording the release (they ride with the next commit, per convention) plus the intentional untracked `ZLEDGER_PRODUCTION_ACTION_PLAN.md`
-- **Current phase:** `IDLE` — R-33 released; no R-34 candidate selected; per protocol, direction is the human's
+- **Phase at the time:** `IDLE` — R-33 released; no R-34 candidate selected; per protocol, direction is the human's
 - **Verification estate:** 1197 automated + 399 browser checks. Final release gate re-run on the exact tree committed: Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **915** incl. 22 R-33, attack-the-fixes 29), typecheck server + client clean; browser **399/399** had already run green on the identical code tree (verified-fresh volume, every suite exactly once, r33_ui 13/13)
 - **Immutability verified at release:** all 34 tags resolve to their ledger commits — v1.0.0 → `71e14fd`, v1.2.0 → `5e5c09b`, v1.3.0 → `38637c1`, v1.30.0 → `7d916e4`, v1.31.0 → `88e89d2` — nothing re-pointed, nothing rewritten; remote tag objects verified via ls-remote
 - **Known open threads (NOT tasks):** TDS/TCS per-payee FY engine (R-33 Option C, deferred until operator demand) · UX backlog (keyboard-first polish, voucher-entry friction, report drill-down) · IRP/EWB production onboarding feedback from real operators · hold steady

@@ -50,6 +50,19 @@ export default function VoucherScreen() {
   // naturally idempotent (PUT) and carry no key.
   const idemKeyRef = useRef(isEdit ? null : crypto.randomUUID());
   const [detailed, setDetailed] = useState(true);
+  // R-35: ledger-on-the-fly — quick-create modal state. quickTrigger records
+  // which TypeAhead opened the modal so the created ledger is picked back into
+  // that exact row (party or entry) without disturbing voucher state.
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickGroupId, setQuickGroupId] = useState<number | "">("");
+  const [quickTaxability, setQuickTaxability] = useState("none");
+  const [quickRate, setQuickRate] = useState("");
+  const [quickError, setQuickError] = useState("");
+  const [quickSaving, setQuickSaving] = useState(false);
+  const quickTriggerRef = useRef<{ row: number; kind: "entry" | "party" } | null>(null);
+  const quickNameRef = useRef<HTMLInputElement | null>(null);
+  const partyInputRef = useRef<HTMLInputElement | null>(null);
   // R-02: a cancelled voucher opened from Day Book is displayed read-only.
   const [cancelledView, setCancelledView] = useState(false);
   // R-18: compact audit history (edit mode only). Silent-degrade on fetch
@@ -83,6 +96,8 @@ export default function VoucherScreen() {
   const { data: godowns } = useQuery({ queryKey: ["godowns", cid], queryFn: () => get<any[]>(`/api/c/${cid}/godowns`) });
   const { data: tdsSections } = useQuery({ queryKey: ["tds-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tds-sections`) });
   const { data: tcsSections } = useQuery({ queryKey: ["tcs-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`) });
+  // R-35: groups for the quick-create "Under" select (cache shared with Reports).
+  const { data: allGroups } = useQuery({ queryKey: ["groups", cid], queryFn: () => get<any[]>(`/api/c/${cid}/groups`) });
 
   const ledgerOptions: Option[] = (allLedgers ?? []).map((l) => ({ id: l.id, name: l.name }));
   const itemOptions: Option[] = (allItems ?? []).map((l) => ({ id: l.id, name: l.name }));
@@ -319,6 +334,76 @@ export default function VoucherScreen() {
     setError("");
   };
 
+  // ---- R-35: ledger-on-the-fly quick-create ----
+  // Opens the modal prefilled with the focused cell's typed text; the trigger
+  // records the row so the created ledger is picked back in on success.
+  const quickTriggerFromFocus = (): { row: number; kind: "entry" | "party" } | null => {
+    const el = document.activeElement as HTMLInputElement | null;
+    if (!el) return null;
+    const idx = ledgerInputRefs.current.findIndex((x) => x === el);
+    if (idx >= 0) return { row: idx, kind: "entry" };
+    if (hasParty && el.closest("div.grid")?.textContent?.includes("Party A/c")) return { row: 0, kind: "party" };
+    return null;
+  };
+
+  const openQuickCreate = (prefill: string, trigger: { row: number; kind: "entry" | "party" } | null = null) => {
+    if (cancelledView) return;
+    quickTriggerRef.current = trigger;
+    setQuickName(prefill);
+    setQuickGroupId("");
+    setQuickTaxability("none");
+    setQuickRate("");
+    setQuickError("");
+    setQuickOpen(true);
+    setTimeout(() => quickNameRef.current?.focus(), 0);
+  };
+
+  // R-35: on modal close, focus returns to the triggering cell (Tally behavior
+  // — the operator continues the entry where they left off). Without this the
+  // focus drops to <body> and the next Alt+C loses the typed prefill.
+  const refocusTrigger = () => {
+    const t = quickTriggerRef.current;
+    if (!t) return;
+    if (t.kind === "party") partyInputRef.current?.focus();
+    else ledgerInputRefs.current[t.row]?.focus();
+  };
+
+  const submitQuickLedger = async () => {
+    if (quickSaving) return;
+    setQuickError("");
+    if (!quickName.trim()) { setQuickError("Ledger name is required"); return; }
+    if (!quickGroupId) { setQuickError("Select the group this ledger belongs under"); return; }
+    setQuickSaving(true);
+    try {
+      // Same boundary the masters page uses: cid-gated, Zod-validated,
+      // R-08 in-company group ref check, 409-honest on duplicate names.
+      const created = await post<any>(`/api/c/${cid}/ledgers`, {
+        name: quickName.trim(),
+        groupId: quickGroupId,
+        taxability: quickTaxability,
+        gstRate: quickRate === "" ? null : num(quickRate),
+      });
+      await qc.invalidateQueries({ queryKey: ["all-ledgers", cid] });
+      const t = quickTriggerRef.current;
+      if (t?.kind === "party") {
+        setParty({ id: created.id, name: created.name });
+        setEntries((rows) => {
+          const without = rows.filter((r) => r.ledgerId !== created.id);
+          return [{ ledgerId: created.id, ledgerName: created.name, amount: 0 }, ...without];
+        });
+      } else if (t) {
+        setEntries((rows) => rows.map((r, j) => (j === t.row ? { ...r, ledgerId: created.id, ledgerName: created.name } : r)));
+      }
+      setQuickOpen(false);
+      refocusTrigger();
+    } catch (err) {
+      // Server's message verbatim (e.g. the 409 duplicate-name wording).
+      setQuickError(err instanceof Error ? err.message : "Could not create ledger");
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
   // ---- save ----
   const save = async () => {
     if (savingRef.current) return; // R-10: single-shot save (hotkey path)
@@ -404,8 +489,24 @@ export default function VoucherScreen() {
   };
 
   useHotkeys({
-    "Ctrl+A": () => save(),
-    Escape: () => nav(`/company/${cid}/daybook`),
+    // R-35: ledger-on-the-fly — Alt+C from anywhere on the voucher screen.
+    // Prefill comes from the focused input's typed text when it is a ledger or
+    // party cell; otherwise the operator types the name in the modal.
+    "Alt+C": () => {
+      if (cancelledView) return;
+      const el = document.activeElement as HTMLInputElement | null;
+      const typed = el && el.tagName === "INPUT" && !el.readOnly && el.value.trim() ? el.value.trim() : "";
+      openQuickCreate(typed, quickTriggerFromFocus());
+    },
+    // R-35 keyboard layering: with the modal open, Esc closes ONLY the modal
+    // and Ctrl+A accepts the modal; the half-entered voucher is untouched.
+    ...(quickOpen ? {
+      "Ctrl+A": () => { submitQuickLedger(); },
+      Escape: () => { setQuickOpen(false); refocusTrigger(); },
+    } : {
+      "Ctrl+A": () => save(),
+      Escape: () => nav(`/company/${cid}/daybook`),
+    }),
     "Alt+F1": () => setDetailed(!detailed),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) && !cancelledView
       ? { "Alt+R": () => setIsRcm((x) => !x) } // R-23: reverse-charge toggle
@@ -415,7 +516,7 @@ export default function VoucherScreen() {
       ? { "Alt+G": () => applyGst() }
       : {}),
     ...(vType?.category === "Accounting" ? { "Alt+T": () => applyTds() } : {}),
-  }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView]);
+  }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView, quickOpen, quickName, quickGroupId, quickTaxability, quickRate]);
 
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
@@ -424,6 +525,7 @@ export default function VoucherScreen() {
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+G", label: "Apply GST", onClick: applyGst }] : []),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) ? [{ key: "Alt+R", label: isRcm ? "RCM ✓ (toggle off)" : "Reverse Charge", onClick: () => setIsRcm((x) => !x) }] : []),
     ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS", onClick: applyTds }] : []),
+    { key: "Alt+C", label: "Create Ledger", onClick: () => { if (!cancelledView) openQuickCreate("", quickTriggerFromFocus()); } },
     { key: "Esc", label: "Quit (Day Book)", onClick: () => nav(`/company/${cid}/daybook`) },
   ];
 
@@ -488,7 +590,7 @@ export default function VoucherScreen() {
             {hasParty && (
               <div className="grid grid-cols-[130px_1fr_130px_1fr] gap-2 items-center">
                 <span className="text-[12px] font-medium text-slate-600">Party A/c</span>
-                <TypeAhead items={ledgerOptions} value={party.name} onPick={(o) => {
+                <TypeAhead items={ledgerOptions} value={party.name} inputRef={partyInputRef} onPick={(o) => {
                   if (!o) { setParty({ id: null, name: "" }); return; }
                   setParty({ id: o.id, name: o.name });
                   // ensure a party row exists at the top of the entries grid
@@ -497,7 +599,8 @@ export default function VoucherScreen() {
                     const oldPartyRow = rows.find((r) => r.ledgerId === o.id);
                     return [{ ledgerId: o.id, ledgerName: o.name, amount: oldPartyRow?.amount ?? 0 }, ...withoutParty];
                   });
-                }} />
+                }}
+                createLabel="ledger" onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
                 <span className="text-[12px] font-medium text-slate-600">Invoice No.</span>
                 <input id="v-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Party invoice no." />
               </div>
@@ -613,6 +716,8 @@ export default function VoucherScreen() {
                               setEntries(entries.map((r, j) => (j === i ? { ...r, ledgerId: o?.id ?? null, ledgerName: o?.name ?? "" } : r)));
                               if (o && i === entries.length - 1) setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
                             }}
+                            createLabel="ledger"
+                            onCreate={(t) => openQuickCreate(t, { row: i, kind: "entry" })}
                           />
                         </td>
                         {detailed && (
@@ -690,6 +795,59 @@ export default function VoucherScreen() {
               <span className="text-[11px] text-slate-400 self-center">
                 Enter on last amount row adds a new line · {fmtDate(date)}
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* R-35: ledger-on-the-fly quick-create. Layering contract: Esc here
+          closes ONLY this modal; the voucher behind keeps every keystroke.
+          Ctrl+A / Enter accept; the server's 409 wording surfaces verbatim. */}
+      {quickOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center" data-testid="quick-ledger-modal">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-[420px] max-w-[95vw]">
+            <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 rounded-t-lg text-[13px] font-semibold text-indigo-700">
+              Create Ledger
+            </div>
+            <div className="px-4 py-3 space-y-2.5" onKeyDown={(e) => {
+              // R-35: Enter accepts the modal (Tally parity with Ctrl+A). Scoped
+              // to the fields container so the buttons below keep native clicks.
+              if (e.key === "Enter") { e.preventDefault(); submitQuickLedger(); }
+            }}>
+              {quickError && (
+                <div className="rounded bg-red-50 border border-red-100 text-red-700 text-[12px] px-3 py-1.5">{quickError}</div>
+              )}
+              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
+                <span className="text-[12px] font-medium text-slate-600">Name</span>
+                <input ref={quickNameRef} value={quickName} onChange={(e) => setQuickName(e.target.value)} placeholder="Ledger name" />
+              </div>
+              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
+                <span className="text-[12px] font-medium text-slate-600">Under Group</span>
+                <select value={quickGroupId} onChange={(e) => setQuickGroupId(e.target.value ? parseInt(e.target.value, 10) : "")}>
+                  <option value="">—</option>
+                  {(allGroups ?? []).map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
+                <span className="text-[12px] font-medium text-slate-600">Taxability</span>
+                <select value={quickTaxability} onChange={(e) => setQuickTaxability(e.target.value)}>
+                  <option value="none">None</option>
+                  <option value="taxable">Taxable</option>
+                  <option value="exempt">Exempt</option>
+                  <option value="nil">Nil Rated</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
+                <span className="text-[12px] font-medium text-slate-600">GST Rate %</span>
+                <input type="number" step="any" value={quickRate} onChange={(e) => setQuickRate(e.target.value)} placeholder="e.g. 18 (optional)" />
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Entry-ready master — GSTIN, bill-wise and TDS/TCS sections are set on the masters page later.
+                Esc closes this dialog only; the voucher behind keeps its state.
+              </div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t border-slate-100">
+              <button className="btn-primary" disabled={quickSaving} onClick={submitQuickLedger}>Create (Ctrl+A)</button>
+              <button className="btn-ghost" onClick={() => setQuickOpen(false)}>Cancel (Esc)</button>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export interface Option { id: number; name: string; }
 
 export default function TypeAhead({
-  items, value, onPick, placeholder, inputRef, className = "",
+  items, value, onPick, placeholder, inputRef, className = "", createLabel, onCreate,
 }: {
   items: Option[];
   value: string; // selected name
@@ -11,6 +11,12 @@ export default function TypeAhead({
   placeholder?: string;
   inputRef?: any;
   className?: string;
+  // R-35: when provided and the typed text matches nothing, the dropdown
+  // offers a trailing "＋ Create \"<text>\"" row (Tally-style discoverable
+  // path into the quick-create flow). Renders only on zero matches, so
+  // existing match-commit behavior/tests are untouched.
+  createLabel?: string;
+  onCreate?: (text: string) => void;
 }) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
@@ -29,6 +35,8 @@ export default function TypeAhead({
     setOpen(false);
   };
 
+  const canCreate = Boolean(createLabel && onCreate && open && text.trim());
+
   return (
     <div className="relative" ref={boxRef}>
       <input
@@ -44,6 +52,9 @@ export default function TypeAhead({
           else if (e.key === "ArrowUp") { e.preventDefault(); setHi(Math.max(hi - 1, 0)); }
           else if (e.key === "Enter") {
             if (matches.length > 0) { e.preventDefault(); commit(matches[hi]); }
+            // R-35: Enter with typed text and zero matches opens quick-create
+            // instead of silently discarding the text.
+            else if (canCreate) { e.preventDefault(); onCreate!(text.trim()); }
             else if (text.trim() === "" && value) { /* keep existing */ }
           }
         }}
@@ -59,6 +70,15 @@ export default function TypeAhead({
               {m.name}
             </div>
           ))}
+        </div>
+      )}
+      {open && matches.length === 0 && canCreate && (
+        <div
+          data-testid="typeahead-create"
+          className="absolute z-30 left-0 right-0 top-full bg-white border border-slate-200 rounded shadow-lg px-2 py-1.5 text-[13px] cursor-pointer text-indigo-700 hover:bg-indigo-50"
+          onMouseDown={(e) => { e.preventDefault(); onCreate!(text.trim()); }}
+        >
+          ＋ Create "{text.trim()}"
         </div>
       )}
     </div>

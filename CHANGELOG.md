@@ -1,6 +1,20 @@
 # Changelog
 
-## v1.33.0 — R-34 keyboard integrity (RELEASE_REVIEW)
+## v1.34.0 — R-35 ledger-on-the-fly (RELEASE_REVIEW)
+
+R-35 implements the approved Option A scope: Tally's most-loved data-entry affordance — **Alt+C mid-voucher ledger creation without losing the half-entered voucher**. Client-only: no server file, no schema, no migration, no accounting-math change (`POST /c/:cid/ledgers` was already cid-gated, Zod-validated, R-08 ref-checked, 409-honest).
+
+- **Alt+C chord + F-key chip (VoucherScreen):** opens the quick-create modal prefilled with the focused cell's typed text (entry row or Party A/c); disabled on cancelled vouchers.
+- **Quick-create modal:** Name* / Under Group* (from `GET /groups`, shared cache) / Taxability (default none) / GST Rate % (optional) — the Tally-honest split: entry-ready masters here, GSTIN/bill-wise/TDS-sections on the masters page (hint says so).
+- **Pick-in on success:** the created ledger is picked into the triggering row — entry row or Party A/c (with the party row auto-inserted at grid top) — and focus returns to the triggering cell. Entries, amounts, date, number, narration all survive.
+- **Keyboard layering:** while the modal is open, Esc closes ONLY the modal and Ctrl+A / Enter accept the modal; closed, the original voucher semantics apply unchanged.
+- **TypeAhead discoverability:** with zero matches and typed text, the dropdown offers `＋ Create "<text>"` (renders only on zero matches — existing commit behavior untouched); Enter on zero matches opens the modal instead of silently discarding the text.
+- **Errors surface verbatim:** duplicate name → the server's 409 wording; missing group → honest client validation; the voucher behind is never disturbed.
+- **Tests:** new `scripts/acceptance/r35_ui.js` (**23** checks, real key presses): Alt+C prefilled from entry + party cells; state survival behind the modal; Esc-only-modal; Ctrl+A and Enter acceptance; 409 verbatim + voucher untouched; `＋ Create` row; both end-to-end round-trips (Payment with the quick-created ledger, Sale to the quick-created party with Apply-GST both halves); honest missing-group validation.
+- **En-route fix (found by the suite):** on modal close, focus returns to the triggering cell (Tally behavior) — without it focus dropped to `<body>` and the next Alt+C lost the typed prefill.
+- **Verification (final tree):** typecheck server + client clean; Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); browser **440/440** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r35 scenarios = 287, r35 23/23); `git diff --check` clean.
+
+## v1.33.0 — R-34 keyboard integrity (RELEASED)
 
 R-34 implements the approved Option A scope: the keyboard-first contract is now real — **every advertised key fires, and the Day Book drill-down works**. Client-only: no server file, no schema, no migration, no accounting-math change.
 
