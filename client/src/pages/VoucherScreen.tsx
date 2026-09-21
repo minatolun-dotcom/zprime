@@ -223,7 +223,10 @@ export default function VoucherScreen() {
       const ig = dutyOf("IGST");
       if (ig) rows.push({ ledgerId: ig.id, ledgerName: ig.name, amount: baseSign * gst });
     } else {
-      const cg = dutyOf("CGST"); const sg = dutyOf("SGST/UTGST");
+      // R-34 (F-34-1): dutyHead is "SGST" (seed + convention) — the old
+      // dutyOf("SGST/UTGST") matched nothing, so intrastate Apply-GST inserted
+      // only the CGST half. The name is "SGST/UTGST"; the head is "SGST".
+      const cg = dutyOf("CGST"); const sg = dutyOf("SGST");
       const half = r2(gst / 2);
       if (cg) rows.push({ ledgerId: cg.id, ledgerName: cg.name, amount: baseSign * half });
       if (sg) rows.push({ ledgerId: sg.id, ledgerName: sg.name, amount: baseSign * (gst - half) });
@@ -407,15 +410,20 @@ export default function VoucherScreen() {
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) && !cancelledView
       ? { "Alt+R": () => setIsRcm((x) => !x) } // R-23: reverse-charge toggle
       : {}),
+    // R-34 (D-1): the advertised chords actually fire — same guards as the chips.
+    ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name)
+      ? { "Alt+G": () => applyGst() }
+      : {}),
+    ...(vType?.category === "Accounting" ? { "Alt+T": () => applyTds() } : {}),
   }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView]);
 
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
     { key: "F2", label: "Date", onClick: () => (document.getElementById("v-date") as HTMLInputElement)?.focus() },
     ...(hasParty ? [{ key: "F12", label: "Ref / Party", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
-    ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+G", label: "Apply GST" }] : []),
+    ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+G", label: "Apply GST", onClick: applyGst }] : []),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) ? [{ key: "Alt+R", label: isRcm ? "RCM ✓ (toggle off)" : "Reverse Charge", onClick: () => setIsRcm((x) => !x) }] : []),
-    ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS" }] : []),
+    ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS", onClick: applyTds }] : []),
     { key: "Esc", label: "Quit (Day Book)", onClick: () => nav(`/company/${cid}/daybook`) },
   ];
 

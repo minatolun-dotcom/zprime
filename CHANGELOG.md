@@ -1,6 +1,19 @@
 # Changelog
 
-## v1.32.0 — R-33 TDS/TCS threshold advisories (RELEASE_REVIEW)
+## v1.33.0 — R-34 keyboard integrity (RELEASE_REVIEW)
+
+R-34 implements the approved Option A scope: the keyboard-first contract is now real — **every advertised key fires, and the Day Book drill-down works**. Client-only: no server file, no schema, no migration, no accounting-math change.
+
+- **D-1 — Alt+G / Alt+T wired (VoucherScreen):** the F-key panel chips carried no `onClick` and the hotkey map had no entries — both were dead. Now the chips fire and the chords (`Alt+G` Apply GST on Sales/Purchase/Credit Note/Debit Note, `Alt+T` Deduct TDS on Accounting vouchers) fire with the same guards as the chips.
+- **D-2 — six Day Book chords wired:** Alt+F5 Debit Note, Alt+F6 Credit Note, Alt+F7 Stock Journal, Alt+F8 Delivery Note, Alt+F9 Receipt Note, Ctrl+F7 Physical Stock — printed in the panel since v1.0 but never registered in the hotkey map; the browser driver had documented the gap as an "App quirk" and clicked buttons instead. The quirk is fixed and the workaround deleted — suites press real keys.
+- **D-3 — Day Book row drill-down:** rows carried the `row-link` affordance (cursor + hover) with no handler. Row click now opens the voucher editor (matching the established report drill-down target); Alter/Cancel/Del/Uncancel got `e.stopPropagation()` so row actions never navigate.
+- **F-34-1 (found during implementation) — intrastate Apply-GST now posts BOTH halves:** `applyGst` looked up the SGST duty ledger by `dutyHead === "SGST/UTGST"`, but the seeded ledger's duty head is `"SGST"` (the *name* is "SGST/UTGST") — the match silently failed since v1.0, so Apply-GST inserted only the CGST half (the party-row rebalance hid the imbalance). One-line fix: `dutyOf("SGST")`. The run.js probe now asserts both halves at ₹900 + ₹900 on the ₹10,000 @18% base; the new r34 suite asserts both halves through the keyboard chord.
+- **Tests:** new `scripts/acceptance/r34_ui.js` (**20** checks, real key presses): all six chords open their voucher types; aside chips fire; Alt+G/Alt+T chords fire; intrastate GST posts both halves; Alter link, bare row click, and Del-without-navigation on the Day Book. Driver `CLICK_OPEN` workaround deleted; `OPEN_KEY` Physical Stock → `Control+F7` (Playwright key name — previously masked by the workaround); run.js `ux/apply-gst-base` strengthened to both-halves semantics.
+- **Verification (final tree):** typecheck server + client clean; Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); browser **432/432** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153 + r03…r34 scenarios = 279, r34 20/20); `git diff --check` clean.
+
+## v1.32.0 — R-33 TDS/TCS threshold advisories (RELEASED)
+
+> Commit `ec8b1301bff6de36e83752ef1d76d68d33eaf58e` · annotated tag `45bdec62a8317e72150b6628c009f8e7fb46c503` · pushed 2026-09-21.
 
 R-33 implements the approved Option A scope: honest, non-blocking threshold **advisories** — the operator judges, the books record, and now the app *tells*. Advisory data becomes actionable. No voucher is ever blocked; no posting math changes; no behavior change for operators who ignore the feature.
 
@@ -10,7 +23,7 @@ R-33 implements the approved Option A scope: honest, non-blocking threshold **ad
 - **VoucherScreen: amber ⚠ advisory strip** — fires on **Deduct TDS** / **Collect TCS**; shows only over/near wordings; **saves normally through it** (non-blocking, silent-degrade on fetch failure); sections with no threshold never appear. A-04 note: the base is payment-base, not the duty credited — ₹72,000 of professional fees vs the ₹50,000 threshold, not ₹7,200 of TDS.
 - **Masters UI:** threshold mode selector on TDS/TCS section editors.
 - **Tests:** `final_regression.py` +22 R-33 checks (**915**) — mode schema honesty (bogus mode 400), below/over posting (nothing blocked), base-semantics aggregates (20,000 → 72,000), over/aggregate wording, single-mode wording, TCS-head reachability, reports carry `fyAggregates`, non-member 404, cancel exclusion (A-04), TB still balances; new `scripts/acceptance/r33_ui.js` (**13** checks) driving the advisory through the real UI (amber strip on Deduct TDS with the FY figure + "TDS/TCS due" wording, save-through, honest 194I absence, helper still computes the ₹800 duty line without a threshold).
-- **Verification (final tree):** Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **915** incl. 22 R-33, attack-the-fixes 29); browser **399/399** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153/153 + r03…r33 = 246 scenario checks, r33 13/13); typecheck server + client clean; `git diff --check` clean.
+- **Verification (final tree):** Python **1197/1197** (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression **915** incl. 22 R-33, attack-the-fixes 29); browser **399/399** on a rebuilt image + verified-fresh volume, every suite exactly once (run.js 153/153 + r03…r33 = 246 scenario checks, r33 13/13); typecheck server + client clean; `git diff --check` clean. Full Python battery re-run green on the exact tree committed.
 
 ## v1.31.0 — R-32 IRP/EWB production onboarding runbook (RELEASED)
 

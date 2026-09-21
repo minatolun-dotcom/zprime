@@ -181,29 +181,19 @@ async function setSalaryStructureApi(employees, lines /* [[headName, amount]] */
 const OPEN_KEY = {
   Contra: "F4", Payment: "F5", Receipt: "F6", Journal: "F7", Sales: "F8", Purchase: "F9",
   "Credit Note": "Alt+F6", "Debit Note": "Alt+F5", "Stock Journal": "Alt+F7",
-  "Delivery Note": "Alt+F8", "Receipt Note": "Alt+F9", "Physical Stock": "Ctrl+F7",
+  "Delivery Note": "Alt+F8", "Receipt Note": "Alt+F9", "Physical Stock": "Control+F7",
 };
 
-/** Types whose Day Book open control is a button panel button, not a live hotkey. */
-const CLICK_OPEN = {
-  "Credit Note": "Credit Note", "Debit Note": "Debit Note", "Stock Journal": "Stock Journal",
-  "Delivery Note": "Delivery Note", "Receipt Note": "Receipt Note", "Physical Stock": "Physical Stock",
-};
-
-/** Open a new-voucher screen via the Day Book F-key hotkey (real keyboard). */
+/** Open a new-voucher screen via the Day Book F-key hotkey (real keyboard).
+ * R-34: every advertised chord now fires — no more button-click workaround
+ * (the former "App quirk" CLICK_OPEN map is gone; suites press real keys). */
 async function openVoucher(type) {
   const fkey = OPEN_KEY[type];
   if (!fkey) throw new Error(`no hotkey mapped for ${type}`);
   for (let attempt = 0; attempt < 3; attempt++) {
     await page.goto(`${BASE}/company/${cid()}/daybook`);
     await page.waitForSelector('input[type="date"]');
-    const clickLabel = CLICK_OPEN[type];
-    if (clickLabel) {
-      // App quirk: Alt+F5/F6/F7/F8/F9 + Ctrl+F7 are button-only (no keyboard handler)
-      await page.locator(`button:has-text("${clickLabel}")`).first().click();
-    } else {
-      await page.keyboard.press(fkey);
-    }
+    await page.keyboard.press(fkey);
     try {
       await page.waitForSelector("text=Ledger Entries", { timeout: 4000 });
       await sleep(250);

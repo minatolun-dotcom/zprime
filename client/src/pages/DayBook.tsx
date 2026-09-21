@@ -86,6 +86,13 @@ export default function DayBook() {
     F4: () => open("Contra"),
     F6: () => open("Receipt"),
     F7: () => open("Journal"),
+    // R-34 (D-2): every advertised chord fires — the panel chips are the contract.
+    "Alt+F5": () => open("Debit Note"),
+    "Alt+F6": () => open("Credit Note"),
+    "Alt+F7": () => open("Stock Journal"),
+    "Alt+F8": () => open("Delivery Note"),
+    "Alt+F9": () => open("Receipt Note"),
+    "Ctrl+F7": () => open("Physical Stock"),
   }, [byName, cid]);
 
   const fkeys: FKeyButton[] = [
@@ -136,7 +143,7 @@ export default function DayBook() {
           </thead>
           <tbody>
             {(rows ?? []).map((v) => (
-              <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`}>
+              <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`} onClick={() => nav(`/company/${cid}/voucher/${v.id}/edit`)}>
                 <td>{fmtDate(v.date)}</td>
                 <td>
                   <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
@@ -159,13 +166,13 @@ export default function DayBook() {
                 <td className="text-right whitespace-nowrap">
                   {v.isCancelled ? (
                     <>
-                      <button className="text-emerald-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); uncancel(v); }}>Uncancel</button>
+                      <button className="text-emerald-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); uncancel(v); }}>Uncancel</button>
                     </>
                   ) : (
                     <>
                       <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-[12px] hover:underline mr-2">Alter</Link>
-                      <button className="text-amber-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); cancel(v); }}>Cancel</button>
-                      <button className="text-red-500 text-[12px] hover:underline" onClick={(e) => { e.preventDefault(); remove(v); }}>Del</button>
+                      <button className="text-amber-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancel(v); }}>Cancel</button>
+                      <button className="text-red-500 text-[12px] hover:underline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); remove(v); }}>Del</button>
                     </>
                   )}
                 </td>

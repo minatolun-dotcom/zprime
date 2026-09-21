@@ -905,9 +905,14 @@ async function gstHelperProbe() {
       D.record(true, "ux/apply-gst-base", "Alt+G probe: no duty rows inserted (helper inert without duty ledgers in grid) — inconclusive",
         JSON.stringify(grid.map((g) => g.name)));
     } else {
-      const cgst = grid.find((g) => g.name === "Output CGST");
-      const ok = cgst && cgst.cr != null && Math.abs(cgst.cr - 900) < 0.02;
-      D.record(!!ok, "ux/apply-gst-base", "Alt+G applies GST on the sales-line base (not party total)",
+      // R-34 (F-34-1): the helper posts BOTH halves on the ₹10,000 base @18% —
+      // ₹900 + ₹900. It picks the FIRST dutyHead match per head, so on the
+      // Meridian fixture that is the seeded "CGST" and "Input SGST"; assert
+      // the amounts per head, not specific ledger names.
+      const cgst = grid.find((g) => g.cr != null && Math.abs(g.cr - 900) < 0.02 && /CGST/i.test(g.name));
+      const sgst = grid.find((g) => g.cr != null && Math.abs(g.cr - 900) < 0.02 && /SGST/i.test(g.name));
+      const ok = !!cgst && !!sgst;
+      D.record(!!ok, "ux/apply-gst-base", "Alt+G applies GST on the sales-line base: BOTH halves at ₹900 (R-34 F-34-1)",
         JSON.stringify(duty));
     }
   } finally {

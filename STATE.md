@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-20 — **R-33 (TDS/TCS threshold advisories) IMPLEMENTED AND FULLY VERIFIED — holding at RELEASE_REVIEW per protocol.** Migration `0015` (additive `threshold_mode` on tds/tcs sections) · read-only `GET /reports/tds-threshold-check` (FY payment-base aggregates, mode-aware, honest threshold-0) · `fyAggregates[]` on TDS/TCS reports · VoucherScreen amber advisory strip on Deduct TDS/Collect TCS (non-blocking, saves through it) · masters mode selector · **no voucher ever blocked, no posting math changed**. 1197/1197 automated + 399/399 browser (r33_ui 13/13). Working tree contains the R-33 changes; v1.31.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-21 — **R-34 (keyboard integrity) IMPLEMENTED AND FULLY VERIFIED — holding at RELEASE_REVIEW per protocol.** D-1 Alt+G/Alt+T wired (chips + chords) · D-2 six Day Book chords wired (Alt+F5…Alt+F9, Ctrl+F7 — the driver's "App quirk" workaround deleted) · D-3 Day Book row drill-down + stopPropagation on row actions · F-34-1 intrastate Apply-GST now posts BOTH duty halves (`dutyOf("SGST")`, was the never-matching `"SGST/UTGST"`). Client-only: no server file, no schema, no accounting-math change. 1197/1197 automated + 432/432 browser (r34_ui 20/20, real key presses). Working tree contains the R-34 changes; v1.32.0 remains the last tagged release. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
@@ -12,7 +12,13 @@ Self-hostable, keyboard-first Indian accounting application (Tally-style Gateway
 
 ## Release status
 
-### R-33 (implemented, holding at RELEASE_REVIEW → v1.32.0): TDS/TCS threshold advisories
+### R-34 (implemented, holding at RELEASE_REVIEW → v1.33.0): keyboard integrity
+
+Investigation (`R-34_INVESTIGATION.md`) confirmed three client-only defects against the "keyboard-first, Tally-inspired" identity: D-1 (P2) Alt+G/Alt+T advertised but dead (no onClick, no hotkey entries), D-2 (P2) six Day Book chords (Alt+F5…Alt+F9, Ctrl+F7) printed but never registered — the browser driver documented the gap as an "App quirk" and clicked buttons — and D-3 (P3) Day Book rows carrying the `row-link` affordance with no navigation. Esc-chain and report drill-down verified NOT A BUG. **Option A approved** (fix the three; D-4 arrow-key grid, D-5 Alt+C ledger-on-the-fly, D-6 tooltip deferred).
+
+Implemented client-only: hotkey entries + chip `onClick` for Alt+G/Alt+T (same type guards as the chips); six Day Book chord entries; Day Book row click → voucher edit with `e.stopPropagation()` on Uncancel/Cancel/Del; driver `CLICK_OPEN` workaround deleted and `Physical Stock` remapped to the Playwright key name `Control+F7`. **F-34-1 found during implementation:** `applyGst` looked up SGST by `dutyHead === "SGST/UTGST"` but the seeded head is `"SGST"` — intrastate Apply-GST had inserted only the CGST half since v1.0 (party-row rebalance hid it); fixed to `dutyOf("SGST")` and locked by tests (run.js probe now asserts both halves at ₹900+₹900; r34_ui asserts both halves via the real chord). No server file, no schema, no accounting-math change. Typecheck clean; Python **1197/1197**; browser **432/432** on a rebuilt image + verified-fresh volume (run.js 153 + r03…r34 = 279 scenario checks, r34_ui 20/20).
+
+### R-33 (RELEASED as v1.32.0): TDS/TCS threshold advisories
 
 Investigation (`R-33_INVESTIGATION.md`) classified the finding honestly: thresholds are stored per section and surfaced as reference data, **never enforced** — a documented product posture (operator judgment), not a defect. Grounded in law, hard enforcement is wrong more often than right: thresholds bind per-PAYEE per-FY **payment aggregates** (194J ₹50k, 194C ₹30k single/₹1L aggregate, 194I ₹6L), churn by Finance Act, and edge semantics (206AA PAN-less rates) make a block dangerous. **NO P1/P2 DEFECT — PRODUCT-DECISION INVESTIGATION**; Option A (advisory) approved.
 

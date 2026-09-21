@@ -4,13 +4,21 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.33.0
+
+- **Version:** 1.33.0
+- **Commit:** (filled after tag — see CONTINUE.md session record)
+- **Purpose:** R-34 — keyboard integrity (approved Option A): the keyboard-first contract made real. D-1 Alt+G/Alt+T wired (panel chips get `onClick`, hotkey map gets the chords with the same type guards — both were dead since v1.0); D-2 six Day Book chords registered (Alt+F5 Debit Note, Alt+F6 Credit Note, Alt+F7 Stock Journal, Alt+F8 Delivery Note, Alt+F9 Receipt Note, Ctrl+F7 Physical Stock — printed but never wired; the browser driver had documented the gap as an "App quirk" and clicked buttons — workaround deleted, suites press real keys); D-3 Day Book row click → voucher editor with `e.stopPropagation()` on Uncancel/Cancel/Del. **F-34-1 (found during implementation):** intrastate Apply-GST had inserted only the CGST half since v1.0 — `dutyOf("SGST/UTGST")` never matched the seeded `dutyHead:"SGST"`; fixed to `dutyOf("SGST")` and locked by tests (both halves asserted at ₹900+₹900 on the ₹10,000 @18% base, via chip and via the real chord). **Client-only: no server file, no schema, no migration, no accounting-math change.**
+- **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915, attack-the-fixes 29); 432/432 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r34 scenarios = 279, new r34_ui 20/20 with real key presses); typecheck server + client clean.
+- **Immutable: YES** — pushed to origin (date in CONTINUE.md session record).
+
 ## v1.32.0
 
 - **Version:** 1.32.0
-- **Commit:** (filled after tag — see CONTINUE.md session record)
+- **Commit:** `ec8b1301bff6de36e83752ef1d76d68d33eaf58e` (annotated tag `45bdec62a8317e72150b6628c009f8e7fb46c503` → commit verified at release; pushed — `origin/main` = `ec8b130` = `v1.32.0^{}` verified via ls-remote)
 - **Purpose:** R-33 — TDS/TCS threshold advisories (approved Option A, advisory never blocking): migration 0015 (additive `threshold_mode` `'aggregate'` default / `'single'` on `tds_sections` + `tcs_sections` — encodes the legal FY-aggregate (194J ₹50k) vs per-payment (194C ₹30k) distinction), read-only cid-gated `GET /reports/tds-threshold-check` measuring the per-section FY **payment base** (expense debits for TDS, party credits for TCS — duty credits, remittances, cancelled vouchers excluded; `maxSingle` for single-mode; threshold=0 → honest "confirm applicability manually"), mode/over/near-aware wording, `fyAggregates[]` on the TDS and TCS reports, VoucherScreen amber ⚠ advisory strip on Deduct TDS/Collect TCS (silent-degrade on fetch failure, **voucher saves normally through it**), threshold-mode selector in the masters UI with the honest hint. The design flaw the suite caught: the aggregate measures the **payment base**, not the duty credited — the law binds the threshold on payments (₹72,000 of fees vs the ₹50,000 threshold), not on TDS credits (₹7,200). Corrected before release, locked by tests. **No voucher is ever blocked; no posting-math change.**
 - **Verification:** 1197/1197 automated (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 915 incl. 22 R-33, attack-the-fixes 29); 399/399 browser (rebuilt image + verified-fresh volume, every suite exactly once: run.js 153 + r03…r33 scenarios = 246, new r33_ui 13/13); typecheck server + client clean.
-- **Immutable: YES** — pushed to origin (date in CONTINUE.md session record).
+- **Immutable: YES** — pushed to origin 2026-09-21.
 
 ## v1.31.0
 
