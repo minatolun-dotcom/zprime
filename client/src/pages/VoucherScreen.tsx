@@ -76,7 +76,11 @@ export default function VoucherScreen() {
 
   const ledgerInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const { data: allLedgers } = useQuery({ queryKey: ["all-ledgers", cid], queryFn: () => get<any[]>(`/api/c/${cid}/ledgers`) });
+  // R-43 (F-42-1): the options queries' initial-load flags feed TypeAhead's
+  // create-path guard — an empty list during the fetch window must not read
+  // as "nothing matches". isLoading is true only while data is undefined
+  // (cached mounts never see it), so warm screens behave exactly as R-35.
+  const { data: allLedgers, isLoading: ledgersLoading } = useQuery({ queryKey: ["all-ledgers", cid], queryFn: () => get<any[]>(`/api/c/${cid}/ledgers`) });
   // R-21: client-advisory negative-stock warning. Availability per item as of
   // the voucher date — the same chronological source the server guard uses —
   // so the operator sees the oversell while typing instead of at Ctrl+A.
@@ -92,7 +96,7 @@ export default function VoucherScreen() {
     queryFn: () => get<any>(`/api/companies/${cid}`),
     retry: false,
   });
-  const { data: allItems } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`) });
+  const { data: allItems, isLoading: itemsLoading } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`) });
   const { data: godowns } = useQuery({ queryKey: ["godowns", cid], queryFn: () => get<any[]>(`/api/c/${cid}/godowns`) });
   const { data: tdsSections } = useQuery({ queryKey: ["tds-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tds-sections`) });
   const { data: tcsSections } = useQuery({ queryKey: ["tcs-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`) });
@@ -631,7 +635,7 @@ export default function VoucherScreen() {
                     return [{ ledgerId: o.id, ledgerName: o.name, amount: oldPartyRow?.amount ?? 0 }, ...withoutParty];
                   });
                 }}
-                createLabel="ledger" onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
+                createLabel="ledger" loading={ledgersLoading} onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
                 <span className="text-[12px] font-medium text-slate-600">Invoice No.</span>
                 <input id="v-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Party invoice no." />
               </div>
@@ -749,6 +753,7 @@ export default function VoucherScreen() {
                               if (o && i === entries.length - 1) setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
                             }}
                             createLabel="ledger"
+                            loading={ledgersLoading}
                             onCreate={(t) => openQuickCreate(t, { row: i, kind: "entry" })}
                           />
                         </td>

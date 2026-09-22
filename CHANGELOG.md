@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.42.0 — R-43 F-42-1 hydration guard: no false quick-create while options load (at RELEASE_REVIEW)
+
+R-42's P3 operator finding (F-42-1) is now fixed at the UI layer: while a freshly mounted voucher screen's ledger options are on their **initial fetch** (no data yet), the TypeAhead no longer treats an empty list as "nothing matches" — the create row and the Enter→quick-create path are suppressed and a non-interactive "Loading options…" hint shows instead. After the options hydrate, R-35 behavior is byte-identical (`typeahead-create` row, Enter opens the modal prefilled, creation picks the ledger into the triggering field). Cached mounts never see the guard (`isLoading` is true only while data is undefined).
+
+- **Implementation:** `TypeAhead` gains an optional `loading` prop (default-off — every other consumer unaffected); `VoucherScreen` passes the initial-load flags of the two options queries to the create-capable pickers (party + entry rows; the item picker has no create path).
+- **Tests:** new `r43_ui.js` — 12 checks: delayed-route hydration window (existing name → no create row, Loading hint, Enter does NOT open the modal), after-load matching restored, full R-35 create contract, warm-cache mount shows no guard, round-trip save to Day Book, zero page errors. r35 23/23 and run.js 153/153 re-run green on the rebuilt image.
+
+Full investigation: `R-42_INVESTIGATION.md` §F-42-1.
+
 ## v1.41.0 — R-42 real-operator drill: first-boot operator notes documented (RELEASED 2026-09-22 — commit `801ba49adfb36056f0934d0cb462a0632446b140`, annotated tag `3da7d97db7b4854722ec362101af17144b7a2c56`, pushed)
 
 R-42 walked the whole product as a first-time operator on a fresh disposable stack — real API (33/33 journey steps green) and real browser (Gateway → masters → keyboard voucher entry → error paths → reports → cancel/uncancel). **Verdict: NO P1/P2 DEFECT.** Error messages are operator-grade (unbalanced shows the difference; oversell names the remedy; duplicate bill advises Auto-numbering); TB balances to the paisa; quick-create (Tally Alt+C analogue) works mid-voucher.

@@ -1,6 +1,6 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.41.0.
+The permanent development roadmap. Current at v1.42.0 (R-43 at RELEASE_REVIEW).
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
@@ -19,6 +19,7 @@ The permanent development roadmap. Current at v1.41.0.
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
 | v1.38.0 | **R-39** | Backup/restore close-out (approved Option A, B-12 verified ALREADY RESOLVED — test/docs only, zero production code): R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables row-for-row live vs restored) + schema fingerprint (pg_dump-16 `\restrict` token lines normalized); README cron scheduling example + restore-drill paragraph; +12 Python checks (947 final-regression total) → 1229/494 |
 | v1.39.0 | **R-40** | Docs hygiene (investigation-only cycle): R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0 — live-verified on v1.38.0: `?dryRun=1` identical-transaction server path + client Validate button/banner, 10+13 checks green); ROADMAP candidates region refreshed — phase line current, shipped candidates (B-12, R-21 A+B, INV probes) dispositioned, stale R-09/R-10/R-11 "later" duplicate rows removed; no code, no tests, no schema → 1229/494 |
+| v1.42.0 | **R-43** | F-42-1 hydration guard: TypeAhead `loading` prop suppresses the create path while the voucher screen's ledger options are on their initial fetch ("Loading options…" hint); R-35 behavior byte-identical after load; cached mounts unaffected; new r43_ui.js 12/12 + r35 23/23 + run.js 153/153 |
 | v1.41.0 | **R-42** | Real-operator drill (investigation-only): whole product walked as a first-time operator on a fresh stack — API 33/33 + browser journey; NO P1/P2 defect; F-42-1 (P3, quick-create during pick-list hydration window — NOT A BUG, recoverable) and F-42-2 (units/godowns not seeded — Tally parity) documented in README/PROJECT; no code, no tests, no schema → 1229/494 |
 | v1.40.0 | **R-41** | Whole-product re-review (investigation-only): fresh full batteries (1229 + 494), fresh install 16/16 migrations/27 tables, security sweep (64 routes, zero identity trust), migrations additive-only — verdict PRODUCTION READY adopted in STATE.md, zero open findings; no code |
 | v1.37.0 | **R-38** | Payee-threshold report UI (approved Option A, R-37 Option B): `FyPayeeThresholdCard` on the TDS/TCS report pages rendering the existing `fyAggregates` payload — per-payee rows (Payee · PAN · This FY · Largest single · Status) with the server-mirrored over/near formula (aggregate/single modes, 80% near band, amber-strong OVER); across-payees rollup; no-threshold honest wording; advisory-only footer; pure client addition, no server/schema/accounting surface; +14 browser checks (r38_ui, real report pages) → 1222/494 |
@@ -51,7 +52,7 @@ The permanent development roadmap. Current at v1.41.0.
 | v1.22.0 | **R-23** | Reverse charge mechanism (RCM — approved product decision, previously listed out of scope): migration 0009 `vouchers.is_rcm` per-transaction flag; dutyHead RCM + seeded RCM Payable starter ledger (TDS report pattern); GSTR-3B Table 4(A)(3) inwardRcm + rcmItc additive sections with regular-ITC exclusion and net-cash-nil reconciliation; Alt+R voucher toggle + Day Book badge + 3B view rows; no posting-engine change; +33+14 checks → 964/267 |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
-## Current phase: IDLE — R-42 real-operator drill documented (v1.41.0, docs-only): NO P1/P2 defect — first-boot operator notes recorded; next item comes from real operator feedback or a fresh investigation
+## Current phase: RELEASE_REVIEW — R-43 (F-42-1 hydration guard) implemented and verified: r43_ui 12/12, r35 23/23, run.js 153/153, typechecks clean; holding for release instruction
 
 **R-11 is RELEASED as v1.11.0** (investigated → reviewed → approved [test-only] → implemented → verified → release-reviewed → released; no browser deltas required — zero client changes). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 

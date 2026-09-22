@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export interface Option { id: number; name: string; }
 
 export default function TypeAhead({
-  items, value, onPick, placeholder, inputRef, className = "", createLabel, onCreate, dataCol,
+  items, value, onPick, placeholder, inputRef, className = "", createLabel, onCreate, dataCol, loading,
 }: {
   items: Option[];
   value: string; // selected name
@@ -19,6 +19,12 @@ export default function TypeAhead({
   onCreate?: (text: string) => void;
   // R-36: column tag for the voucher-grid arrow navigation (tbody handler).
   dataCol?: string;
+  // R-43 (F-42-1): when the caller's options are still on their initial
+  // fetch, zero matches is a lie — the ledger may exist but the list is
+  // empty. While true, the create path (create-row + Enter-on-zero-matches)
+  // is suppressed and a non-interactive "Loading options…" hint shows
+  // instead; after load, R-35 behavior is byte-identical.
+  loading?: boolean;
 }) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
@@ -37,7 +43,9 @@ export default function TypeAhead({
     setOpen(false);
   };
 
-  const canCreate = Boolean(createLabel && onCreate && open && text.trim());
+  // R-43 (F-42-1): loading suppresses the create path entirely — an empty
+  // options list during initial fetch must not read as "nothing matches".
+  const canCreate = Boolean(!loading && createLabel && onCreate && open && text.trim());
 
   return (
     <div className="relative" ref={boxRef}>
@@ -86,6 +94,14 @@ export default function TypeAhead({
           onMouseDown={(e) => { e.preventDefault(); onCreate!(text.trim()); }}
         >
           ＋ Create "{text.trim()}"
+        </div>
+      )}
+      {open && loading && matches.length === 0 && !canCreate && (
+        <div
+          data-testid="typeahead-loading"
+          className="absolute z-30 left-0 right-0 top-full bg-white border border-slate-200 rounded shadow-lg px-2 py-1.5 text-[13px] text-slate-400"
+        >
+          Loading options…
         </div>
       )}
     </div>
