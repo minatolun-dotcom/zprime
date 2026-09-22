@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.41.0 — R-42 real-operator drill: first-boot operator notes documented (docs-only)
+
+R-42 walked the whole product as a first-time operator on a fresh disposable stack — real API (33/33 journey steps green) and real browser (Gateway → masters → keyboard voucher entry → error paths → reports → cancel/uncancel). **Verdict: NO P1/P2 DEFECT.** Error messages are operator-grade (unbalanced shows the difference; oversell names the remedy; duplicate bill advises Auto-numbering); TB balances to the paisa; quick-create (Tally Alt+C analogue) works mid-voucher.
+
+- **F-42-1 (P3, NOT A BUG — VERIFIED):** during a freshly mounted voucher screen's pick-list hydration window, Enter can take the quick-create path even for an existing ledger name. Recoverable via Esc; server unique constraints prevent duplicates; no data risk. Recorded as a known behavior, no code change.
+- **F-42-2 (P4, by design):** fresh companies seed accounting ledgers only — units and godowns are created on demand (Tally parity). Now stated in the README so first-time operators aren't surprised.
+- **Implementation:** README "Notes & limits" + PROJECT.md UI-philosophy notes + `R-42_INVESTIGATION.md` committed + ledger docs. **Zero production diff** — the 1229/494 estate stands unchanged (R-11/R-39/R-40 precedent).
+
+Full report: `R-42_INVESTIGATION.md`.
+
 ## v1.40.0 — R-41 whole-product re-review: PRODUCTION READY adopted (RELEASED 2026-09-22 — commit `6552b4f17a3333ddfddf6fcbe79a7c9919257970`, annotated tag `d493d1144326024b3d7d2d6199a4946b06e2cc78`, pushed)
 
 R-41 re-certified the entire product at v1.39.0 with fresh evidence — supersedes the v1.16.0 **RELEASE CANDIDATE** verdict (29 release commits / +42,740 lines ago: RCM, GSTR-9, TCS, IRP/EWB connectivity, audit trail, the keyboard arc, ledger-on-the-fly, per-payee TDS/TCS, backup/restore depth).

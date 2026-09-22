@@ -68,6 +68,7 @@ All with period picker, Alt+F1 detailed/condensed, CSV export, drill-down: Balan
 
 - Cheque printing with amount-in-words; cheque register; company settings; CSV report export.
 - **Keyboard-first:** F2 date · F4–F9/Alt+F-keys quick vouchers · Ctrl+A accept · Alt+F1 detailed/condensed · Esc back · Enter adds entry row · type-ahead ledger & item search. The UI is compact and minimal by design — no ERP clutter.
+- **Quick-create (Tally Alt+C analogue):** typing an unknown ledger/item in a voucher and pressing Enter opens inline creation; during a freshly mounted screen's pick-list hydration window, Enter can take the create path for an existing name (recoverable via Esc, no data risk — R-42 F-42-1 observation). Fresh companies seed accounting ledgers only; units/godowns are created on demand (R-42 F-42-2).
 
 ## Financial year model
 
