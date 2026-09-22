@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.41.0
+
+- **Released:** 2026-09-22
+- **R-item:** R-42 — real-operator drill (investigation-only cycle, docs-only release)
+- **Commit:** `801ba49adfb36056f0934d0cb462a0632446b140` (annotated tag `3da7d97db7b4854722ec362101af17144b7a2c56` → commit verified via for-each-ref; pushed — `origin/main` = `801ba49` = `v1.41.0^{}` verified via ls-remote)
+- **Purpose:** records the R-42 drill outcome — the whole product walked as a first-time operator on a fresh disposable stack (real API 33/33 journey steps + real-browser journey: Gateway → masters → keyboard voucher entry → error paths → reports → cancel/uncancel). **Verdict: NO P1/P2 DEFECT.** Operator notes documented: **F-42-1** (P3, NOT A BUG — quick-create can take the Enter path during a freshly mounted voucher screen's pick-list hydration window; recoverable via Esc, no data risk, server unique constraints guard) and **F-42-2** (P4, by design — fresh companies seed accounting ledgers only; units/godowns created on demand, Tally parity). Implementation: README "Notes & limits" + PROJECT.md UI-philosophy notes + CHANGELOG + ROADMAP (incl. the previously missing v1.40.0/R-41 table row) + STATE + `R-42_INVESTIGATION.md` committed. **No code, no tests, no schema — zero production diff.**
+- **Verification:** typechecks clean · `git diff --check` clean · estate unchanged at 1229/494 (R-11/R-39/R-40 precedent) · drill evidence: API journey 33/33 in `R-42_INVESTIGATION.md`
+- **Immutability:** v1.41.0 and all prior tags are immutable
+
+---
+
 ## v1.40.0
 
 - **Released:** 2026-09-22

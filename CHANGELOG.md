@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.41.0 — R-42 real-operator drill: first-boot operator notes documented (docs-only)
+## v1.41.0 — R-42 real-operator drill: first-boot operator notes documented (RELEASED 2026-09-22 — commit `801ba49adfb36056f0934d0cb462a0632446b140`, annotated tag `3da7d97db7b4854722ec362101af17144b7a2c56`, pushed)
 
 R-42 walked the whole product as a first-time operator on a fresh disposable stack — real API (33/33 journey steps green) and real browser (Gateway → masters → keyboard voucher entry → error paths → reports → cancel/uncancel). **Verdict: NO P1/P2 DEFECT.** Error messages are operator-grade (unbalanced shows the difference; oversell names the remedy; duplicate bill advises Auto-numbering); TB balances to the paisa; quick-create (Tally Alt+C analogue) works mid-voucher.
 
