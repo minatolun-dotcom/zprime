@@ -1538,6 +1538,8 @@ R6 = f"/api/c/{cN['id']}"
 s, gs = r03(sA, "GET", f"{R6}/groups"); gm6 = {x["name"]: x["id"] for x in gs}
 s, vts6 = r03(sA, "GET", f"{R6}/voucher-types"); vm6 = {x["name"]: x["id"] for x in vts6}
 s, u6 = r03(sA, "POST", f"{R6}/units", {"name": "Nos", "symbol": "Nos", "decimalPlaces": 0})
+if s == 409:  # R-44: fresh companies seed Nos/Pieces — reuse the seeded unit
+    s, u6 = r03(sA, "GET", f"{R6}/units"); u6 = next(u for u in u6 if u["symbol"] == "Nos")
 s, it6 = r03(sA, "POST", f"{R6}/stock-items", {"name": "R06 Widget", "unitId": u6["id"], "openingQty": "0", "openingRate": "0", "openingValue": "0"})
 s, sl6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Sales", "groupId": gm6["Sales Accounts"]})
 s, pl6 = r03(sA, "POST", f"{R6}/ledgers", {"name": "R06 Purchases", "groupId": gm6["Purchase Accounts"]})
@@ -1588,6 +1590,8 @@ R7 = f"/api/c/{cM['id']}"
 s, gs = r03(sA, "GET", f"{R7}/groups"); gm7 = {x["name"]: x["id"] for x in gs}
 s, vts7 = r03(sA, "GET", f"{R7}/voucher-types"); vm7 = {x["name"]: x["id"] for x in vts7}
 s, u7 = r03(sA, "POST", f"{R7}/units", {"name": "Nos", "symbol": "Nos", "decimalPlaces": 0})
+if s == 409:  # R-44: fresh companies seed Nos/Pieces — reuse the seeded unit
+    s, u7 = r03(sA, "GET", f"{R7}/units"); u7 = next(u for u in u7 if u["symbol"] == "Nos")
 s, it7 = r03(sA, "POST", f"{R7}/stock-items", {"name": "R07 Widget", "unitId": u7["id"], "openingQty": "0", "openingRate": "0", "openingValue": "0"})
 s, sl7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Sales", "groupId": gm7["Sales Accounts"]})
 s, pl7 = r03(sA, "POST", f"{R7}/ledgers", {"name": "R06 Purchases", "groupId": gm7["Purchase Accounts"]})

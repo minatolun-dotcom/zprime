@@ -64,7 +64,13 @@ async function createMasters() {
     return name;
   };
 
-  await D.createMaster("units", [["Description *", "Pieces"], ["Symbol *", "pcs"]]);
+  // R-44: fresh companies now seed units Nos/Pieces + godown Main — Pieces/pcs
+  // already exists, so only the extra masters are created here (dedupe guard).
+  try {
+    await D.createMaster("units", [["Description *", "Pieces"], ["Symbol *", "pcs"]]);
+  } catch (e) {
+    if (!/already exists/.test(e.message)) throw e;
+  }
   await D.createMaster("units", [["Description *", "Box of 10"], ["Symbol *", "box"], ["Decimals", "0"]]);
   await D.createMaster("godowns", [["Name *", "Main Warehouse"]]);
   await D.createMaster("godowns", [["Name *", "Retail Shop"]]);

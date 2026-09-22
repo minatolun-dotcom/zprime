@@ -210,6 +210,8 @@ try:
 
     print("== PART 15: NEGATIVE STOCK ==")
     s, unit = req("POST", f"{CA}/units", {"name": "Nos", "symbol": "Nos", "decimalPlaces": 0})
+    if s == 409:  # R-44: fresh companies seed Nos/Pieces — reuse the seeded unit
+        s, unit = req("GET", f"{CA}/units"); unit = next(u for u in unit if u["symbol"] == "Nos")
     s, item = req("POST", f"{CA}/stock-items", {"name": "NegItem", "unitId": unit["id"], "gstRate": "18", "openingQty": "0", "openingRate": "0", "openingValue": "0"})
     s, v = req("POST", f"{CA}/vouchers", {"voucherTypeId": vtA["Sales"], "date": "2025-04-20",
         "entries": [{"ledgerId": debtorA["id"], "amount": 118}, {"ledgerId": salesA["id"], "amount": -100, "gstRate": 18}],

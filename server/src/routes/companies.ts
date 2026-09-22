@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { companies, groups, ledgers, voucherTypes, userCompanies, users, irpCredentials } from "../db/schema.js";
+import { companies, groups, ledgers, voucherTypes, userCompanies, users, irpCredentials, units, godowns } from "../db/schema.js";
 import { encryptSecret, decryptSecret } from "../lib/crypto.js";
 import { and, eq, asc } from "drizzle-orm";
 import { DEFAULT_GROUPS, DEFAULT_VOUCHER_TYPES } from "../lib/defaults.js";
@@ -110,6 +110,20 @@ async function seedCompanyTx(tx: any, companyId: number) {
       taxability: "none",
     });
   }
+
+  // R-44 (F-42-2): starter inventory masters. stockItems.unitId is NOT NULL, so
+  // a fresh company's first inventoried item was unsaveable until the operator
+  // created a unit by hand (the R-42 drill hit this live). Seed Tally-parity
+  // defaults in the SAME creation transaction — atomic with the company, no
+  // migration/backfill (existing companies untouched), no reserved flags: the
+  // rows are ordinary masters, alterable/deletable on the Masters pages. The
+  // per-company unique (symbol)/(name) indexes make double-seed impossible.
+  await tx.insert(units).values([
+    { companyId, name: "Numbers", symbol: "Nos", decimalPlaces: 0 },
+    { companyId, name: "Pieces", symbol: "pcs", decimalPlaces: 0 },
+  ]);
+  await tx.insert(godowns).values({ companyId, name: "Main" });
+
   return { groupId, typeId };
 }
 

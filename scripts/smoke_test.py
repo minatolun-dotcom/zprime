@@ -88,6 +88,8 @@ try:
     check("opening journal posted", s == 200, journal)
 
     s, unit = req("POST", f"{C}/units", {"name": "Numbers", "symbol": "Nos", "decimalPlaces": 0})
+    if s == 409:  # R-44: fresh companies seed Nos/Pieces — reuse the seeded unit
+        s, unit = req("GET", f"{C}/units"); unit = next(u for u in unit if u["symbol"] == "Nos")
     s, item = req("POST", f"{C}/stock-items", {"name": "Widget A", "unitId": unit["id"], "hsnSac": "8479", "gstRate": "18", "openingQty": "100", "openingRate": "50", "openingValue": "5000"})
     check("create stock item", s == 200, item)
 

@@ -93,6 +93,8 @@ try:
 
     # 2. Opening stock via physical stock: 100 units A @ 200 = 20,000; 50 units B @ 400 = 20,000
     s, unit = req("POST", f"{C}/units", {"name": "Numbers", "symbol": "Nos", "decimalPlaces": 0})
+    if s == 409:  # R-44: fresh companies seed Nos/Pieces — reuse the seeded unit
+        s, unit = req("GET", f"{C}/units"); unit = next(u for u in unit if u["symbol"] == "Nos")
     s, itemA = req("POST", f"{C}/stock-items", {"name": "Item Alpha", "unitId": unit["id"], "gstRate": "18", "openingQty": "100", "openingRate": "200", "openingValue": "20000", "costingMethod": "weighted_avg"})
     s, itemB = req("POST", f"{C}/stock-items", {"name": "Item Beta", "unitId": unit["id"], "gstRate": "18", "openingQty": "50", "openingRate": "400", "openingValue": "20000", "costingMethod": "fifo"})
 

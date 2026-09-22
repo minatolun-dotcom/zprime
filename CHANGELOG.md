@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.43.0 — R-44 F-42-2 starter inventory masters: fresh companies can post inventory immediately (at RELEASE_REVIEW)
+
+R-42's P4 operator finding (F-42-2) is closed at the seed layer: `seedCompanyTx` now also seeds **units `Nos` + `Pieces`** and **godown `Main`** inside the same transaction that creates the company, seeds reserved groups/voucher types, and grants the owner membership (R-03 atomicity preserved — a failed seed aborts the whole creation). Since `stockItems.unitId` is NOT NULL, the first inventoried item on a fresh company was previously unsaveable until a unit was created by hand (live-reproduced in the R-42 drill); it now saves immediately.
+
+- **Design (approved Option A):** no migration, no schema change, no API surface, no frontend change; no backfill of existing companies; the seeds are ordinary masters (units/godowns carry no reserved flag) — alterable/deletable via the Masters pages; idempotent per company via the existing unique `(company_id, symbol)` / `(company_id, name)` indexes.
+- **Test adjustments (fixtures only — no assertions weakened):** four Python suites + run.js created a unit with the now-seeded symbol/name and asserted the POST result; the POST now 409s on the unique index, so each fixture reuses the seeded unit (final_regression R06/R07, smoke, attack, reconcile) or tolerates the duplicate (run.js Pieces). The negative-stock guard still fires exactly as before — run.js's Meridian opt-in path unchanged.
+- **Tests:** new `r44_ui.js` — 11 checks: seeds present server-side + on the Units/Godowns pages before any operator action, first stock item saved with the seeded unit (zero setup), seeded godown deletable + re-creatable via the UI, purchase→sales round-trip through the seeded unit (also re-proving the R-06 rejection selling from zero is a fixture-data matter, not a code path).
+
+Full investigation: `R-44_INVESTIGATION.md`.
+
 ## v1.42.0 — R-43 F-42-1 hydration guard: no false quick-create while options load (RELEASED 2026-09-22 — commit `03e4d351e6c1013456bb7c8d1fd25e2f4a193062`, annotated tag `817f60359de6d8665f9e99bb5c6bdfe163042866`, pushed)
 
 R-42's P3 operator finding (F-42-1) is now fixed at the UI layer: while a freshly mounted voucher screen's ledger options are on their **initial fetch** (no data yet), the TypeAhead no longer treats an empty list as "nothing matches" — the create row and the Enter→quick-create path are suppressed and a non-interactive "Loading options…" hint shows instead. After the options hydrate, R-35 behavior is byte-identical (`typeahead-create` row, Enter opens the modal prefilled, creation picks the ledger into the triggering field). Cached mounts never see the guard (`isLoading` is true only while data is undefined).
