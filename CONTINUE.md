@@ -1,13 +1,14 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-21 — **R-40 (docs hygiene) RELEASED as v1.39.0 and pushed.** Process state: RELEASED → IDLE.
+**Last updated:** 2026-09-22 — **R-41 adopted as v1.40.0 (PRODUCTION READY docs release) — RELEASED and pushed.** Baseline: v1.40.0 (HEAD = release commit, tagged, pushed); tree clean apart from the intentional untracked action plan.
 
 ---
 
 ## Current state
 
-- **Current release:** v1.39.0 (R-40 docs hygiene) — release commit `0443d1c172df329c54a1925ebbaa8ab3405ce4ec` ("Release v1.39.0: roadmap hygiene — candidate list dispositioned (R-40)", 5 files, +90/−11), annotated tag `fd2fe9b3cb923a51a858d73149870fa76a9c47e0` ("zprime v1.39.0 — the map matches the territory"); pushed — `origin/main` = `0443d1c` = `v1.39.0^{}` verified via ls-remote; 41 tags; see RELEASES.md
-- **Current phase:** `IDLE` — R-40 released; per protocol the next R-item requires its own investigation → review → approval cycle. Ask for direction; do not pick unilaterally.
+- **Current release:** v1.40.0 (R-41 whole-product re-review artifact) — release commit recorded in RELEASES.md; annotated tag; pushed — see RELEASES.md for the exact SHAs; 42 tags
+- **Current phase:** `IDLE` — product status **PRODUCTION READY** (designed model), zero open findings (`R-41_REVIEW.md`). Next R-item comes from real operator feedback or a fresh investigation; ask for direction, do not pick unilaterally.
+- **Review report:** `R-41_REVIEW.md`
 - **What was implemented (R-40, approved Option A — docs-only, zero production code):** R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified on v1.38.0: `?dryRun=1` identical-transaction server path + client Validate button/banner, 10+13 checks green) · ROADMAP.md refreshed: header "Current at v1.39.0", phase line current (was ten releases stale), candidates region marked FULLY DISPOSITIONED with evidence, 3 stale "later" rows removed, R-40 row in the release table
 - **Verification (final tree):** zero production diff — typechecks trivially clean, Python **1229/1229** + browser **494/494** unchanged (R-11/R-39 precedent) · `git diff --check` clean
 - **Investigation report:** `R-40_INVESTIGATION.md`

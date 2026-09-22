@@ -1,10 +1,10 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-21 — **R-40 (docs hygiene) RELEASED as v1.39.0 and pushed.** Release commit `0443d1c172df329c54a1925ebbaa8ab3405ce4ec`, annotated tag `fd2fe9b3cb923a51a858d73149870fa76a9c47e0`, pushed — `origin/main` = `0443d1c` = `v1.39.0^{}` verified via ls-remote. R-40 verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified); implementation is ROADMAP.md hygiene only (phase line current, candidates FULLY DISPOSITIONED, stale rows removed). No code, no tests, no schema. Estate 1229/494 unchanged. See CHANGELOG.md, CONTINUE.md.
+**Last updated:** 2026-09-22 — **R-41 whole-product re-review COMPLETE; PRODUCTION READY adopted as v1.40.0 (docs-only) and pushed.** The review re-certified the whole product at v1.39.0 with fresh evidence (full report: `R-41_REVIEW.md`): Python **1229/1229**, browser **494/494** (rebuilt image + verified-fresh volume), fresh install 16/16 migrations / 27 tables, reconciliation 61/61 (engine independent), security sweep clean (64 routes mapped, cid()/requireOwner coverage verified, zero client-identity trust, AES-256-GCM credential store), 16 additive-only migrations, ledger coherent — **zero open findings**. Implementation: STATE.md verdict line + ledger docs only. No code, no tests, no schema. See CHANGELOG.md, CONTINUE.md.
 
 ## Product status
 
-**RELEASE CANDIDATE** (adopted 2026-09-17 per READINESS_REVIEW.md — supersedes the production action plan's ALPHA verdict, which predated R-04…R-15). Production-ready for the designed model: self-hosted, single operator/small trusted team; internet-exposed acceptable with documented hardening. Not a multi-tenant SaaS.
+**PRODUCTION READY** (adopted 2026-09-22 per R-41_REVIEW.md — supersedes the v1.16.0 RELEASE CANDIDATE line, which was 29 release commits / +42,740 lines ago). Fresh-evidence re-certification at v1.39.0: full batteries re-run green (1229 Python + 494 browser), fresh install 16/16 migrations, independent reconciliation green, security sweep clean, migrations additive-only, ledger coherent — zero open findings. Production-ready for the designed model: self-hosted, single operator/small trusted team; internet-exposed acceptable with documented hardening. Not a multi-tenant SaaS. Known accepted limitations unchanged: in-memory limiter state, 7-day JWT, no 2FA/SSO, GST reports as management summaries, audit trail covers vouchers only.
 
 ## What zprime is
 

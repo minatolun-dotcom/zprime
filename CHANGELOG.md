@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.40.0 — R-41 whole-product re-review: PRODUCTION READY adopted (RELEASED)
+
+R-41 re-certified the entire product at v1.39.0 with fresh evidence — supersedes the v1.16.0 **RELEASE CANDIDATE** verdict (29 release commits / +42,740 lines ago: RCM, GSTR-9, TCS, IRP/EWB connectivity, audit trail, the keyboard arc, ledger-on-the-fly, per-payee TDS/TCS, backup/restore depth).
+
+- **Fresh verification (all run during the review, on v1.39.0):** Python **1229/1229** (smoke 39 · adversarial 88 · bug-fix 65 · reconciliation 61 · final regression 947 · attack-the-fixes 29) · browser **494/494** on a rebuilt image + verified-fresh volume (run.js 153 + r03…r38 scenario suites, zero failures) · fresh install 16/16 migrations, 27 public tables from zero, app healthy · independent reconciliation 61/61 · typechecks clean.
+- **Security sweep:** all 64 routes mapped per file with cid()/requireOwner coverage confirmed; zero client-identity trust (`body.companyId`/`query.companyId`/`body.userId` — no hits); all 19 service-layer company reads scoped by the already-authorized cid; IRP/EWB credentials AES-256-GCM with fail-fast key enforcement; adversarial + attack-the-fixes suites green.
+- **Integrity sweep:** accounting invariants held across every postings-affecting release since v1.15 (TB/BS/P&L/stock/GST); 16 additive-only migrations — no DROP/TRUNCATE/DELETE anywhere; backup/restore content-guarded (R-39); ledger docs coherent.
+- **Verdict:** **PRODUCTION READY** (designed model: self-hosted, single operator/small trusted team). The one open finding from v1.15 (F-R1 first-boot race) closed in R-16; the estate more than doubled since v1.16 (868→1229 Python, 219→494 browser); all candidate lists dispositioned (R-40); ops hardened (self-healing, backup runbook + restore drill, credential encryption). Known accepted limitations unchanged: in-memory limiter state, 7-day JWT, no 2FA/SSO, GST reports as management summaries, audit trail covers vouchers only.
+- **Implementation:** STATE.md product-status line + this ledger + ROADMAP phase + CONTINUE.md. **Zero production diff** — the 1229/494 estate stands unchanged (R-11/R-39/R-40 precedent).
+
+Full report: `R-41_REVIEW.md`.
+
 ## v1.39.0 — R-40 docs hygiene (RELEASED)
 
 R-40 was an investigation-only cycle: the selected candidate ("import pre-validation UI") verified **ALREADY SHIPPED as R-21 (v1.20.0)** — live-verified on v1.38.0 (server `?dryRun=1` identical-transaction path, client Validate button + nothing-imported banner, 10 Python + 13 browser checks green). The R-04-derived hardening list is fully dispositioned.

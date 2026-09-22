@@ -1,6 +1,6 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.39.0.
+The permanent development roadmap. Current at v1.40.0.
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
@@ -49,7 +49,7 @@ The permanent development roadmap. Current at v1.39.0.
 | v1.22.0 | **R-23** | Reverse charge mechanism (RCM — approved product decision, previously listed out of scope): migration 0009 `vouchers.is_rcm` per-transaction flag; dutyHead RCM + seeded RCM Payable starter ledger (TDS report pattern); GSTR-3B Table 4(A)(3) inwardRcm + rcmItc additive sections with regular-ITC exclusion and net-cash-nil reconciliation; Alt+R voucher toggle + Day Book badge + 3B view rows; no posting-engine change; +33+14 checks → 964/267 |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
-## Current phase: IDLE — R-40 released (v1.39.0, docs hygiene); next item pending investigation
+## Current phase: IDLE — R-41 whole-product re-review released (v1.40.0): product status **PRODUCTION READY** (designed model), zero open findings; next item comes from real operator feedback or a fresh investigation
 
 **R-11 is RELEASED as v1.11.0** (investigated → reviewed → approved [test-only] → implemented → verified → release-reviewed → released; no browser deltas required — zero client changes). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
