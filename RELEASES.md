@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.40.0
+
+- **Released:** 2026-09-22
+- **R-item:** R-41 — whole-product re-review (the re-certification)
+- **Commit:** `6552b4f17a3333ddfddf6fcbe79a7c9919257970` (annotated tag `d493d1144326024b3d7d2d6199a4946b06e2cc78` → commit verified via for-each-ref; pushed — `origin/main` = `6552b4f` = `v1.40.0^{}` verified via ls-remote)
+- **Purpose:** adopts the R-41 re-review verdict as the product status: **PRODUCTION READY** (designed model), superseding the v1.16.0 RELEASE CANDIDATE line (29 release commits / +42,740 lines ago). The review re-certified with fresh evidence — Python **1229/1229**, browser **494/494** (rebuilt image + verified-fresh volume), fresh install 16/16 migrations / 27 tables, independent reconciliation 61/61, security sweep clean (64 routes mapped, cid()/requireOwner coverage verified, zero client-identity trust, AES-256-GCM credential store), 16 additive-only migrations, ledger coherent — zero open findings. Implementation: STATE.md verdict line + ledger docs + `R-41_REVIEW.md` committed. **No code, no tests, no schema — zero production diff.**
+- **Verification:** typechecks clean · `git diff --check` clean · estate unchanged at 1229/494 (R-11/R-39/R-40 precedent) · gates re-run on the exact release tree
+- **Immutability:** v1.40.0 and all prior tags are immutable
+
+---
+
 ## v1.39.0
 
 - **Version:** 1.39.0

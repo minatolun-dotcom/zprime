@@ -6,9 +6,10 @@
 
 ## Current state
 
-- **Current release:** v1.40.0 (R-41 whole-product re-review artifact) — release commit recorded in RELEASES.md; annotated tag; pushed — see RELEASES.md for the exact SHAs; 42 tags
+- **Current release:** v1.40.0 (R-41 whole-product re-review artifact) — release commit `6552b4f17a3333ddfddf6fcbe79a7c9919257970` ("Release v1.40.0: whole-product re-review — PRODUCTION READY adopted (R-41)", 5 files, +90/−7), annotated tag `d493d1144326024b3d7d2d6199a4946b06e2cc78` ("zprime v1.40.0 — the re-certification: production ready, zero open findings"); pushed — `origin/main` = `6552b4f` = `v1.40.0^{}` verified via ls-remote; 42 tags; see RELEASES.md
 - **Current phase:** `IDLE` — product status **PRODUCTION READY** (designed model), zero open findings (`R-41_REVIEW.md`). Next R-item comes from real operator feedback or a fresh investigation; ask for direction, do not pick unilaterally.
 - **Review report:** `R-41_REVIEW.md`
+- **What was implemented (R-41, approved — docs-only, zero production code):** STATE.md product status **RELEASE CANDIDATE → PRODUCTION READY** (adopted per R-41_REVIEW.md, supersedes the v1.16.0 line) + CHANGELOG v1.40.0 entry + ROADMAP header/phase line + `R-41_REVIEW.md` committed. Gates on the exact release tree: typechecks clean, `git diff --check` clean, estate unchanged at 1229/494 (R-11/R-39/R-40 precedent).
 - **What was implemented (R-40, approved Option A — docs-only, zero production code):** R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0, live-verified on v1.38.0: `?dryRun=1` identical-transaction server path + client Validate button/banner, 10+13 checks green) · ROADMAP.md refreshed: header "Current at v1.39.0", phase line current (was ten releases stale), candidates region marked FULLY DISPOSITIONED with evidence, 3 stale "later" rows removed, R-40 row in the release table
 - **Verification (final tree):** zero production diff — typechecks trivially clean, Python **1229/1229** + browser **494/494** unchanged (R-11/R-39 precedent) · `git diff --check` clean
 - **Investigation report:** `R-40_INVESTIGATION.md`

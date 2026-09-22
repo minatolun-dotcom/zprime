@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.40.0 — R-41 whole-product re-review: PRODUCTION READY adopted (RELEASED)
+## v1.40.0 — R-41 whole-product re-review: PRODUCTION READY adopted (RELEASED 2026-09-22 — commit `6552b4f17a3333ddfddf6fcbe79a7c9919257970`, annotated tag `d493d1144326024b3d7d2d6199a4946b06e2cc78`, pushed)
 
 R-41 re-certified the entire product at v1.39.0 with fresh evidence — supersedes the v1.16.0 **RELEASE CANDIDATE** verdict (29 release commits / +42,740 lines ago: RCM, GSTR-9, TCS, IRP/EWB connectivity, audit trail, the keyboard arc, ledger-on-the-fly, per-payee TDS/TCS, backup/restore depth).
 
