@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.43.0
+
+- **Released:** 2026-09-22
+- **R-item:** R-44 — F-42-2 starter inventory masters (the R-42 P4 operator finding, fixed at the seed layer)
+- **Commit:** `a3f162c478d9e13a2162750b8d6a728d2cdc51f9` (annotated tag `6f1b27631aadac1c50c465b4cc1362fd1b9ef23a` → commit verified via for-each-ref; pushed — `origin/main` = `a3f162c` = `v1.43.0^{}` verified via ls-remote)
+- **Purpose:** closes the F-42-2 first-hour gap: `seedCompanyTx` seeds units `Nos` + `Pieces` and godown `Main` inside the company-creation transaction — the first inventoried item (unitId NOT NULL) saves immediately. No migration/schema/API/frontend change, no backfill; seeds are ordinary masters (deletable/alterable); idempotent via existing unique indexes. Four Python fixtures adjusted mechanically (unit POST may now 409 → reuse the seeded unit) — no assertions weakened.
+- **Verification:** typechecks clean · `git diff --check` clean · r44_ui **11/11** · run.js **153/153** · final_regression **947/947** · smoke **39/39** · adversarial **88/88** · reconciliation **61/61** · fix_regression **65/65** · attack-the-fixes **29/29**
+- **Immutability:** v1.43.0 and all prior tags are immutable
+
+---
+
 ## v1.42.0
 
 - **Released:** 2026-09-22

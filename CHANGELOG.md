@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.43.0 — R-44 F-42-2 starter inventory masters: fresh companies can post inventory immediately (at RELEASE_REVIEW)
+## v1.43.0 — R-44 F-42-2 starter inventory masters: fresh companies can post inventory immediately (RELEASED 2026-09-22 — commit `a3f162c478d9e13a2162750b8d6a728d2cdc51f9`, annotated tag `6f1b27631aadac1c50c465b4cc1362fd1b9ef23a`, pushed)
 
 R-42's P4 operator finding (F-42-2) is closed at the seed layer: `seedCompanyTx` now also seeds **units `Nos` + `Pieces`** and **godown `Main`** inside the same transaction that creates the company, seeds reserved groups/voucher types, and grants the owner membership (R-03 atomicity preserved — a failed seed aborts the whole creation). Since `stockItems.unitId` is NOT NULL, the first inventoried item on a fresh company was previously unsaveable until a unit was created by hand (live-reproduced in the R-42 drill); it now saves immediately.
 
