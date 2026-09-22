@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.42.0 — R-43 F-42-1 hydration guard: no false quick-create while options load (at RELEASE_REVIEW)
+## v1.42.0 — R-43 F-42-1 hydration guard: no false quick-create while options load (RELEASED 2026-09-22 — commit `03e4d351e6c1013456bb7c8d1fd25e2f4a193062`, annotated tag `817f60359de6d8665f9e99bb5c6bdfe163042866`, pushed)
 
 R-42's P3 operator finding (F-42-1) is now fixed at the UI layer: while a freshly mounted voucher screen's ledger options are on their **initial fetch** (no data yet), the TypeAhead no longer treats an empty list as "nothing matches" — the create row and the Enter→quick-create path are suppressed and a non-interactive "Loading options…" hint shows instead. After the options hydrate, R-35 behavior is byte-identical (`typeahead-create` row, Enter opens the modal prefilled, creation picks the ledger into the triggering field). Cached mounts never see the guard (`isLoading` is true only while data is undefined).
 

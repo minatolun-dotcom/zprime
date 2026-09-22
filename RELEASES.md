@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.42.0
+
+- **Released:** 2026-09-22
+- **R-item:** R-43 — F-42-1 hydration guard (the R-42 P3 operator finding, fixed at the UI layer)
+- **Commit:** `03e4d351e6c1013456bb7c8d1fd25e2f4a193062` (annotated tag `817f60359de6d8665f9e99bb5c6bdfe163042866` → commit verified via for-each-ref; pushed — `origin/main` = `03e4d35` = `v1.42.0^{}` verified via ls-remote)
+- **Purpose:** closes the F-42-1 trap: while a freshly mounted voucher screen's ledger options are on their initial fetch, the TypeAhead no longer treats an empty list as "nothing matches" — the create row and Enter→quick-create path are suppressed and a "Loading options…" hint shows; after load, R-35 behavior is byte-identical; cached mounts unaffected. Implementation: optional `loading` prop on `TypeAhead` (default-off, sole consumer VoucherScreen) + `r43_ui.js` suite.
+- **Verification:** typechecks clean · `git diff --check` clean · r43_ui **12/12** (delayed-route hydration window, R-35 create contract, warm-cache mount, round-trip save) · r35_ui **23/23** · run.js **153/153** on the rebuilt image
+- **Immutability:** v1.42.0 and all prior tags are immutable
+
+---
+
 ## v1.41.0
 
 - **Released:** 2026-09-22
