@@ -176,6 +176,13 @@ export default function Gateway() {
               <li><span className="fkey-chip">Alt+F1</span> detailed / condensed</li>
               <li><span className="fkey-chip">Esc</span> back / cancel</li>
             </ul>
+            {/* R-51: browsers reserve F6/F12/Alt+digits etc. in tab context; an
+                app-mode (standalone) zprime window gets every key back. */}
+            <p className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-500 leading-relaxed">
+              Some keys (F6, F12, Alt+digits) are reserved by the browser in tab view. For the
+              full keyboard, run zprime in an app window: menu → <b>Install app</b>, or
+              <b> Create shortcut… → Open as window</b>.
+            </p>
           </div>
           <div className="card p-5 text-sm text-slate-500">
             Signed in as <span className="font-medium text-slate-700">{me?.username}</span>

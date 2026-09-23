@@ -58,6 +58,16 @@ migrates cleanly instead of staying dead).
 **Keyboard workflow**
 `F2` date · `F5/F8/F9` quick vouchers · `Ctrl+A` accept/save · `Alt+F1` detailed/condensed · `Esc` back · Enter adds a new entry row · type-ahead ledger & item search
 
+**Shortcut keys & the browser (R-51)**
+In a normal browser **tab**, some chords are reserved by the browser itself and never reach the page — notably `F5` (reload in some browsers), `F6` (address bar), `F11/F12` (fullscreen/DevTools), `Alt+1–9` (Firefox tab switch) and `Alt`-letter menu access (Firefox/Linux). zprime intercepts everything the browser forwards, but it cannot intercept what the browser consumes first.
+
+For the **full keyboard**, run zprime in an app/standalone window (it ships as an installable PWA):
+
+- **HTTPS or localhost deployments** — install directly: Chrome/Edge → menu ⋮ → **Install app**; Firefox → address-bar install icon. A standalone window has no tab strip, address bar or menu bar, so every advertised key behaves as labelled.
+- **Plain-HTTP LAN-IP deployments** (`http://<ip>:<port>`) — browsers only offer PWA install on secure origins, so use the app-window shortcut instead: Chrome/Edge → ⋮ → **Cast, save and share → Create shortcut… → Open as window** (or launch `chrome --app=http://<ip>:<port>`). Same standalone effect, no HTTPS required.
+
+`F11` (fullscreen) and `F12` (DevTools) remain reserved at the OS/browser level in every context — they are not used by the voucher vocabulary. The Gateway Shortcuts card carries the same reminder.
+
 ## Development
 
 ```bash
