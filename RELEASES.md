@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.48.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-50 — UI modernization "Calm Ledger" (user-approved: Airy density + full redesign, all 4 phases)
+- **Commit:** `1c06874c17a47ebad3138e7a0b7c94c3d34d25e2` (annotated tag `488fb5b292b049dbeaefdc526027c78db07254be`; pushed)
+- **Purpose:** Full client redesign on one token layer (`client/src/index.css` `@theme`): 14px body / 12px floor (11px retired), 8px spacing rhythm, no-clipped-text rule (truncation opt-in via `.cell-truncate`), two-tier elevation (`.card` resting vs `shadow-raised` modals) + visible focus rings on every interactive element; layouts — Shell sticky two-row chrome + floating fkey rail (40px targets, collapses <1024px), Gateway card grid, VoucherScreen sectioned with `border-t-2` totals anchor and minmax label grids, Masters slide-over raised, CompanySettings IRP forms airy. 16 UI files + token css; ChequeFace print artifact intentionally untouched; **zero logic changes** — hotkeys/forms/navigation/API/accounting surfaces byte-identical; label text preserved verbatim for the label-anchored browser estate.
+- **Verification:** typecheck server+client clean · build clean · Python **1230/1230** (final_regression 948, smoke 39, adversarial 88, bug-fix 65, reconciliation 61 independent, attack-the-fixes 29) · browser **543/543** (run.js 153 fresh volume + all 26 scenario suites green individually, incl. r46_drill 39, r35 23, r36 25) · per-phase screenshot review at 1366×768
+- **Immutability:** v1.48.0 and all prior tags are immutable
+
+---
+
 ## v1.47.0
 
 - **Released:** 2026-09-23

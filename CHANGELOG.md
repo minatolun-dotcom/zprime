@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.48.0 — UI modernization "Calm Ledger" (PENDING — holding at RELEASE_REVIEW; client-only, zero behavior change)
+## v1.48.0 — UI modernization "Calm Ledger" (RELEASED 2026-09-23 — commit `1c06874c17a47ebad3138e7a0b7c94c3d34d25e2`, annotated tag `488fb5b292b049dbeaefdc526027c78db07254be`, pushed)
 
 Full UI redesign across all four approved phases, on one token layer (`client/src/index.css` `@theme`): **typography** — 14px body, 11px retired (12px floor), real heading scale with weight hierarchy, tracking-wide section labels; **spacing** — 8px rhythm (cards p-5/p-6, table cells px-3 py-2.5, form rows gap-4); **no clipped text** — hard truncation of meaningful content replaced by wrap (line-clamp-2 / minmax / [overflow-wrap:anywhere]); truncation now opt-in (`.cell-truncate`) for genuine meta only; **surfaces** — two-tier elevation (`.card` resting vs `shadow-raised` modals/menus), rounded-xl cards, visible focus rings on every interactive element; **layouts** — Shell sticky two-row chrome + floating fkey rail (40px targets, collapses <1024px), Gateway as card grid with the fkey-item row language, VoucherScreen sectioned (party/inventory/ledger/narration) with border-t-2 totals anchor and minmax label grids, Masters slide-over form p-6 gap-4 raised, CompanySettings IRP forms airy with indigo env toggles, import/cheque/payroll on the shared language.
 
