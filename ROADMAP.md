@@ -19,6 +19,7 @@ The permanent development roadmap. Current at v1.44.0.
 | v1.10.0 | **R-10** | Voucher submission idempotency (B-10: `idempotency_keys` migration 0005, optional client key on `POST /vouchers` with replay-returns-original, same-transaction key record, unique-index concurrency authority; client UUID per new voucher form + `savingRef` Ctrl+A guard) |
 | v1.38.0 | **R-39** | Backup/restore close-out (approved Option A, B-12 verified ALREADY RESOLVED — test/docs only, zero production code): R-12 round-trip guard upgraded with content-equality checksums (11 postings-bearing tables row-for-row live vs restored) + schema fingerprint (pg_dump-16 `\restrict` token lines normalized); README cron scheduling example + restore-drill paragraph; +12 Python checks (947 final-regression total) → 1229/494 |
 | v1.39.0 | **R-40** | Docs hygiene (investigation-only cycle): R-40 investigation verified the "import pre-validation UI" candidate ALREADY SHIPPED (R-21 v1.20.0 — live-verified on v1.38.0: `?dryRun=1` identical-transaction server path + client Validate button/banner, 10+13 checks green); ROADMAP candidates region refreshed — phase line current, shipped candidates (B-12, R-21 A+B, INV probes) dispositioned, stale R-09/R-10/R-11 "later" duplicate rows removed; no code, no tests, no schema → 1229/494 |
+| v1.45.0 | **R-47** | IRP/EWB drill promoted to permanent suite: the R-46 39-check journey became `scripts/acceptance/r46_drill.js` (38 sequential checks) — self-spawned mock sidecar, fail-fast → credentials → e-invoice → EWB lifecycle both birth paths → authorization; encodes the discovered data contract (taxability + dutyHead=IGST); idempotent re-runs verified, r28/r31 unaffected |
 | (no release) | **R-46** | IRP/EWB readiness drill (investigation only): live operator journey 39/39 vs mock IRP — fail-fast, credential lifecycle, e-invoice accept/duplicate/reject+retry, EWB lifecycle both birth paths, B2C direct, authorization layering; runbook consistent; zero P1/P2/P3 — closed as evidence, no release warranted (`R-46_INVESTIGATION.md`) |
 | v1.44.0 | **R-45** | Whole-product re-review: full battery re-run on rebuilt image + fresh volume — browser 517/517, Python 1229/1229, fresh install 16/16 migrations / 27 tables, engine independence re-verified; r21/r36 seeded-unit fixture fix (NOT A BUG — VERIFIED); third consecutive re-certification of the R-41 PRODUCTION READY verdict |
 | v1.43.0 | **R-44** | F-42-2 starter inventory masters: units Nos/Pieces + godown Main seeded inside the company-creation transaction — first inventoried item saveable immediately; no migration/API/frontend change, no backfill; seeds are ordinary masters; r44_ui.js 11/11 + full Python estate green (fixtures reuse seeded unit where they previously created one) |
@@ -55,7 +56,7 @@ The permanent development roadmap. Current at v1.44.0.
 | v1.22.0 | **R-23** | Reverse charge mechanism (RCM — approved product decision, previously listed out of scope): migration 0009 `vouchers.is_rcm` per-transaction flag; dutyHead RCM + seeded RCM Payable starter ledger (TDS report pattern); GSTR-3B Table 4(A)(3) inwardRcm + rcmItc additive sections with regular-ITC exclusion and net-cash-nil reconciliation; Alt+R voucher toggle + Day Book badge + 3B view rows; no posting-engine change; +33+14 checks → 964/267 |
 | v1.5.0 | **R-05** | Credit/debit-note GST reporting (B-06: signed aggregation, CDNR/CDNUR Table 9B, net totals reconciling with ledgers) + Apply-GST party balance (sign-correct duty base/side, party-row rebalance) |
 
-## Current phase: IDLE — R-46 IRP/EWB readiness drill closed as evidence (live drill 39/39, no defect, no release warranted; report R-46_INVESTIGATION.md); next item comes from real operator feedback or a fresh investigation
+## Current phase: RELEASE_REVIEW — R-47 implemented (drill promoted to permanent suite r46_drill.js, 38 checks, two consecutive green runs); awaiting release instruction (proposed v1.45.0)
 
 **R-11 is RELEASED as v1.11.0** (investigated → reviewed → approved [test-only] → implemented → verified → release-reviewed → released; no browser deltas required — zero client changes). Per protocol, the next R-item requires its own investigation → review → approval cycle before any implementation.
 
@@ -75,6 +76,10 @@ These are prioritized investigation candidates only. **No future R-item becomes 
 | B-12 ✅ DONE (v1.12.0) | Backup/restore (B-12, closed as P4 ops — R-19 re-verified live on v1.18.0 incl. 0007 schema) | action plan | ops | Verified runbook in README + 6-check drift guard in final_regression (R-12); in-product surface declined (F-12-3, documented security rationale: full-DB dump needs a global-admin tier zprime deliberately lacks) |
 
 Non-bug hardening candidates (from R-04 investigation, §13/§14): **✅ fully delivered** — INV probes graduated (R-06/R-21/R-22), import pre-validation UI (R-21 part B), VoucherScreen negative-stock warning (R-21 part A).
+
+Full audit trail **✅ DONE (v1.18.0)** — the "full audit trail" entry above is hereby retired: R-17+R-18 delivered per-voucher lifecycle history (who/what/when, delete-surviving). Still out of scope: company-wide timeline page, masters events, retention/export.
+
+## Explici-21 part B), VoucherScreen negative-stock warning (R-21 part A).
 
 Full audit trail **✅ DONE (v1.18.0)** — the "full audit trail" entry above is hereby retired: R-17+R-18 delivered per-voucher lifecycle history (who/what/when, delete-surviving). Still out of scope: company-wide timeline page, masters events, retention/export.
 

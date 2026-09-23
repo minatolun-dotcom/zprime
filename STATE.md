@@ -170,3 +170,4 @@ Total: **821 checks + typecheck + Docker verification, 0 failures** (was 790 at 
 - Suites start their own server (ports 3100–3106) against `zprime-test-pg`; do not run two suites concurrently.
 - Acceptance rig: run `node scripts/acceptance/run.js` from the **repo root**; artifacts (`state.json`, `expected.json`, `run.log`, `shots/`) are git-ignored and regenerable.
 - Playwright core uses the locally installed Chromium (`~/.local/bin/chromium`), override with `CHROME_PATH`.
+                                                                                                                                                                                                                                                                                                                                                                                

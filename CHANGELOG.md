@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.45.0 — R-47 IRP/EWB drill promoted to permanent suite (AT RELEASE_REVIEW — not yet committed)
+
+The R-46 live drill (39/39, closed as evidence) is now a permanent member of the acceptance estate: **`scripts/acceptance/r46_drill.js`, 38 sequential checks**. Unlike the per-feature connectivity suites (r28/r30/r31), it runs the **full operator journey in order** — the estate's only sequential connectivity regression:
+
+- Self-spawned wire-faithful mock-irp sidecar with fault-injection controls; skips cleanly when the sidecar is already running (same convention as r30/r31)
+- Journey: no-credential fail-fast (payload 422 before credential checks) → credential lifecycle (empty-secret retype rule, AES-256-GCM at rest, `*Last4` masking, owner-gating) → e-invoice accept / duplicate 409 without network / fault-injected 502 verbatim / fix-and-retry → EWB lifecycle via eivital (GENEWB → VEHEWB → EXTENDVALIDITY → eager second-extension refusal → CANEBW within 24h → slot re-open) → direct EWB via ewayapi for B2C → non-member submit 404
+- Encodes the discovered data contract: `taxability: "taxable"` on the sales ledger + the seeded `dutyHead='IGST'` ledger — without them `voucherGst` classifies zero and payload validation honestly refuses
+- Idempotent re-runs (company/master reuse through unique-index 409 paths); verified no port/DB interference with r30/r31
+
+**Verification:** r46_drill **38/38 twice consecutively** · r30/r31 green after the run · no application code touched (test-only release, R-11/R-39 precedent).
+
 ## v1.44.0 — R-45 whole-product re-review: v1.43.0 re-certified on fresh evidence (RELEASED 2026-09-23 — SHAs recorded in RELEASES.md, pushed)
 
 Full-battery re-run on a **rebuilt image from the exact v1.43.0 release tree with a fresh database volume**: browser estate **517/517** (run.js 153/153 + all 26 scenario suites), Python estate **1229/1229** (smoke 39 · adversarial 88 · fix-regression 65 · reconciliation 61 · final-regression 947 · attack-the-fixes 29), fresh install **16/16 migrations / 27 tables** from zero, reconciliation engine independence re-verified (engine.py imports only `json` + `datetime`). Third consecutive re-certification of the R-41 PRODUCTION READY verdict (v1.39.0 → R-42 operator drill → v1.43.0).
@@ -784,6 +795,25 @@ The independent Python expectation engine (shares no code or queries with zprime
 - **F-GRP-01 (P1)** Group master unusable — nature inheritance, clean 4xx/409, reserved-parent rules.
 - **F-TDS-01 (P1)** TDS sections master 500 — sort key + validation schema.
 - **A-07 (P2, reporting integrity)** The ₹1,215 IGST defect: GST reports now treat booked duty amounts as authoritative; supply-type contradictions are flagged (`supplyMismatch`), never silently zeroed. Ledger GST == GSTR-1 == GSTR-3B is an enforced invariant with a permanent regression test.
+- **A-02 (P2)** Bill-name collisions across voucher types — auto names are `SHORTCODE-number`; server enforces per-party bill-name uniqueness in-transaction.
+- **A-03 (P2)** Negative payroll deductions rejected with clean 400s.
+- **A-04 (P2)** TDS report separates deductions from remittances (deducted − remitted = outstanding).
+- **A-05 (P2)** On-account amounts merged into party outstanding (synthetic "On Account" bill).
+- **A-06 (P2)** Sub-period P&L is period-correct (period movements, not cumulative closings).
+
+Earlier hardening (BUG-001…BUG-009) is included: atomic voucher numbering, bill-allocation integrity guards, RFC-compliant CSV export, input fuzzing resistance, company isolation, payroll/TDS validations.
+
+### Known non-blocking issues (NOT fixed — documented, do not treat as resolved)
+
+- None open. O-1 (P4) is **CLOSED — NOT REPRODUCIBLE**: the application was verified correct (see the O-1 section above); only regression coverage was added.
+
+### Accounting invariants verified at this baseline
+
+- Total Debits = Total Credits on every voucher, report, and period.
+- Assets = Liabilities + Capital with no difference banner.
+- Ledger == Trial Balance == reports; Sales/Purchase registers == transactions.
+- Stock movements == Stock Summary (FIFO, incl. backdated layers).
+- GST reporting integrity)** The ₹1,215 IGST defect: GST reports now treat booked duty amounts as authoritative; supply-type contradictions are flagged (`supplyMismatch`), never silently zeroed. Ledger GST == GSTR-1 == GSTR-3B is an enforced invariant with a permanent regression test.
 - **A-02 (P2)** Bill-name collisions across voucher types — auto names are `SHORTCODE-number`; server enforces per-party bill-name uniqueness in-transaction.
 - **A-03 (P2)** Negative payroll deductions rejected with clean 400s.
 - **A-04 (P2)** TDS report separates deductions from remittances (deducted − remitted = outstanding).
