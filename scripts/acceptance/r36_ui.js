@@ -164,7 +164,9 @@ const ok = (name, cond, detail) => {
   // ================================================================
   // 6) Inventory grid: same-column Down on qty → next row's qty
   // ================================================================
-  const unit = (await api("post", `/c/${cid}/units`, { name: "Pieces", symbol: "pcs" })).j; // unitId is NOT NULL on stock_items
+  // R-44: fresh companies seed units Nos/Pieces — reuse the seeded pcs unit.
+  let unit = (await api("post", `/c/${cid}/units`, { name: "Pieces", symbol: "pcs" })).j; // unitId is NOT NULL on stock_items
+  if (!unit?.id) unit = (await api("get", `/c/${cid}/units`)).j.find((u) => u.symbol === "pcs");
   const items = (await api("post", `/c/${cid}/stock-items`, { name: "R36 Widget", unitId: unit.id, gstRate: 18, taxability: "taxable", standardCost: 50, standardSalePrice: 80 })).j;
   const item2 = (await api("post", `/c/${cid}/stock-items`, { name: "R36 Gadget", unitId: unit.id, gstRate: 18, taxability: "taxable", standardCost: 30, standardSalePrice: 60 })).j;
   ok("stock items created", !!items?.id && !!item2?.id, [items?.id, item2?.id]);

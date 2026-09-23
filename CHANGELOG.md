@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.44.0 — R-45 whole-product re-review: v1.43.0 re-certified on fresh evidence (RELEASED 2026-09-23 — SHAs recorded in RELEASES.md, pushed)
+
+Full-battery re-run on a **rebuilt image from the exact v1.43.0 release tree with a fresh database volume**: browser estate **517/517** (run.js 153/153 + all 26 scenario suites), Python estate **1229/1229** (smoke 39 · adversarial 88 · fix-regression 65 · reconciliation 61 · final-regression 947 · attack-the-fixes 29), fresh install **16/16 migrations / 27 tables** from zero, reconciliation engine independence re-verified (engine.py imports only `json` + `datetime`). Third consecutive re-certification of the R-41 PRODUCTION READY verdict (v1.39.0 → R-42 operator drill → v1.43.0).
+
+- **Finding caught during the sweep:** r21/r36 browser fixtures POST units (`Nos/Nos`, `Pieces/pcs`) that v1.43.0 now seeds → unique index 409 → `unitId: undefined` → dependent item POST cascade failure. NOT A BUG — VERIFIED: the API contract is behaving exactly as designed (same fixture interaction already fixed for four Python suites in R-44). Fix: both fixtures reuse the seeded unit on 409 — fixtures only, no assertions weakened.
+- **Evidence:** `R-45_REVIEW.md` (gate table, forensics trail, fresh-install proof, engine-independence check).
+
 ## v1.43.0 — R-44 F-42-2 starter inventory masters: fresh companies can post inventory immediately (RELEASED 2026-09-22 — commit `a3f162c478d9e13a2162750b8d6a728d2cdc51f9`, annotated tag `6f1b27631aadac1c50c465b4cc1362fd1b9ef23a`, pushed)
 
 R-42's P4 operator finding (F-42-2) is closed at the seed layer: `seedCompanyTx` now also seeds **units `Nos` + `Pieces`** and **godown `Main`** inside the same transaction that creates the company, seeds reserved groups/voucher types, and grants the owner membership (R-03 atomicity preserved — a failed seed aborts the whole creation). Since `stockItems.unitId` is NOT NULL, the first inventoried item on a fresh company was previously unsaveable until a unit was created by hand (live-reproduced in the R-42 drill); it now saves immediately.

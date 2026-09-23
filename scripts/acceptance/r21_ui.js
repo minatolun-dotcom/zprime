@@ -29,9 +29,12 @@ const ok = (name, cond, detail) => {
   const get = async (path) => (await page.request.get(`${D.BASE}/api/c/${cid}${path}`)).json();
   const groups = await get("/groups");
   const g = Object.fromEntries(groups.map((x) => [x.name, x.id]));
+  // R-44: fresh companies seed units Nos/Pieces — reuse the seeded Nos unit.
   const ru = await page.request.post(`${D.BASE}/api/c/${cid}/units`, { data: { name: "Nos", symbol: "Nos", decimalPlaces: 0 } });
-  ok("unit created", ru.status() === 200, await ru.text());
-  const unitId = (await ru.json()).id;
+  const unitId = ru.status() === 409
+    ? (await get("/units")).find((u) => u.symbol === "Nos").id
+    : (await ru.json()).id;
+  ok("unit available (created or seeded)", !!unitId, unitId);
   const ri = await page.request.post(`${D.BASE}/api/c/${cid}/stock-items`, { data: { name: "R21 Widget", unitId, openingQty: "2", openingRate: "100", openingValue: "200" } });
   ok("stock item created (qty 2)", ri.status() === 200, await ri.text());
   await page.request.post(`${D.BASE}/api/c/${cid}/ledgers`, { data: { name: "R21 Debtor", groupId: g["Sundry Debtors"] } });
