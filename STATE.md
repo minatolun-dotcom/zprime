@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **R-49 HOTFIX IMPLEMENTED — holding at RELEASE_REVIEW (proposed v1.47.0).** Operator-reported blank new-voucher page on IP/LAN hosts live-reproduced: `crypto.randomUUID()` (R-10 idem key, VoucherScreen) throws outside secure contexts, killing the whole React tree → body length 0. Fix: client-only fallback chain (randomUUID → getRandomValues v4 → hex), replay contract unchanged; server legacy no-key path already covered by R-10 suite. Verified in the exact failure context over http://192.168.1.110:3000 (form renders, zero page errors); final_regression 948/948, run.js 153/153, r10/r33/r34/r35/r36/r43/r44/r46_drill green. Previous: **v1.46.0 RELEASED (R-48 P4 polish batch).**
+**Last updated:** 2026-09-23 — **v1.47.0 RELEASED (R-49 HOTFIX: new-voucher page blank on non-localhost hosts).** `crypto.randomUUID()` (R-10 idem key, VoucherScreen) threw outside secure contexts → whole React tree died white on `http://<ip>:<port>`. Client-only fix: fallback chain (randomUUID → getRandomValues v4 → hex), replay contract unchanged, server legacy no-key path already covered. Verified in the exact failure context; final_regression 948/948, run.js 153/153, r10/r33/r34/r35/r36/r43/r44/r46_drill green. Previous: **v1.46.0 RELEASED (R-48 P4 polish batch).**
 
 ## Product status
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.47.0 — R-49 hotfix: new-voucher page blank on non-localhost hosts (AT RELEASE_REVIEW — not yet committed)
+## v1.47.0 — R-49 hotfix: new-voucher page blank on non-localhost hosts (RELEASED 2026-09-23 — commit `817d2c6334518ff97740cd85bc47e151df8a2338`, annotated tag `a48df138abcd656d78f34cd363a0c681bcbb93b9`, pushed)
 
 **Live-reproduced operator report:** opening any **new voucher** screen via a LAN/IP or any non-`localhost` host rendered a **completely white page** — not even the app chrome. Root cause: `VoucherScreen` called `crypto.randomUUID()` directly in a `useRef` initializer (R-10 B-10 idempotency key). That API exists **only in secure contexts** (`https://` or `localhost`); on `http://<ip>:<port>` the call throws `TypeError: crypto.randomUUID is not a function` during the first render of the module tree, React never mounts, and the whole page dies. (It also reproduced on `localhost` in the probe because the page error surfaced before mount — the guard covers both.)
 

@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.47.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-49 — HOTFIX: new-voucher page blank on non-localhost hosts (operator-reported, live-reproduced)
+- **Commit:** `817d2c6334518ff97740cd85bc47e151df8a2338` (annotated tag `a48df138abcd656d78f34cd363a0c681bcbb93b9`; pushed)
+- **Purpose:** `crypto.randomUUID()` in VoucherScreen's R-10 idempotency-key `useRef` initializer throws outside secure contexts (`http://<ip>:<port>`), killing the whole React tree → entirely white page. Fix is client-only: three-step fallback (randomUUID → WebCrypto getRandomValues RFC-4122 v4 → random hex), still one stable key per new-voucher form; edit saves still keyless; the server's legacy no-key path was already covered (R-10 suite check 1). Zero server/schema/accounting surface.
+- **Verification:** exact-failure-context re-probe (fresh profile, hard goto over `http://192.168.1.110:3000`) renders the full form with zero page errors (before: body length 0 + TypeError) · final_regression **948/948** · run.js **153/153** · r10 10/10 · r33 13/13 · r34 20/20 · r35 23/23 · r36 25/25 · r43 12/12 · r44 11/11 · r46_drill 39/39
+- **Immutability:** v1.47.0 and all prior tags are immutable
+
+---
+
 ## v1.46.0
 
 - **Released:** 2026-09-23
