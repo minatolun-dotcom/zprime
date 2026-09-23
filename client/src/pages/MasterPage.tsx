@@ -198,7 +198,7 @@ export default function MasterPage() {
                   </td>
                 ))}
                 <td className="text-right">
-                  <button className="btn-danger text-[12px] px-1.5 py-0.5" onClick={(e) => { e.stopPropagation(); remove(r); }}>Del</button>
+                  <button className="btn-danger text-xs px-2.5 py-1.5" onClick={(e) => { e.stopPropagation(); remove(r); }}>Del</button>
                 </td>
               </tr>
             ))}
@@ -212,12 +212,12 @@ export default function MasterPage() {
       {editing !== null && (
         <div className="fixed inset-0 z-40 flex">
           <div className="flex-1 bg-black/30" onClick={() => setEditing(null)} />
-          <form onSubmit={save} className="w-[430px] max-w-full bg-white shadow-2xl overflow-auto p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[15px] font-semibold">{editing.id ? "Alter" : "Create"} — {config.title}</h2>
+          <form onSubmit={save} className="w-[430px] max-w-full bg-white shadow-raised overflow-auto p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold tracking-tight">{editing.id ? "Alter" : "Create"} — {config.title}</h2>
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>✕</button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               {resolvedFields.map((f) => (
                 <div key={f.name} className={f.full ? "col-span-2" : ""}>
                   <Field label={f.label} hint={f.hint}>
@@ -254,14 +254,14 @@ export default function MasterPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-5 flex items-center gap-2">
               <button disabled={saving} className="btn-primary">{editing.id ? "Alter (Ctrl+S)" : "Create"}</button>
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
             </div>
             {kind === "ledgers" && editing.id === undefined && (
-              <p className="mt-3 text-[11px] text-slate-400">Tip: create party ledgers under Sundry Debtors / Sundry Creditors with GSTIN + bill-wise on.</p>
+              <p className="mt-4 text-xs text-slate-500 leading-relaxed">Tip: create party ledgers under Sundry Debtors / Sundry Creditors with GSTIN + bill-wise on.</p>
             )}
-            <Link to={`/company/${cid}`} className="block mt-6 text-[12px] text-indigo-600 hover:underline">← Back to Gateway</Link>
+            <Link to={`/company/${cid}`} className="block mt-6 text-sm text-indigo-600 hover:underline">← Back to Gateway</Link>
           </form>
         </div>
       )}

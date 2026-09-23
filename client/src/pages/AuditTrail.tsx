@@ -48,7 +48,7 @@ export default function AuditTrail() {
           <select
             value={action}
             onChange={(e) => setAction(e.target.value)}
-            className="input text-[12px] py-1.5"
+            className="text-sm py-2"
             aria-label="Filter by action"
           >
             <option value="">All actions</option>
@@ -63,34 +63,34 @@ export default function AuditTrail() {
       {error !== undefined && <ErrorBanner error={error} />}
       <Card>
         {isLoading ? (
-          <div className="px-4 py-6 text-[12px] text-slate-400">Loading…</div>
+          <div className="px-5 py-8 text-sm text-slate-400">Loading…</div>
         ) : !rows || rows.length === 0 ? (
-          <div className="px-4 py-6 text-[12px] text-slate-400">
+          <div className="px-5 py-10 text-sm text-slate-400 leading-relaxed">
             No audit events yet — events appear as vouchers are created, edited, cancelled or deleted.
           </div>
         ) : (
-          <table className="w-full text-[12px]">
+          <table className="report-table">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-100">
-                <th className="py-2 px-4 font-medium">When</th>
-                <th className="py-2 px-4 font-medium">Action</th>
-                <th className="py-2 px-4 font-medium">Voucher</th>
-                <th className="py-2 px-4 font-medium">Detail</th>
-                <th className="py-2 px-4 font-medium">By</th>
+              <tr className="text-left text-slate-500 border-b border-slate-200">
+                <th className="py-2.5 px-4 font-semibold tracking-wide">When</th>
+                <th className="py-2.5 px-4 font-semibold tracking-wide">Action</th>
+                <th className="py-2.5 px-4 font-semibold tracking-wide">Voucher</th>
+                <th className="py-2.5 px-4 font-semibold tracking-wide">Detail</th>
+                <th className="py-2.5 px-4 font-semibold tracking-wide">By</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e) => (
                 <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/60">
-                  <td className="py-1.5 px-4 text-slate-500 whitespace-nowrap">
+                  <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
                     {new Date(e.createdAt).toLocaleString()}
                   </td>
-                  <td className="py-1.5 px-4">
-                    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${ACTION_STYLES[e.action] ?? "bg-slate-100 text-slate-600"}`}>
+                  <td className="py-2.5 px-4">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_STYLES[e.action] ?? "bg-slate-100 text-slate-600"}`}>
                       {ACTION_LABELS[e.action] ?? e.action}
                     </span>
                   </td>
-                  <td className="py-1.5 px-4">
+                  <td className="py-2.5 px-4">
                     {e.voucherId ? (
                       <Link
                         to={`/company/${cid}/voucher/${e.voucherId}/edit`}
@@ -104,8 +104,8 @@ export default function AuditTrail() {
                       </span>
                     )}
                   </td>
-                  <td className="py-1.5 px-4 text-slate-500">{e.detail ?? ""}</td>
-                  <td className="py-1.5 px-4 text-slate-500">{e.actorUsername ?? "system"}</td>
+                  <td className="py-2.5 px-4 text-slate-500">{e.detail ?? ""}</td>
+                  <td className="py-2.5 px-4 text-slate-500">{e.actorUsername ?? "system"}</td>
                 </tr>
               ))}
             </tbody>

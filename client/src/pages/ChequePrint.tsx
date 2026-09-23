@@ -55,7 +55,7 @@ export default function ChequePrint() {
           sub="Pick a recorded cheque to print on your bank's cheque leaf"
           actions={<button className="btn-primary" disabled={!selected} onClick={doPrint}>Print Cheque</button>}
         />
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <Card>
             <table className="report-table">
               <thead><tr><th className="w-24">Date</th><th className="w-24">Chq No.</th><th>Bank / Narration</th><th className="w-28 text-right">Amount</th><th className="w-16"></th></tr></thead>
@@ -64,26 +64,26 @@ export default function ChequePrint() {
                   <tr key={i} className="row-link">
                     <td>{fmtDate(c.date)}</td>
                     <td className="font-mono">{c.chequeNumber}</td>
-                    <td className="text-slate-500 truncate max-w-[200px]">{c.bankLedger} · {c.narration}</td>
+                    <td className="text-slate-500 min-w-[180px] [overflow-wrap:anywhere]">{c.bankLedger} · {c.narration}</td>
                     <td className="num">{c.amount.toLocaleString("en-IN")}</td>
-                    <td><button className="text-indigo-600 text-[12px]" onClick={() => setSelected(c)}>Print</button></td>
+                    <td><button className="text-indigo-600 text-sm hover:underline" onClick={() => setSelected(c)}>Print</button></td>
                   </tr>
                 ))}
                 {(cheques ?? []).length === 0 && (
-                  <tr><td colSpan={5} className="text-center text-slate-400 py-4">No cheques yet — record cheque numbers on Payment vouchers</td></tr>
+                  <tr><td colSpan={5} className="text-center text-slate-400 py-6">No cheques yet — record cheque numbers on Payment vouchers</td></tr>
                 )}
               </tbody>
             </table>
           </Card>
           {selected && (
-            <Card className="p-4">
-              <div className="text-[13px] font-semibold mb-2">Preview</div>
+            <Card className="p-5">
+              <div className="text-sm font-semibold mb-2.5">Preview</div>
               <ChequeFace company={company?.name ?? ""} bankName={bankName} cheque={selected} />
-              <label className="block mt-3">
-                <span className="text-[12px] text-slate-600">Bank name on cheque</span>
-                <input className="w-full" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+              <label className="block mt-4">
+                <span className="text-xs text-slate-600">Bank name on cheque</span>
+                <input className="w-full mt-1" value={bankName} onChange={(e) => setBankName(e.target.value)} />
               </label>
-              <p className="text-[11px] text-slate-400 mt-2">Print on a real cheque leaf; align using your printer's envelope/cheque settings.</p>
+              <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">Print on a real cheque leaf; align using your printer's envelope/cheque settings.</p>
             </Card>
           )}
         </div>

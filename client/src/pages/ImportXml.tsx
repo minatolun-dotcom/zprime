@@ -48,8 +48,8 @@ export default function ImportXml() {
       <PageHead title="Import from XML" sub="Bring masters and vouchers in from an accounting XML export" />
       <ErrorBanner error={error} />
 
-      <Card className="p-4 max-w-2xl">
-        <div className="flex gap-2 mb-3">
+      <Card className="p-5 max-w-2xl">
+        <div className="flex gap-2 mb-4">
           <button className={`btn ${pasteMode ? "btn-ghost" : "btn-primary"}`} onClick={() => setPasteMode(false)}>Upload file</button>
           <button className={`btn ${pasteMode ? "btn-primary" : "btn-ghost"}`} onClick={() => setPasteMode(true)}>Paste XML</button>
         </div>
@@ -57,19 +57,19 @@ export default function ImportXml() {
         {!pasteMode ? (
           <input ref={fileRef} type="file" accept=".xml,text/xml" className="block w-full" />
         ) : (
-          <textarea rows={8} className="w-full font-mono text-[11px]" placeholder="Paste the contents of your XML export (ENVELOPE → BODY → IMPORTDATA → REQUESTDATA…)" value={xmlText} onChange={(e) => setXmlText(e.target.value)} />
+          <textarea rows={8} className="w-full font-mono text-xs" placeholder="Paste the contents of your XML export (ENVELOPE → BODY → IMPORTDATA → REQUESTDATA…)" value={xmlText} onChange={(e) => setXmlText(e.target.value)} />
         )}
 
-        <div className="mt-3 flex gap-2">
-          <button className="btn btn-ghost text-[12px]" disabled={busy} onClick={() => doImport(true)}>
+        <div className="mt-4 flex gap-2">
+          <button className="btn btn-ghost" disabled={busy} onClick={() => doImport(true)}>
             {busy ? "Validating…" : "Validate (dry run)"}
           </button>
-          <button className="btn btn-primary text-[12px]" disabled={busy} onClick={() => doImport(false)}>
+          <button className="btn-primary" disabled={busy} onClick={() => doImport(false)}>
             {busy ? "Importing…" : "Start Import"}
           </button>
         </div>
 
-        <div className="mt-4 text-[12px] text-slate-500 leading-relaxed">
+        <div className="mt-5 text-xs text-slate-500 leading-relaxed">
           <b>How it works:</b> export your masters (groups, ledgers, stock items, units, godowns) and/or vouchers
           as <b>XML</b> from your existing accounting software, then upload the file here.
           <br />The importer maps the standard 28 reserved account groups, ledgers with GSTIN &amp; opening balances,
@@ -79,13 +79,13 @@ export default function ImportXml() {
       </Card>
 
       {result && (
-        <Card className="p-4 max-w-2xl mt-4">
+        <Card className="p-5 max-w-2xl mt-5">
           {result.dryRun && (
-            <div className="mb-3 px-3 py-2 rounded bg-blue-50 border border-blue-200 text-blue-700 text-[12px]">
+            <div className="mb-4 px-4 py-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm">
               Dry run complete — nothing was imported. Fix any warnings below, then Start Import.
             </div>
           )}
-          <div className={`text-[13px] font-semibold mb-2 ${result.dryRun ? "text-blue-700" : "text-green-700"}`}>{result.dryRun ? "Validation result (would import)" : "Import complete"}</div>
+          <div className={`text-sm font-semibold mb-2.5 ${result.dryRun ? "text-blue-700" : "text-green-700"}`}>{result.dryRun ? "Validation result (would import)" : "Import complete"}</div>
           <table className="report-table">
             <tbody>
               <tr><td>Groups created</td><td className="num">{result.groups}</td></tr>
@@ -98,9 +98,9 @@ export default function ImportXml() {
             </tbody>
           </table>
           {result.errors?.length > 0 && (
-            <div className="mt-3 text-[12px] text-amber-700">
+            <div className="mt-4 text-xs text-amber-700 leading-relaxed">
               <b>Warnings:</b>
-              <ul className="list-disc pl-4">{result.errors.slice(0, 10).map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
+              <ul className="list-disc pl-4 space-y-1">{result.errors.slice(0, 10).map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
             </div>
           )}
         </Card>

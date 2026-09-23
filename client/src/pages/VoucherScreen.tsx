@@ -595,23 +595,23 @@ export default function VoucherScreen() {
       <ErrorBanner error={error} />
       {/* R-33: threshold advisories — honest amber nudges; nothing blocks. */}
       {thresholdAdvisories.length > 0 && (
-        <div className="mb-2 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[12px] px-3 py-2">
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm px-4 py-2.5 leading-relaxed">
           {thresholdAdvisories.map((t, i) => (<div key={i}>⚠ {t}</div>))}
         </div>
       )}
       {!vType ? (
-        <div className="text-slate-400 text-[13px]">Loading…</div>
+        <div className="text-slate-400 text-sm">Loading…</div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 max-w-4xl">
+        <div className="card max-w-5xl">
           {/* R-02: cancelled banner — the voucher is shown read-only */}
           {cancelledView && (
-            <div className="px-4 py-2 bg-red-50 border-b border-red-100 text-red-700 text-[12px] font-medium rounded-t-lg">
+            <div className="px-5 py-2.5 bg-red-50 border-b border-red-100 text-red-700 text-sm font-medium rounded-t-xl">
               Cancelled voucher — displayed read-only. Its accounting, inventory and GST effects are inactive. Uncancel it from the Day Book to restore.
             </div>
           )}
           {/* R-18: compact audit history — one line per lifecycle transition */}
           {isEdit && !!auditTrail && auditTrail.length > 0 && (
-            <div className="px-4 py-1.5 border-b border-slate-100 text-[11px] text-slate-500 flex flex-wrap gap-x-3">
+            <div className="px-5 py-2 border-b border-slate-100 text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1 leading-relaxed">
               {auditTrail.map((e: any) => (
                 <span key={e.id}>
                   {e.action === "create" ? "Created" : e.action === "edit" ? "Edited" : e.action === "cancel" ? "Cancelled" : e.action === "uncancel" ? "Uncancelled" : "Deleted"}
@@ -623,30 +623,30 @@ export default function VoucherScreen() {
             </div>
           )}
           {/* header */}
-          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 bg-slate-50 rounded-t-lg">
-            <span className="text-[14px] font-semibold text-indigo-700">{vType.name}</span>
-            <span className="text-[12px] text-slate-400">No.</span>
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl flex-wrap">
+            <span className="text-base font-semibold text-indigo-700">{vType.name}</span>
+            <span className="text-sm text-slate-400">No.</span>
             <input className="w-32" value={number} onChange={(e) => setNumber(e.target.value)} />
-            <span className="text-[12px] text-slate-400 ml-2">Date (F2)</span>
+            <span className="text-sm text-slate-400 ml-2">Date (F2)</span>
             <input id="v-date" type="date" className="w-36" value={date} onChange={(e) => setDate(e.target.value)} />
             {vType && ["Purchase", "Debit Note"].includes(vType.name) && (
-              <label className="ml-auto flex items-center gap-1.5 text-[12px] cursor-pointer select-none" title="Reverse charge (s. 9(3)/9(4)) — you self-account the GST. Post the self-assessed duty on the RCM Payable ledger. (Alt+R)">
+              <label className="ml-auto flex items-center gap-2 text-sm cursor-pointer select-none" title="Reverse charge (s. 9(3)/9(4)) — you self-account the GST. Post the self-assessed duty on the RCM Payable ledger. (Alt+R)">
                 <input type="checkbox" checked={isRcm} onChange={(e) => setIsRcm(e.target.checked)} disabled={cancelledView} />
                 <span className={isRcm ? "font-semibold text-amber-700" : "text-slate-500"}>RCM</span>
               </label>
             )}
           </div>
           {isRcm && !cancelledView && (
-            <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-amber-800 text-[11px]">
+            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-100 text-amber-800 text-xs leading-relaxed">
               Reverse charge — GST is NOT charged by the supplier. Self-account the tax: Dr expense/purchase, Cr RCM Payable (IGST/CGST/SGST rates as applicable). Reported under GSTR-3B Table 4(A)(3).
             </div>
           )}
 
-          <div className="px-4 py-3 space-y-4">
+          <div className="px-5 py-5 space-y-6">
             {/* party for trading vouchers */}
             {hasParty && (
-              <div className="grid grid-cols-[130px_1fr_130px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">Party A/c</span>
+              <div className="grid grid-cols-[minmax(120px,140px)_1fr_minmax(120px,140px)_1fr] gap-x-4 gap-y-4 items-center">
+                <span className="text-sm font-medium text-slate-600">Party A/c</span>
                 <TypeAhead items={ledgerOptions} value={party.name} inputRef={partyInputRef} onPick={(o) => {
                   if (!o) { setParty({ id: null, name: "" }); return; }
                   setParty({ id: o.id, name: o.name });
@@ -658,15 +658,15 @@ export default function VoucherScreen() {
                   });
                 }}
                 createLabel="ledger" loading={ledgersLoading} onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
-                <span className="text-[12px] font-medium text-slate-600">Invoice No.</span>
+                <span className="text-sm font-medium text-slate-600">Invoice No.</span>
                 <input id="v-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Party invoice no." />
               </div>
             )}
             {hasParty && (
-              <div className="grid grid-cols-[130px_1fr_130px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">Ref Date</span>
+              <div className="grid grid-cols-[minmax(120px,140px)_1fr_minmax(120px,140px)_1fr] gap-x-4 gap-y-4 items-center">
+                <span className="text-sm font-medium text-slate-600">Ref Date</span>
                 <input type="date" value={refDate} onChange={(e) => setRefDate(e.target.value)} />
-                <span className="text-[12px] text-slate-400" />
+                <span />
                 <span />
               </div>
             )}
@@ -674,7 +674,7 @@ export default function VoucherScreen() {
             {/* inventory grid */}
             {(vType.affectsStock || isStockJournal || isPhysical) && (
               <div>
-                <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                   {isPhysical ? "Physical Stock (counted qty)" : isStockJournal ? "Stock Journal (consumption / production)" : "Inventory"}
                 </div>
                 <table className="report-table">
@@ -733,17 +733,17 @@ export default function VoucherScreen() {
                   </tbody>
                 </table>
                 {stockWarning && (
-                  <div className="mt-2 px-3 py-1.5 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[12px]">
+                  <div className="mt-3 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm leading-relaxed">
                     Insufficient stock: "{stockWarning.name}" — only {stockWarning.avail} available on {date}. Save will be rejected unless "Allow Negative Stock" is enabled in Company Settings.
                   </div>
                 )}
-                <button className="btn-ghost mt-1 text-[12px]" onClick={() => setInv([...inv, newInvRow()])}>+ Add Item</button>
+                <button className="btn-ghost mt-3 text-sm" onClick={() => setInv([...inv, newInvRow()])}>+ Add Item</button>
               </div>
             )}
 
             {/* accounting entries */}
             <div>
-              <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 Ledger Entries
                 {vType?.category === "Inventory" && (
                   <span className="ml-2 font-normal normal-case text-slate-400">optional for an inventory-only voucher</span>
@@ -819,8 +819,8 @@ export default function VoucherScreen() {
                       </tr>
                     );
                   })}
-                  <tr className="font-medium bg-slate-50">
-                    <td className="text-right pr-3">Total</td>
+                  <tr className="font-semibold bg-slate-50/80 border-t-2 border-slate-200">
+                    <td className="text-right pr-3 text-base">Total</td>
                     {detailed && <td />}
                     <td className="num">{totalDr.toLocaleString("en-IN")}</td>
                     <td className="num">{totalCr.toLocaleString("en-IN")}</td>
@@ -830,31 +830,31 @@ export default function VoucherScreen() {
                   </tr>
                 </tbody>
               </table>
-              <div className="flex gap-2 mt-1">
-                <button className="btn-ghost text-[12px]" onClick={() => setEntries([...entries, { ledgerId: null, ledgerName: "", amount: 0 }])}>+ Add Ledger</button>
+              <div className="flex gap-2.5 mt-3 flex-wrap">
+                <button className="btn-ghost text-sm" onClick={() => setEntries([...entries, { ledgerId: null, ledgerName: "", amount: 0 }])}>+ Add Ledger</button>
                 {vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) && (
-                  <button className="btn-ghost text-[12px]" onClick={applyGst}>+ Apply GST</button>
+                  <button className="btn-ghost text-sm" onClick={applyGst}>+ Apply GST</button>
                 )}
                 {vType?.category === "Accounting" && (
-                  <button className="btn-ghost text-[12px]" onClick={applyTds}>− Deduct TDS</button>
+                  <button className="btn-ghost text-sm" onClick={applyTds}>− Deduct TDS</button>
                 )}
                 {vType?.category === "Accounting" && (
-                  <button className="btn-ghost text-[12px]" onClick={applyTcs}>− Collect TCS</button>
+                  <button className="btn-ghost text-sm" onClick={applyTcs}>− Collect TCS</button>
                 )}
               </div>
             </div>
 
             {/* narration */}
-            <div className="grid grid-cols-[130px_1fr] gap-2 items-center">
-              <span className="text-[12px] font-medium text-slate-600">Narration</span>
+            <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+              <span className="text-sm font-medium text-slate-600">Narration</span>
               <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being…" />
             </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="flex gap-2.5 pt-2 flex-wrap items-center">
               <button className="btn-primary" disabled={saving || cancelledView} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
               <button className="btn-ghost" onClick={() => nav(`/company/${cid}/daybook`)}>Cancel (Esc)</button>
               <span className="flex-1" />
-              <span className="text-[11px] text-slate-400 self-center">
+              <span className="text-xs text-slate-400 self-center">
                 Enter on last amount row adds a new line · {fmtDate(date)}
               </span>
             </div>
@@ -866,31 +866,31 @@ export default function VoucherScreen() {
           Ctrl+A / Enter accept; the server's 409 wording surfaces verbatim. */}
       {quickOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center" data-testid="quick-ledger-modal">
-          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-[420px] max-w-[95vw]">
-            <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 rounded-t-lg text-[13px] font-semibold text-indigo-700">
+          <div className="card shadow-raised w-[440px] max-w-[95vw]">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl text-base font-semibold text-indigo-700">
               Create Ledger
             </div>
-            <div className="px-4 py-3 space-y-2.5" onKeyDown={(e) => {
+            <div className="px-5 py-4 space-y-4" onKeyDown={(e) => {
               // R-35: Enter accepts the modal (Tally parity with Ctrl+A). Scoped
               // to the fields container so the buttons below keep native clicks.
               if (e.key === "Enter") { e.preventDefault(); submitQuickLedger(); }
             }}>
               {quickError && (
-                <div className="rounded bg-red-50 border border-red-100 text-red-700 text-[12px] px-3 py-1.5">{quickError}</div>
+                <div className="rounded-lg bg-red-50 border border-red-100 text-red-700 text-sm px-3.5 py-2">{quickError}</div>
               )}
-              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">Name</span>
+              <div className="grid grid-cols-[minmax(110px,130px)_1fr] gap-3 items-center">
+                <span className="text-sm font-medium text-slate-600">Name</span>
                 <input ref={quickNameRef} value={quickName} onChange={(e) => setQuickName(e.target.value)} placeholder="Ledger name" />
               </div>
-              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">Under Group</span>
+              <div className="grid grid-cols-[minmax(110px,130px)_1fr] gap-3 items-center">
+                <span className="text-sm font-medium text-slate-600">Under Group</span>
                 <select value={quickGroupId} onChange={(e) => setQuickGroupId(e.target.value ? parseInt(e.target.value, 10) : "")}>
                   <option value="">—</option>
                   {(allGroups ?? []).map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">Taxability</span>
+              <div className="grid grid-cols-[minmax(110px,130px)_1fr] gap-3 items-center">
+                <span className="text-sm font-medium text-slate-600">Taxability</span>
                 <select value={quickTaxability} onChange={(e) => setQuickTaxability(e.target.value)}>
                   <option value="none">None</option>
                   <option value="taxable">Taxable</option>
@@ -898,16 +898,16 @@ export default function VoucherScreen() {
                   <option value="nil">Nil Rated</option>
                 </select>
               </div>
-              <div className="grid grid-cols-[120px_1fr] gap-2 items-center">
-                <span className="text-[12px] font-medium text-slate-600">GST Rate %</span>
+              <div className="grid grid-cols-[minmax(110px,130px)_1fr] gap-3 items-center">
+                <span className="text-sm font-medium text-slate-600">GST Rate %</span>
                 <input type="number" step="any" value={quickRate} onChange={(e) => setQuickRate(e.target.value)} placeholder="e.g. 18 (optional)" />
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-xs text-slate-400 leading-relaxed">
                 Entry-ready master — GSTIN, bill-wise and TDS/TCS sections are set on the masters page later.
                 Esc closes this dialog only; the voucher behind keeps its state.
               </div>
             </div>
-            <div className="flex gap-2 px-4 py-3 border-t border-slate-100">
+            <div className="flex gap-2.5 px-5 py-3.5 border-t border-slate-100">
               <button className="btn-primary" disabled={quickSaving} onClick={submitQuickLedger}>Create (Ctrl+A)</button>
               <button className="btn-ghost" onClick={() => setQuickOpen(false)}>Cancel (Esc)</button>
             </div>

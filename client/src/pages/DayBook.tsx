@@ -116,9 +116,9 @@ export default function DayBook() {
         title="Day Book"
         sub="Enter Enter on a voucher row to alter it"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap justify-end">
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            <span className="text-slate-400 text-[12px]">to</span>
+            <span className="text-slate-400 text-sm">to</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             <select value={type} onChange={(e) => setType(e.target.value)}>
               <option value="">All types</option>
@@ -146,47 +146,47 @@ export default function DayBook() {
               <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`} onClick={() => nav(`/company/${cid}/voucher/${v.id}/edit`)}>
                 <td>{fmtDate(v.date)}</td>
                 <td>
-                  <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
                     {v.typeName}
                   </span>
                   {v.isCancelled && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700" title="Cancelled — effects inactive; uncancel to restore">
+                    <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Cancelled — effects inactive; uncancel to restore">
                       Cancelled
                     </span>
                   )}
                   {v.isRcm && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
+                    <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
                       RCM
                     </span>
                   )}
                 </td>
                 <td className="font-medium">{v.number}</td>
-                <td className="text-slate-600 truncate max-w-[300px]">{v.partyName ?? v.narration}</td>
+                <td className="text-slate-600 min-w-[200px] leading-snug">{v.partyName ?? v.narration}</td>
                 <td className="num">{num(v.amount).toLocaleString("en-IN")}</td>
                 <td className="text-right whitespace-nowrap">
                   {v.isCancelled ? (
                     <>
-                      <button className="text-emerald-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); uncancel(v); }}>Uncancel</button>
+                      <button className="text-emerald-600 text-sm hover:underline mr-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); uncancel(v); }}>Uncancel</button>
                     </>
                   ) : (
                     <>
-                      <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-[12px] hover:underline mr-2">Alter</Link>
-                      <button className="text-amber-600 text-[12px] hover:underline mr-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancel(v); }}>Cancel</button>
-                      <button className="text-red-500 text-[12px] hover:underline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); remove(v); }}>Del</button>
+                      <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-sm hover:underline mr-3">Alter</Link>
+                      <button className="text-amber-600 text-sm hover:underline mr-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancel(v); }}>Cancel</button>
+                      <button className="text-red-500 text-sm hover:underline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); remove(v); }}>Del</button>
                     </>
                   )}
                 </td>
               </tr>
             ))}
             {rows && rows.length === 0 && (
-              <tr><td colSpan={6} className="text-center text-slate-400 py-6">
+              <tr><td colSpan={6} className="text-center text-slate-400 py-10 text-sm">
                 {isLoading ? "Loading…" : "No vouchers in this period — press F8 for a new Sales voucher"}
               </td></tr>
             )}
           </tbody>
         </table>
       </Card>
-      <p className="mt-2 text-[11px] text-slate-400">FY: {fyStart(today())} → {fyEnd(today())} · Esc returns to Gateway</p>
+      <p className="mt-3 text-xs text-slate-400">FY: {fyStart(today())} → {fyEnd(today())} · Esc returns to Gateway</p>
     </Shell>
   );
 }

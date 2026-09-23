@@ -1,6 +1,6 @@
 # CONTINUE.md — Session Handoff (read me first)
 
-**Last updated:** 2026-09-23 — **v1.47.0 RELEASED (R-49 HOTFIX: new-voucher page blank on non-localhost hosts).** `crypto.randomUUID()` (R-10 idem key, VoucherScreen) threw outside secure contexts → whole React tree died white on `http://<ip>:<port>`. Client-only fix: fallback chain (randomUUID → getRandomValues v4 → hex), replay contract unchanged, server legacy no-key path already covered. Verified in the exact failure context. Previous: **v1.46.0 RELEASED (R-48: P4 polish batch).**
+**Last updated:** 2026-09-23 — **UI MODERNIZATION "Calm Ledger" COMPLETE — ALL 4 PHASES (P0 tokens/Shell/ui/Login/Companies · P1 Reports/DayBook/AuditTrail · P2 VoucherScreen/TypeAhead · P3 MasterPage/Gateway/CompanySettings/Payroll/ImportXml/ChequePrint) — holding at RELEASE_REVIEW as v1.48.0 (client-only, ~13 files, zero behavior change).** Estate on the P3 tree: Python **1230/1230** (final 948 · smoke 39 · adversarial 88 · bug-fix 65 · reconciliation 61 · attack-the-fixes 29) · browser **543/543** (run.js 153 fresh volume + 26 scenario suites re-run individually green) · typecheck+build clean. ChequeFace print artifact intentionally untouched; 11px class retired everywhere else (12px floor); Gateway menu cards now use the fkey-item row language. **Note: Python suites need `docker start zprime-test-pg`; run.js needs a fresh DB volume; r31/r46_drill need the mock-irp sidecar.** Previous: P0 tokens/Shell/ui/Login/Companies; P1 Reports+DayBook+AuditTrail; P2: VoucherScreen full sweep (banners/cancel/RCM notices airy, card max-w-5xl, label grids minmax(120-140px) with gap-4, section labels tracking-wider, totals row border-t-2 + semibold, helper buttons text-sm, quick-create modal to raised elevation + 440px) and TypeAhead dropdown (rounded-lg shadow-raised, py-2 rows, highlighted row medium). Gates: typecheck+build clean; run.js **153/153 fresh volume**; r33/r35/r36/r43 green (13/23/25/12); screenshots reviewed (voucher + quick-create modal). **Note: run.js needs a fresh DB volume; r31 needs the mock-irp sidecar up.** Next: P3 Masters+Settings+Payroll+Import+Cheque+Gateway → then release review. Previous: **v1.47.0 RELEASED (R-49 hotfix).**
 
 ---
 
@@ -374,3 +374,13 @@ git status --short     # expect clean tree except the intentional untracked ZLED
 - **Current state:** IDLE as a process; R-04 sits at HUMAN_REVIEW (investigation complete, approval pending).
 - **Next permitted action:** "Continue zprime" → verify baseline → present R-04 for review; implement only on explicit approval.
 - **Important results:** baseline re-verified — HEAD `38637c14…`, tag `v1.3.0`, all five release tags immutable.
+
+## Pending proposal (2026-09-23): UI Modernization — "Calm Ledger"
+
+**Status:** APPROVED IN PRINCIPLE (user chose: Airy density + Full redesign, all 4 phases). NOT yet implemented — awaits explicit "go" per protocol.
+
+**Contract:** zero behavior change (CSS + markup structure only); suite-asserted visible labels preserved verbatim (556 browser checks anchored to text, only 3 files carry data-testid); where structure must change → add data-testid + update fixture in the same commit (re-anchor only, never weaken); screenshot review per phase at 1366×768 + 1920×1080; estate green at every phase boundary.
+
+**Design direction:** Tailwind v4 @theme token layer in index.css (base 14px, 11px retired, min 12px; 8px spacing rhythm; two-tier elevation; focus rings on all interactives). Ban hard truncation (min-w + 2-line wrap instead of max-w ellipsis); label columns minmax/auto instead of fixed 130px; numbers keep tabular-nums + breathing room. Gateway → card grid; VoucherScreen → sectioned layout with sticky totals; Reports → shared table language. Right fkey rail kept (Tally identity), restyled floating + 40px targets, collapses below content on narrow screens.
+
+**Phases:** P0 tokens+Shell+Login+Companies → P1 Reports+DayBook+AuditTrail → P2 VoucherScreen+TypeAhead → P3 Masters+Settings+Payroll+Import+ChequePrint+Gateway. Each phase = implement → gates → browser suite → screenshot review → commit.

@@ -120,19 +120,19 @@ export default function Gateway() {
         ...(f9 ? [{ key: "F9", label: "Purchase", onClick: () => nav(`/company/${cid}/voucher/${f9.id}/new`) }] : []),
       ]}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {sections.map((s) => (
-            <div key={s.title} className="bg-white rounded-lg shadow-sm border border-slate-200">
-              <div className="px-3 py-2 border-b border-slate-100 text-[12px] font-semibold uppercase tracking-wide text-indigo-600">
+            <div key={s.title} className="card">
+              <div className="px-4 py-3 border-b border-slate-100 text-sm font-semibold uppercase tracking-wide text-indigo-600">
                 {s.title}
               </div>
-              <ul className="p-1.5">
+              <ul className="p-2">
                 {s.items.map((it) => (
                   <li key={it.label}>
                     <Link
                       to={it.to}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-[13px] text-slate-700 hover:bg-indigo-50 hover:text-indigo-800"
+                      className="fkey-item !min-h-[2.25rem]"
                     >
                       <span className="flex-1">{it.label}</span>
                       {it.hint && <span className="fkey-chip">{it.hint}</span>}
@@ -144,32 +144,32 @@ export default function Gateway() {
           ))}
         </div>
 
-        <aside className="space-y-4">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Company</div>
-            <div className="text-[15px] font-semibold text-slate-800">{company?.name ?? "…"}</div>
-            <div className="text-[12px] text-slate-500 mt-1 space-y-0.5">
+        <aside className="space-y-5">
+          <div className="card p-5">
+            <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-2">Company</div>
+            <div className="text-base font-semibold text-slate-800">{company?.name ?? "…"}</div>
+            <div className="text-sm text-slate-500 mt-1.5 space-y-1">
               {company?.gstin && <div>GSTIN: {company.gstin}</div>}
               {company?.state && <div>State: {company.state}</div>}
               <div>Current FY: {fyFrom} → {fyTo}</div>
             </div>
           </div>
           {tbHealth && (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-              <div className="text-[12px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Books Health</div>
+            <div className="card p-5">
+              <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-2">Books Health</div>
               {Math.abs(tbHealth.difference ?? 0) <= 0.004 ? (
-                <div className="text-[13px] text-green-700 font-medium">Trial Balance ✓ balanced</div>
+                <div className="text-sm text-green-700 font-medium">Trial Balance ✓ balanced</div>
               ) : (
-                <div className="text-[13px] text-amber-700 font-medium">
+                <div className="text-sm text-amber-700 font-medium">
                   Trial Balance ✗ out by {Math.abs(tbHealth.difference).toLocaleString("en-IN")}
                   <Link to={`/company/${cid}/reports/trial-balance`} className="ml-1 text-indigo-600 hover:underline font-normal">view</Link>
                 </div>
               )}
             </div>
           )}
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-semibold mb-2">Shortcuts</div>
-            <ul className="text-[12px] text-slate-600 space-y-1.5">
+          <div className="card p-5">
+            <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-2">Shortcuts</div>
+            <ul className="text-sm text-slate-600 space-y-2">
               <li><span className="fkey-chip">F2</span> change / open Day Book</li>
               <li><span className="fkey-chip">F5/F8/F9</span> Payment / Sales / Purchase</li>
               <li><span className="fkey-chip">Ctrl+A</span> accept (save) voucher</li>
@@ -177,9 +177,9 @@ export default function Gateway() {
               <li><span className="fkey-chip">Esc</span> back / cancel</li>
             </ul>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 text-[12px] text-slate-500">
+          <div className="card p-5 text-sm text-slate-500">
             Signed in as <span className="font-medium text-slate-700">{me?.username}</span>
-            <button onClick={logout} className="block mt-2 text-indigo-600 hover:underline">Logout</button>
+            <button onClick={logout} className="block mt-2.5 text-indigo-600 hover:underline">Logout</button>
           </div>
         </aside>
       </div>

@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
+/*
+  Calm Ledger design tokens (R-50 UI modernization, P0).
+  One source of truth for type, spacing rhythm, elevation and focus.
+  Pages consume these via the shared component classes below plus the
+  semantic Tailwind scale — no page-local magic numbers for the basics.
+*/
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --color-accent: #4f46e5;
+
+  /* Type scale: 14px body (was 13), 12px floor for micro-labels (11px retired). */
+  --text-xs: 0.75rem;    /* 12 — the smallest allowed size */
+  --text-sm: 0.8125rem;  /* 13 — secondary/meta only */
+  --text-base: 0.875rem; /* 14 — default body & controls */
+  --text-lg: 1rem;       /* 16 — section headers */
+  --text-xl: 1.125rem;   /* 18 — page titles */
+  --text-2xl: 1.375rem;  /* 22 — hero/brand */
+
+  /* Elevation: two tiers — resting cards vs raised surfaces (menus, modals). */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 4px 12px rgb(15 23 42 / 0.10), 0 2px 4px rgb(15 23 42 / 0.06);
 }
 
 html, body, #root {
@@ -14,41 +32,72 @@ body {
   font-feature-settings: "tnum" 1; /* tabular numbers for accounting columns */
 }
 
-/* Function-key button panel */
-.fkey-chip {
-  @apply inline-block min-w-[3.2rem] text-center text-[11px] font-semibold px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700;
+/* Every interactive element gets a visible, consistent focus ring —
+   keyboard-first means focus is a first-class citizen. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible {
+  @apply outline-none ring-2 ring-indigo-500/60 ring-offset-1 ring-offset-slate-100 rounded;
 }
 
+/* ---- Function-key panel ---- */
+.fkey-chip {
+  @apply inline-flex items-center justify-center min-w-[3.4rem] text-center text-xs font-semibold px-2 py-1 rounded-md border border-indigo-200/80 bg-indigo-50 text-indigo-700 tracking-wide;
+}
+.fkey-item {
+  @apply w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-800 transition-colors min-h-[2.5rem];
+}
+
+/* ---- Tables: shared report language ----
+   Airy cells (px-3 py-2.5), roomy headers, wrapped text columns by default
+   (truncation is opt-in, never the default for meaningful content). */
 .report-table {
-  @apply w-full text-[13px] border-collapse;
+  @apply w-full text-sm border-collapse;
 }
 .report-table th {
-  @apply text-left font-semibold text-slate-600 border-b border-slate-300 px-2 py-1.5 sticky top-0 bg-white z-10;
+  @apply text-left font-semibold text-slate-600 border-b border-slate-200 px-3 py-2.5 sticky top-0 bg-white z-10 tracking-wide;
 }
 .report-table td {
-  @apply px-2 py-1 border-b border-slate-100;
+  @apply px-3 py-2.5 border-b border-slate-100 align-top;
+}
+.report-table tbody tr:last-child td {
+  @apply border-b-0;
 }
 .report-table .num {
-  @apply text-right tabular-nums whitespace-nowrap;
+  @apply text-right tabular-nums whitespace-nowrap pl-4;
 }
 .row-link {
-  @apply cursor-pointer hover:bg-indigo-50;
+  @apply cursor-pointer transition-colors hover:bg-indigo-50/70;
+}
+/* Explicit opt-in for genuinely truncatable meta text only. */
+.cell-truncate {
+  @apply truncate max-w-[320px] text-slate-500;
 }
 
+/* ---- Form controls ---- */
 input, select, textarea {
-  @apply border border-slate-300 rounded px-2 py-1 text-[13px] bg-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200;
+  @apply border border-slate-300 rounded-md px-2.5 py-1.5 text-base bg-white text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25;
 }
-input:disabled { @apply bg-slate-100 text-slate-400; }
+input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
 
-.btn {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium transition-colors;
+/* ---- Buttons ---- */
+.btn, .btn-primary, .btn-ghost, .btn-danger {
+  @apply inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm font-medium transition-colors min-h-[2.25rem];
 }
+.btn {
+  @apply bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400;
+}
+.btn-secondary { @apply bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400; }
 .btn-primary {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium transition-colors bg-indigo-600 text-white hover:bg-indigo-700;
+  @apply bg-indigo-600 text-white hover:bg-indigo-700 shadow-card;
 }
 .btn-ghost {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium transition-colors text-slate-600 hover:bg-slate-200;
+  @apply text-slate-600 hover:bg-slate-200/70;
 }
 .btn-danger {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[13px] font-medium transition-colors text-red-600 hover:bg-red-50;
+  @apply text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200;
+}
+
+/* ---- Cards & shared surfaces ---- */
+.card {
+  @apply bg-white rounded-xl border border-slate-200 shadow-card;
 }

@@ -40,7 +40,7 @@ export default function Companies() {
 
   return (
     <div className="h-full overflow-auto bg-slate-100">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto px-6 py-10">
         <PageHead
           title="Select Company"
           sub="Choose a company to work with, or create a new one."
@@ -53,8 +53,8 @@ export default function Companies() {
         <ErrorBanner error={error} />
 
         {showForm && (
-          <Card className="p-4 mb-5">
-            <form onSubmit={create} className="grid grid-cols-2 gap-3">
+          <Card className="p-6 mb-6">
+            <form onSubmit={create} className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
               <div className="col-span-2">
                 <Field label="Company Name *">
                   <input required className="w-full" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -95,23 +95,23 @@ export default function Companies() {
           </Card>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {(companies ?? []).map((c) => (
-            <Card key={c.id} className="p-4 flex items-center gap-4 cursor-pointer hover:border-indigo-300 hover:shadow" onClick={() => open(c)}>
-              <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold">
+            <Card key={c.id} className="p-5 flex items-center gap-4 cursor-pointer hover:border-indigo-300 hover:shadow-raised transition-shadow" onClick={() => open(c)}>
+              <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-semibold shrink-0">
                 {c.name.slice(0, 1).toUpperCase()}
               </div>
-              <div className="flex-1">
-                <div className="text-[14px] font-medium text-slate-800">{c.name}</div>
-                <div className="text-[12px] text-slate-500">
+              <div className="flex-1 min-w-0">
+                <div className="text-base font-medium text-slate-800 leading-snug">{c.name}</div>
+                <div className="text-sm text-slate-500 mt-0.5 leading-relaxed">
                   FY from {c.financialYearStart}{c.gstin ? ` · GSTIN ${c.gstin}` : ""}{c.state ? ` · ${c.state}` : ""}
                 </div>
               </div>
-              <span className="text-slate-300">→</span>
+              <span className="text-slate-300 text-lg" aria-hidden>→</span>
             </Card>
           ))}
           {companies && companies.length === 0 && !showForm && (
-            <Card className="p-8 text-center text-slate-500 text-[13px]">
+            <Card className="p-10 text-center text-slate-500 text-sm">
               No companies yet. Create your first company to get started.
             </Card>
           )}

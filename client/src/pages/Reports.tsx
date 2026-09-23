@@ -72,15 +72,15 @@ export default function Reports() {
 
   return (
     <Shell title={title} breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Reports" }, { label: title }]} fkeys={fkeys} wide>
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
+      <div className="flex items-center gap-3 mb-5 flex-wrap card px-4 py-3">
         {key !== "balance-sheet" && (
           <>
-            <span className="text-[12px] text-slate-500">Period</span>
+            <span className="text-sm text-slate-500">Period</span>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            <span className="text-slate-400 text-[12px]">to</span>
+            <span className="text-slate-400 text-sm">to</span>
           </>
         )}
-        <span className="text-[12px] text-slate-500">{key === "balance-sheet" ? "as on" : "to"}</span>
+        <span className="text-sm text-slate-500">{key === "balance-sheet" ? "as on" : "to"}</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
 
         {key === "ledger-vouchers" && (
@@ -97,12 +97,12 @@ export default function Reports() {
           </select>
         )}
         <span className="flex-1" />
-        {key === "register-sales" && <Link to={`/company/${cid}/reports/register-purchase`} className="text-[12px] text-indigo-600 hover:underline">Purchase Register →</Link>}
-        {key === "register-purchase" && <Link to={`/company/${cid}/reports/register-sales`} className="text-[12px] text-indigo-600 hover:underline">Sales Register →</Link>}
+        {key === "register-sales" && <Link to={`/company/${cid}/reports/register-purchase`} className="text-sm text-indigo-600 hover:underline">Purchase Register →</Link>}
+        {key === "register-purchase" && <Link to={`/company/${cid}/reports/register-sales`} className="text-sm text-indigo-600 hover:underline">Sales Register →</Link>}
       </div>
 
       <ErrorBanner error={error} />
-      {isLoading && <div className="text-slate-400 text-[13px]">Computing…</div>}
+      {isLoading && <div className="text-slate-400 text-sm">Computing…</div>}
 
       {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} />}
       {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} />}
@@ -169,7 +169,7 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Liabilities</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Liabilities</div>
         <table className="report-table">
           <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
           <tbody>
@@ -188,7 +188,7 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Assets</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Assets</div>
         <table className="report-table">
           <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
           <tbody>
@@ -200,7 +200,7 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
         </table>
       </Card>
       {Math.abs(data.difference) > 0.004 && (
-        <div className="xl:col-span-2 text-[13px] rounded border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2">
+        <div className="xl:col-span-2 text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2.5 leading-relaxed">
           Difference in books: {data.difference.toLocaleString("en-IN")} — check opening balances or unposted entries.
         </div>
       )}
@@ -228,7 +228,7 @@ function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: bo
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Expenses (Dr)</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Expenses (Dr)</div>
         <table className="report-table">
           <tbody>
             <tr><td>Opening Stock</td><DrCr v={data.openingStock} /></tr>
@@ -245,7 +245,7 @@ function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: bo
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Income (Cr)</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Income (Cr)</div>
         <table className="report-table">
           <tbody>
             <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-sales`, { state: {} })}><td>Sales Accounts</td><CrOnly v={data.sales} /></tr>
@@ -262,7 +262,7 @@ function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: bo
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Indirect Expenses</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Expenses</div>
         <table className="report-table">
           <tbody>
             {detailed && data.indirectExpensesDetail.map((l: any) => (
@@ -275,7 +275,7 @@ function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: bo
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[13px] font-semibold text-slate-700">Indirect Incomes</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Incomes</div>
         <table className="report-table">
           <tbody>
             {detailed && data.indirectIncomeDetail.map((l: any) => (
@@ -323,12 +323,12 @@ function TrialBalanceView({ cid, data, onCsv }: { cid: string; data: any; onCsv:
         </tbody>
       </table>
       <div className="p-2">
-        <button className="btn-ghost text-[12px]" onClick={() => onCsv(["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"], data.rows.map((r: any) => [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit]))}>
+        <button className="btn-ghost text-sm" onClick={() => onCsv(["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"], data.rows.map((r: any) => [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit]))}>
           Export CSV
         </button>
       </div>
       {Math.abs(data.difference ?? 0) > 0.004 && (
-        <div className="text-[13px] rounded border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2 m-2">
+        <div className="text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2.5 m-3 leading-relaxed">
           Difference in books: {data.difference.toLocaleString("en-IN")} — check opening balances or unposted entries.
         </div>
       )}
@@ -341,8 +341,8 @@ function LedgerVouchersView({ data }: { data: any }) {
   return (
     <Card>
       <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
-        <div className="text-[14px] font-semibold text-slate-800">{data.ledger.name} — Account</div>
-        <div className="text-[12px] text-slate-500">Opening: {data.opening.toLocaleString("en-IN")}</div>
+        <div className="text-base font-semibold text-slate-800">{data.ledger.name} — Account</div>
+        <div className="text-sm text-slate-500">Opening: {data.opening.toLocaleString("en-IN")}</div>
       </div>
       <table className="report-table">
         <thead>
@@ -353,7 +353,7 @@ function LedgerVouchersView({ data }: { data: any }) {
           {data.txns.map((t: any, i: number) => (
             <tr key={i}>
               <td>{fmtDate(t.date)}</td><td>{t.typeName}</td><td>{t.number}</td>
-              <td className="text-slate-500 truncate max-w-[280px]">{t.narration}</td>
+              <td className="text-slate-500 min-w-[200px] line-clamp-2 leading-snug">{t.narration}</td>
               <td className="num">{t.debit ? t.debit.toLocaleString("en-IN") : ""}</td>
               <td className="num">{t.credit ? t.credit.toLocaleString("en-IN") : ""}</td>
               <td className="num">{t.balance.toLocaleString("en-IN")}</td>
@@ -377,7 +377,7 @@ function GroupSummaryView({ data, detailed }: { data: any; detailed: boolean }) 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 text-[14px] font-semibold">{data.group.name} — Group Summary</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">{data.group.name} — Group Summary</div>
         <table className="report-table">
           <thead><tr><th>Ledger</th><th className="w-28 text-right">Debit</th><th className="w-28 text-right">Credit</th></tr></thead>
           <tbody>
@@ -393,7 +393,7 @@ function GroupSummaryView({ data, detailed }: { data: any; detailed: boolean }) 
       </Card>
       {detailed && (
         <Card>
-          <div className="px-3 py-2 border-b border-slate-100 text-[14px] font-semibold">Sub-groups</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Sub-groups</div>
           <table className="report-table">
             <tbody>
               <TreeRows nodes={data.groups} />
@@ -413,8 +413,8 @@ function CashBankView({ cid, data }: { cid: string; data: any }) {
       {data.map((b: any) => (
         <Card key={b.ledgerId} className="p-0 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-100 flex justify-between items-center">
-            <span className="font-semibold text-[14px]">{b.name}</span>
-            <span className="text-[12px] text-slate-500">Closing: {b.closing.toLocaleString("en-IN")}</span>
+            <span className="text-base font-semibold">{b.name}</span>
+            <span className="text-sm text-slate-500">Closing: {b.closing.toLocaleString("en-IN")}</span>
           </div>
           <table className="report-table">
             <thead><tr><th className="w-24">Period Dr</th><th className="w-24">Period Cr</th><th></th></tr></thead>
@@ -422,7 +422,7 @@ function CashBankView({ cid, data }: { cid: string; data: any }) {
               <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`, { state: { ledgerId: b.ledgerId } })}>
                 <td className="num">{b.debit.toLocaleString("en-IN")}</td>
                 <td className="num">{b.credit.toLocaleString("en-IN")}</td>
-                <td className="text-[12px] text-indigo-600">View ledger →</td>
+                <td className="text-sm text-indigo-600">View ledger →</td>
               </tr>
             </tbody>
           </table>
@@ -456,7 +456,7 @@ function RegisterView({ cid, data, onCsv }: { cid: string; data: any; onCsv: (h:
         </tbody>
       </table>
       <div className="p-2">
-        <button className="btn-ghost text-[12px]" onClick={() => onCsv(["Date", "No", "Party", "Amount", "GST"], data.rows.map((r: any) => [r.date, r.number, r.partyName ?? "", r.amount, r.gst]))}>Export CSV</button>
+        <button className="btn-ghost text-sm" onClick={() => onCsv(["Date", "No", "Party", "Amount", "GST"], data.rows.map((r: any) => [r.date, r.number, r.partyName ?? "", r.amount, r.gst]))}>Export CSV</button>
       </div>
     </Card>
   );
@@ -468,10 +468,10 @@ function StockSummaryView({ data, single }: { data: any; single: boolean }) {
   const qty = (v: number) => (Math.abs(v) < 1e-9 ? "" : v.toLocaleString("en-IN", { maximumFractionDigits: 3 }));
   if (single) {
     const it = data[0];
-    if (!it) return <Card className="p-4 text-slate-400 text-[13px]">No movements.</Card>;
+    if (!it) return <Card className="p-6 text-slate-400 text-sm">No movements.</Card>;
     return (
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 text-[14px] font-semibold">{it.name} ({it.unit}) — Stock Item</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">{it.name} ({it.unit}) — Stock Item</div>
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Qty</th><th className="w-32 text-right">Value</th></tr></thead>
           <tbody>
@@ -495,7 +495,7 @@ function StockSummaryView({ data, single }: { data: any; single: boolean }) {
         <tbody>
           {data.map((it: any) => (
             <tr key={it.itemId}>
-              <td className="font-medium">{it.name}{it.minQty > 0 && it.closingQty <= it.minQty ? <span className="ml-2 text-[10px] px-1 rounded bg-red-100 text-red-600">LOW</span> : null}</td>
+              <td className="font-medium">{it.name}{it.minQty > 0 && it.closingQty <= it.minQty ? <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-semibold align-middle">LOW</span> : null}</td>
               <td>{it.unit}</td>
               <td className="num">{qty(it.inQty)}</td>
               <td className="num">{qty(it.outQty)}</td>
@@ -521,8 +521,8 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
       {data.parties.map((p: any) => (
         <Card key={p.ledgerId} className="p-0 overflow-hidden">
           <button className="w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => setOpen(open === String(p.ledgerId) ? null : String(p.ledgerId))}>
-            <span className="font-semibold text-[14px]">{p.ledgerName}</span>
-            <span className={`num text-[14px] ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
+            <span className="text-base font-semibold">{p.ledgerName}</span>
+            <span className={`num text-base ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
           </button>
           {open === String(p.ledgerId) && (
             <table className="report-table">
@@ -540,7 +540,7 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
           )}
         </Card>
       ))}
-      {data.parties.length === 0 && <Card className="p-6 text-center text-slate-400 text-[13px]">No open bills. {title} is clear 🎉</Card>}
+      {data.parties.length === 0 && <Card className="p-10 text-center text-slate-400 text-sm">No open bills. {title} is clear 🎉</Card>}
     </div>
   );
 }
@@ -652,19 +652,19 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
   const einvCell = (v: any) =>
     cid ? (
       <td className="w-56 whitespace-nowrap">
-        <button className="link text-[12px]" onClick={() => downloadPayload("einvoice", v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
+        <button className="link text-sm" onClick={() => downloadPayload("einvoice", v.voucherId, v.number)} title="Generate NIC v1.01 e-invoice JSON">e-inv</button>
         {" "}
-        <button className="link text-[12px]" onClick={() => downloadPayload("ewaybill", v.voucherId, v.number)} title="Generate EWB-01 e-way bill JSON">e-way</button>
+        <button className="link text-sm" onClick={() => downloadPayload("ewaybill", v.voucherId, v.number)} title="Generate EWB-01 e-way bill JSON">e-way</button>
         {" "}
-      <button className="link text-[12px]" onClick={() => submitPayload("e-invoice", v.voucherId, v.number)} title="Submit the e-invoice to the IRP (requires Company Settings → IRP Connectivity)">submit</button>
+      <button className="link text-sm" onClick={() => submitPayload("e-invoice", v.voucherId, v.number)} title="Submit the e-invoice to the IRP (requires Company Settings → IRP Connectivity)">submit</button>
       {" "}
-      <button className="link text-[12px]" onClick={() => submitPayload("ewaybill", v.voucherId, v.number)} title="Generate an e-way bill from the registered IRN (requires the e-invoice to be submitted first)">ewb-gen</button>
+      <button className="link text-sm" onClick={() => submitPayload("ewaybill", v.voucherId, v.number)} title="Generate an e-way bill from the registered IRN (requires the e-invoice to be submitted first)">ewb-gen</button>
       {" "}
-      <button className="link text-[12px]" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">ewb-veh</button>
+      <button className="link text-sm" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">ewb-veh</button>
         {" "}
-        <button className="link text-[12px]" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ewb-ext</button>
+        <button className="link text-sm" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ewb-ext</button>
         {" "}
-        <button className="link text-[12px]" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">ewb-can</button>
+        <button className="link text-sm" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">ewb-can</button>
       </td>
     ) : null;
   // R-30: B2C rows carry the direct-birth action until an EWB exists, then
@@ -674,15 +674,15 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       <td className="w-56 whitespace-nowrap">
         {v.ewbNo ? (
           <>
-            <span className="text-[12px] text-slate-500" title="Accepted e-way bill">EWB {v.ewbNo}</span>{" "}
-            <button className="link text-[12px]" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">veh</button>
+            <span className="text-sm text-slate-500" title="Accepted e-way bill">EWB {v.ewbNo}</span>{" "}
+            <button className="link text-sm" onClick={() => askEwbOp("vehicle", v.voucherId, v.number)} title="Update the vehicle (Part-B) on the accepted e-way bill">veh</button>
             {" "}
-            <button className="link text-[12px]" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ext</button>
+            <button className="link text-sm" onClick={() => askEwbOp("extend", v.voucherId, v.number)} title="Extend e-way bill validity (once per EWB; 8h window applies)">ext</button>
             {" "}
-            <button className="link text-[12px]" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">can</button>
+            <button className="link text-sm" onClick={() => askEwbOp("cancel", v.voucherId, v.number)} title="Cancel the e-way bill (24h window; re-generate afterwards)">can</button>
           </>
         ) : (
-          <button className="link text-[12px]" onClick={() => ewbDirect(v.voucherId, v.number)} title="Generate an e-way bill directly from this invoice (no IRN — requires Company Settings → EWB portal credentials)">ewb</button>
+          <button className="link text-sm" onClick={() => ewbDirect(v.voucherId, v.number)} title="Generate an e-way bill directly from this invoice (no IRN — requires Company Settings → EWB portal credentials)">ewb</button>
         )}
       </td>
     ) : null;
@@ -705,13 +705,13 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
   return (
     <div className="space-y-4">
       {einvMsg && (
-        <div className={`px-3 py-2 rounded text-[13px] ${einvMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-900 border border-amber-200"}`} role="status">
+        <div className={`px-3 py-2 rounded text-sm ${einvMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-900 border border-amber-200"}`} role="status">
           {einvMsg.text}
         </div>
       )}
       {hasNotes && (
         <Card>
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Net outward supplies (Table 9 net of notes)</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Net outward supplies (Table 9 net of notes)</div>
           <table className="report-table">
             <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th></tr></thead>
             <tbody>
@@ -721,7 +721,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
         </Card>
       )}
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">B2B Invoices (registered purchasers)</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">B2B Invoices (registered purchasers)</div>
         <table className="report-table">
           <thead>
             <tr><th className="w-24">Date</th><th className="w-24">Invoice</th><th>Party</th><th className="w-32">GSTIN</th>
@@ -739,7 +739,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
         </table>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">B2C (unregistered consumers)</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">B2C (unregistered consumers)</div>
         <table className="report-table">
           <thead><tr><th className="w-24">Date</th><th className="w-24">Invoice</th><th>Party</th>
             <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-56">E-way bill</th></tr></thead>
@@ -756,18 +756,18 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       </Card>
       {hasNotes && (
         <Card>
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">CDNR — Credit Notes, registered parties (Table 9B)</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">CDNR — Credit Notes, registered parties (Table 9B)</div>
           <NoteTable rows={data.cdnr} gstin={true} />
         </Card>
       )}
       {hasNotes && (
         <Card>
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">CDNUR — Credit Notes, unregistered (Table 9B)</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">CDNUR — Credit Notes, unregistered (Table 9B)</div>
           <NoteTable rows={data.cdnur} gstin={false} />
         </Card>
       )}
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">HSN Summary</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">HSN Summary</div>
         <table className="report-table">
           <thead><tr><th className="w-32">HSN</th><th className="w-28 text-right">Qty</th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">Rate %</th></tr></thead>
           <tbody>
@@ -790,14 +790,14 @@ function Gstr3bView({ data }: { data: any }) {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <Card className="p-0 overflow-hidden xl:col-span-2">
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">3.1 Outward taxable supplies</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">3.1 Outward taxable supplies</div>
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-20 text-right">Cess</th></tr></thead>
           <tbody>
             <Row label="Outward supplies" a={data.outward.taxable} b={data.outward.igst} c={data.outward.cgst} d={data.outward.sgst} e={data.outward.cess} />
           </tbody>
         </table>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">4. Eligible ITC</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">4. Eligible ITC</div>
         <table className="report-table">
           <tbody><Row label="ITC available (other than RCM)" a={0} b={data.itc.igst} c={data.itc.cgst} d={data.itc.sgst} e={data.itc.cess} /></tbody>
         </table>
@@ -806,14 +806,14 @@ function Gstr3bView({ data }: { data: any }) {
         {(data.inwardRcm?.taxable || data.inwardRcm?.igst || data.inwardRcm?.cgst || data.inwardRcm?.sgst || data.inwardRcm?.cess
           || data.rcmItc?.igst || data.rcmItc?.cgst || data.rcmItc?.sgst || data.rcmItc?.cess) ? (
           <>
-            <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">3.1.1 Supplies attracting reverse charge — 4(A)(3)</div>
+            <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">3.1.1 Supplies attracting reverse charge — 4(A)(3)</div>
             <table className="report-table">
               <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-20 text-right">Cess</th></tr></thead>
               <tbody>
                 <Row label="Inward supplies (RCM)" a={data.inwardRcm.taxable} b={data.inwardRcm.igst} c={data.inwardRcm.cgst} d={data.inwardRcm.sgst} e={data.inwardRcm.cess} />
               </tbody>
             </table>
-            <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">ITC claimed on reverse charge</div>
+            <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">ITC claimed on reverse charge</div>
             <table className="report-table">
               <tbody><Row label="RCM ITC claimed" a={0} b={data.rcmItc.igst} c={data.rcmItc.cgst} d={data.rcmItc.sgst} e={data.rcmItc.cess} /></tbody>
             </table>
@@ -821,7 +821,7 @@ function Gstr3bView({ data }: { data: any }) {
         ) : null}
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Net Tax Payable</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Net Tax Payable</div>
         <table className="report-table">
           <tbody>
             <tr><td>IGST</td><td className="num">{money(data.net.igst)}</td></tr>
@@ -843,7 +843,7 @@ function TdsView({ data }: { data: any }) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Deductions by Section</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Deductions by Section</div>
         <table className="report-table">
           <thead><tr><th>Section</th><th className="w-20 text-right">Entries</th><th className="w-32 text-right">Amount</th></tr></thead>
           <tbody>
@@ -856,7 +856,7 @@ function TdsView({ data }: { data: any }) {
       </Card>
       <div className="space-y-4">
         <Card className="p-0 overflow-hidden">
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Remittances in Period</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Remittances in Period</div>
           <table className="report-table">
             <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
             <tbody>
@@ -868,7 +868,7 @@ function TdsView({ data }: { data: any }) {
           </table>
         </Card>
         <Card className="p-0 overflow-hidden">
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">TDS Payable Balance (Outstanding)</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">TDS Payable Balance (Outstanding)</div>
           <table className="report-table">
             <tbody>
               {data.payableLedgers.map((l: any) => (
@@ -896,9 +896,9 @@ function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] 
   const base = dutyHead === "TCS" ? "collection" : "payment";
   return (
     <Card className="p-0 overflow-hidden">
-      <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">FY Threshold Status (per payee)</div>
+      <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">FY Threshold Status (per payee)</div>
       {secs.length === 0 && (
-        <div className="px-3 py-4 text-center text-slate-400 text-[13px]">No section declarations with FY {base} activity</div>
+        <div className="px-3 py-4 text-center text-slate-400 text-sm">No section declarations with FY {base} activity</div>
       )}
       {secs.map((s: any) => {
         const mode = s.thresholdMode ?? "aggregate";
@@ -912,7 +912,7 @@ function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] 
         };
         return (
           <div key={s.sectionId} className="px-3 py-2.5 border-b border-slate-100 last:border-b-0">
-            <div className="text-[12px] font-medium text-slate-600 mb-1">
+            <div className="text-sm font-medium text-slate-600 mb-1">
               Section {s.section} · threshold {s.threshold > 0 ? `₹${s.threshold.toLocaleString("en-IN")}` : "not recorded"} · {mode === "single" ? "per-payment threshold" : `FY ${base} aggregate`} · FY-to-date {money(s.fyAmount)}
             </div>
             <table className="report-table">
@@ -928,7 +928,7 @@ function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] 
                       <td className={p.hasPan ? "text-slate-500" : "text-slate-400"}>{p.hasPan ? "on file" : "not recorded"}</td>
                       <td className="num">{money(p.fyAmount)}</td>
                       <td className="num">{money(p.maxSingle)}</td>
-                      <td><span className={`text-[12px] px-2 py-0.5 rounded ${st.cls}`}>{st.label}</span></td>
+                      <td><span className={`text-sm px-2 py-0.5 rounded ${st.cls}`}>{st.label}</span></td>
                     </tr>
                   );
                 })}
@@ -938,15 +938,15 @@ function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] 
               </tbody>
             </table>
             {(s.payees ?? []).length > 1 && (
-              <div className="text-[11px] text-slate-400 mt-1">Section total ₹{s.fyAmount.toLocaleString("en-IN")} across payees — the statutory threshold binds per payee, not on this sum.</div>
+              <div className="text-xs text-slate-400 mt-1">Section total ₹{s.fyAmount.toLocaleString("en-IN")} across payees — the statutory threshold binds per payee, not on this sum.</div>
             )}
             {s.threshold <= 0 && (
-              <div className="text-[11px] text-slate-400 mt-1">No threshold recorded for this section — confirm applicability manually.</div>
+              <div className="text-xs text-slate-400 mt-1">No threshold recorded for this section — confirm applicability manually.</div>
             )}
           </div>
         );
       })}
-      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
+      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
         FY-to-date informational thresholds — nothing is withheld or blocked; TDS/TCS judgment remains the operator's.
       </div>
     </Card>
@@ -960,7 +960,7 @@ function TcsView({ data }: { data: any }) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Collections by Section</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Collections by Section</div>
         <table className="report-table">
           <thead><tr><th>Section</th><th className="w-20 text-right">Entries</th><th className="w-24 text-right">Rate</th><th className="w-32 text-right">Amount</th></tr></thead>
           <tbody>
@@ -973,7 +973,7 @@ function TcsView({ data }: { data: any }) {
       </Card>
       <div className="space-y-4">
         <Card className="p-0 overflow-hidden">
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Remittances in Period</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Remittances in Period</div>
           <table className="report-table">
             <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
             <tbody>
@@ -985,7 +985,7 @@ function TcsView({ data }: { data: any }) {
           </table>
         </Card>
         <Card className="p-0 overflow-hidden">
-          <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">TCS Payable Balance (Outstanding)</div>
+          <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">TCS Payable Balance (Outstanding)</div>
           <table className="report-table">
             <tbody>
               {data.payableLedgers.map((l: any) => (
@@ -995,9 +995,9 @@ function TcsView({ data }: { data: any }) {
           </table>
         </Card>
         <Card className="p-3">
-          <div className="flex justify-between text-[13px]"><span className="text-slate-600">Collected in period</span><span className="num font-semibold">{money(data.totals.collected)}</span></div>
-          <div className="flex justify-between text-[13px]"><span className="text-slate-600">Remitted in period</span><span className="num font-semibold">{money(data.totals.remitted)}</span></div>
-          <div className="flex justify-between text-[13px] border-t border-slate-200 mt-1 pt-1"><span className="text-slate-600 font-medium">Outstanding (collected − remitted)</span><span className="num font-semibold">{money(data.totals.outstanding)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-slate-600">Collected in period</span><span className="num font-semibold">{money(data.totals.collected)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-slate-600">Remitted in period</span><span className="num font-semibold">{money(data.totals.remitted)}</span></div>
+          <div className="flex justify-between text-sm border-t border-slate-200 mt-1 pt-1"><span className="text-slate-600 font-medium">Outstanding (collected − remitted)</span><span className="num font-semibold">{money(data.totals.outstanding)}</span></div>
         </Card>
       </div>
       </div>
@@ -1039,7 +1039,7 @@ function ChequeRegisterView({ data }: { data: any }) {
           {data.map((c: any, i: number) => (
             <tr key={i}>
               <td>{fmtDate(c.date)}</td><td className="font-mono">{c.chequeNumber}</td>
-              <td>{c.bankLedger}</td><td className="text-slate-500 truncate max-w-[240px]">{c.narration}</td>
+              <td>{c.bankLedger}</td><td className="text-slate-500 min-w-[180px] line-clamp-2 leading-snug">{c.narration}</td>
               <td className="num">{c.amount.toLocaleString("en-IN")}</td>
               <td>{c.direction}</td>
             </tr>
@@ -1064,7 +1064,7 @@ function Gstr9View({ data }: { data: any }) {
   return (
     <div className="space-y-4">
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 4 — Eligible ITC (current year)</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 4 — Eligible ITC (current year)</div>
         <table className="report-table">
           <thead>{dutyHead}</thead>
           <tbody>
@@ -1074,11 +1074,11 @@ function Gstr9View({ data }: { data: any }) {
         </table>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 5 — ITC reversals</div>
-        <div className="px-3 py-2 text-[13px] text-slate-500">Total: {money(data.table5.total)} — {data.table5.note}</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 5 — ITC reversals</div>
+        <div className="px-4 py-2.5 text-sm text-slate-500 leading-relaxed">Total: {money(data.table5.total)} — {data.table5.note}</div>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Tables 6/7 — inward RCM & outward supplies</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Tables 6/7 — inward RCM & outward supplies</div>
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th><th className="w-28 text-right">CESS</th></tr></thead>
           <tbody>
@@ -1088,7 +1088,7 @@ function Gstr9View({ data }: { data: any }) {
         </table>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 8 — ITC reconciliation (duty ledgers)</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 8 — ITC reconciliation (duty ledgers)</div>
         <table className="report-table">
           <thead>{dutyHead}</thead>
           <tbody>
@@ -1099,10 +1099,10 @@ function Gstr9View({ data }: { data: any }) {
             <DutyRow label="Difference (non-zero = unclaimed/unposted)" v={t8.difference} />
           </tbody>
         </table>
-        <div className="px-3 py-2 text-[12px] text-slate-500">{t8.note}</div>
+        <div className="px-4 py-2.5 text-sm text-slate-500 leading-relaxed">{t8.note}</div>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 9 — supplies declared</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 9 — supplies declared</div>
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th></tr></thead>
           <tbody>
@@ -1115,7 +1115,7 @@ function Gstr9View({ data }: { data: any }) {
         </table>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Consistency checks</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Consistency checks</div>
         <table className="report-table">
           <thead><tr><th></th><th className="w-28 text-right">Taxable</th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th></tr></thead>
           <tbody>
@@ -1126,7 +1126,7 @@ function Gstr9View({ data }: { data: any }) {
         </table>
       </Card>
       <Card>
-        <div className="px-3 py-2 border-b border-slate-100 font-semibold text-[14px]">Table 12 — annual HSN (outward supplies)</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 12 — annual HSN (outward supplies)</div>
         <table className="report-table">
           <thead><tr><th className="w-24">HSN</th><th className="w-20 text-right">Rate %</th><th className="w-28 text-right">Qty</th><th className="w-32 text-right">Taxable</th></tr></thead>
           <tbody>

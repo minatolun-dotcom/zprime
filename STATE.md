@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **v1.47.0 RELEASED (R-49 HOTFIX: new-voucher page blank on non-localhost hosts).** `crypto.randomUUID()` (R-10 idem key, VoucherScreen) threw outside secure contexts → whole React tree died white on `http://<ip>:<port>`. Client-only fix: fallback chain (randomUUID → getRandomValues v4 → hex), replay contract unchanged, server legacy no-key path already covered. Verified in the exact failure context; final_regression 948/948, run.js 153/153, r10/r33/r34/r35/r36/r43/r44/r46_drill green. Previous: **v1.46.0 RELEASED (R-48 P4 polish batch).**
+**Last updated:** 2026-09-23 — **UI modernization "Calm Ledger" IMPLEMENTED (v1.48.0 PENDING — holding at RELEASE_REVIEW).** Client-only redesign across all 16 UI files on one token layer (index.css @theme): 14px body / 12px floor (11px retired), 8px spacing rhythm, no clipped meaningful text (truncation opt-in), two-tier elevation + focus rings, Shell sticky chrome + floating fkey rail, Gateway card grid, VoucherScreen sectioned with totals anchor, Masters slide-over raised. Zero logic/hotkey/API/accounting surface change; label text preserved verbatim for the label-anchored browser estate. Estate: Python 1230/1230, browser 543/543 (run.js 153 fresh volume + 26 suites), typecheck+build clean. Previous: **v1.47.0 RELEASED (R-49 HOTFIX: new-voucher page blank on non-localhost hosts).**
 
 ## Product status
 

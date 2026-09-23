@@ -101,9 +101,9 @@ export default function CompanySettings() {
     <Shell title="Company Settings" breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Company Settings" }]}>
       <PageHead title="Company Settings" sub="Company profile used across vouchers, GST reports and printing" />
       <ErrorBanner error={error || (credsLoadErr instanceof Error ? credsLoadErr.message : "")} />
-      {saved && <div className="mb-3 rounded border border-green-200 bg-green-50 text-green-800 text-[13px] px-3 py-2">Saved.</div>}
-      <Card className="p-4 max-w-3xl">
-        <form onSubmit={save} className="grid grid-cols-2 gap-3">
+      {saved && <div className="mb-4 rounded-lg border border-green-200 bg-green-50 text-green-800 text-sm px-4 py-2.5">Saved.</div>}
+      <Card className="p-6 max-w-3xl">
+        <form onSubmit={save} className="grid grid-cols-2 gap-4">
           {F("name", "Company Name *", { required: true })}
           {F("mailingName", "Mailing Name")}
           <div className="col-span-2">{F("address", "Address")}</div>
@@ -116,7 +116,7 @@ export default function CompanySettings() {
           {F("email", "Email")}
           {F("financialYearStart", "Financial Year Begins", { type: "date" })}
           {F("booksBeginFrom", "Books Begin From", { type: "date" })}
-          <label className="col-span-2 flex items-center gap-2 text-[13px] text-slate-700 select-none">
+          <label className="col-span-2 flex items-center gap-2.5 text-sm text-slate-700 select-none">
             <input
               type="checkbox"
               checked={!!form["allowNegativeStock"]}
@@ -130,14 +130,14 @@ export default function CompanySettings() {
         </form>
       </Card>
 
-      <Card className="p-4 max-w-3xl mt-4">
+      <Card className="p-6 max-w-3xl mt-5">
         <PageHead title="IRP / e-Way Bill Connectivity" sub="Optional — submit e-invoices and e-way bills to the IRP directly. Without credentials, generate + download works as before." />
         {irpMsg && (
-          <div className={`mb-3 rounded border text-[13px] px-3 py-2 ${irpMsg.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{irpMsg.text}</div>
+          <div className={`mb-4 rounded-lg border text-sm px-4 py-2.5 ${irpMsg.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{irpMsg.text}</div>
         )}
-        <div className="flex gap-2 mb-3 text-[13px]">
+        <div className="flex gap-2 mb-4 text-sm">
           {(["sandbox", "production"] as const).map((e) => (
-            <button key={e} type="button" onClick={() => setEnv(e)} className={`px-3 py-1 rounded border ${env === e ? "border-blue-500 bg-blue-50 font-medium" : "border-slate-200"}`}>
+            <button key={e} type="button" onClick={() => setEnv(e)} className={`px-3.5 py-2 rounded-md border ${env === e ? "border-indigo-500 bg-indigo-50 font-medium text-indigo-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
               {e === env ? "● " : ""}{e}
             </button>
           ))}
@@ -145,10 +145,10 @@ export default function CompanySettings() {
         {/* R-32: the three host facts an operator needs — the sandbox IRP has a
             built-in default; production IRP and the EWB-API always come from
             the operator's IRP/GSP. Full runbook: ONBOARDING_IRP_EWB.md. */}
-        <p className="text-[12px] text-slate-500 mb-3">
+        <p className="text-xs text-slate-500 leading-relaxed mb-4">
           Hosts: sandbox IRP defaults to einv-apisandbox.nic.in — production IRP and the EWB-API (separate portal) have no default and are taken from the endpoint override (your IRP/GSP's documented host). Setup, first-submit walkthrough and error decode: <span className="font-mono">ONBOARDING_IRP_EWB.md</span> in the repository.
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Client ID"><input className="w-full" value={irpForm.clientId ?? ""} onChange={(e) => setIrpForm({ ...irpForm, clientId: e.target.value })} /></Field>
           <Field label="GSTIN (for this credential set)"><input className="w-full" value={irpForm.gstin ?? ""} onChange={(e) => setIrpForm({ ...irpForm, gstin: e.target.value.toUpperCase() })} maxLength={15} /></Field>
           <Field label="Username"><input className="w-full" value={irpForm.username ?? ""} onChange={(e) => setIrpForm({ ...irpForm, username: e.target.value })} /></Field>
@@ -159,7 +159,7 @@ export default function CompanySettings() {
             <input className="w-full" type="password" value={irpForm.password ?? ""} onChange={(e) => setIrpForm({ ...irpForm, password: e.target.value })} autoComplete="new-password" />
           </Field>
           <Field label="IRP Public Key PEM (portal download; else IRP_NIC_PUBLIC_KEY env)">
-            <textarea className="w-full h-20 font-mono text-[11px]" value={irpForm.publicKeyPem ?? ""} onChange={(e) => setIrpForm({ ...irpForm, publicKeyPem: e.target.value })} />
+            <textarea className="w-full h-20 font-mono text-xs" value={irpForm.publicKeyPem ?? ""} onChange={(e) => setIrpForm({ ...irpForm, publicKeyPem: e.target.value })} />
           </Field>
           <Field label="Endpoint override (mock/test IRP; production requires it)">
             <input className="w-full" value={irpForm.endpointOverride ?? ""} onChange={(e) => setIrpForm({ ...irpForm, endpointOverride: e.target.value })} placeholder="https://…" />
@@ -168,17 +168,17 @@ export default function CompanySettings() {
         {/* R-30: the EWB system is a SEPARATE portal (ewaybillgst.gov.in) with
             its own credentials — this pair unlocks DIRECT e-way bill birth for
             B2C invoices (no IRN). Optional: leave blank for B2B-only (IRN path). */}
-        <div className="mt-4 pt-3 border-t border-slate-100">
-          <div className="text-[13px] font-semibold mb-2">EWB portal (direct e-way bills, B2C)</div>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          <div className="text-sm font-semibold mb-3">EWB portal (direct e-way bills, B2C)</div>
+          <div className="grid grid-cols-2 gap-4">
             <Field label="EWB portal username"><input className="w-full" value={irpForm.ewbUsername ?? ""} onChange={(e) => setIrpForm({ ...irpForm, ewbUsername: e.target.value })} /></Field>
             <Field label={current?.ewbPasswordLast4 ? `EWB portal password (stored: ••••${current.ewbPasswordLast4} — retype to change)` : "EWB portal password (optional)"}>
               <input className="w-full" type="password" value={irpForm.ewbPassword ?? ""} onChange={(e) => setIrpForm({ ...irpForm, ewbPassword: e.target.value })} autoComplete="new-password" />
             </Field>
           </div>
-          <p className="text-[12px] text-slate-500 mt-1">Leave both blank to keep any stored pair unchanged. The EWB-API host is the same endpoint override above (it serves both portals for the mock; production hosts differ).</p>
+          <p className="text-xs text-slate-500 leading-relaxed mt-1.5">Leave both blank to keep any stored pair unchanged. The EWB-API host is the same endpoint override above (it serves both portals for the mock; production hosts differ).</p>
         </div>
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-4">
           <button type="button" className="btn-primary" onClick={saveIrp}>Save IRP credentials</button>
           {current && <button type="button" className="btn-secondary" onClick={removeIrp}>Remove ({env})</button>}
         </div>
