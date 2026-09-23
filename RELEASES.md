@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.44.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-45 — whole-product re-review (full-battery re-run on fresh evidence)
+- **Commit:** `dec00ad98716ee138792592498b44af3fe50da24` (annotated tag `1e21881f489b6922a565a37bb08eb574dc89c9a1` → commit verified via for-each-ref; pushed)
+- **Purpose:** docs/evidence release — `R-45_REVIEW.md` records the full battery re-run on a rebuilt image from the exact v1.43.0 tree with a fresh DB volume: browser **517/517** (run.js + all 26 scenario suites), Python **1229/1229**, fresh install 16/16 migrations / 27 tables from zero, reconciliation engine independence re-verified (engine.py imports only `json` + `datetime`). Third consecutive re-certification of the R-41 PRODUCTION READY verdict. One finding caught during the sweep resolved as NOT A BUG — VERIFIED (r21/r36 fixtures vs the now-seeded units → 409 → cascade; fixtures now reuse the seeded unit — fixture-only, no assertions weakened).
+- **Verification:** browser **517/517** · smoke **39/39** · adversarial **88/88** · fix_regression **65/65** · reconciliation **61/61** · final_regression **947/947** · attack-the-fixes **29/29** — all on the rebuilt image + fresh volume
+- **Immutability:** v1.44.0 and all prior tags are immutable
+
+---
+
 ## v1.43.0
 
 - **Released:** 2026-09-22
