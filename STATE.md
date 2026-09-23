@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **R-51 IMPLEMENTED (v1.49.0 PENDING — holding at RELEASE_REVIEW).** Browser-reserved shortcut keys (F5/F6/F12/Alt-digits — consumed by the browser before the page sees them) addressed via PWA: manifest + icons + index.html wiring, Gateway install hint, README both-paths section (Install app on HTTPS/localhost; Create-shortcut/Open-as-window on plain-HTTP LAN — secure-context rule live-verified). Hotkey layer verified correct (NOT A BUG); conflict is platform-level, escape is standalone window. Gates: run.js 153/153 fresh volume, final 948/948, smoke 39/39, r46_drill 39, r03/r14/r33/r34 green. Previous: **v1.48.0 RELEASED (R-50 — UI modernization "Calm Ledger").**
+**Last updated:** 2026-09-23 — **v1.49.0 RELEASED (R-51 — PWA install support / browser-reserved shortcut keys; release commit `48321d6`, tag `5454190`, pushed).** Browser-reserved shortcut keys (F5/F6/F12/Alt-digits — consumed by the browser before the page sees them) addressed via PWA: manifest + icons + index.html wiring, Gateway install hint, README both-paths section (Install app on HTTPS/localhost; Create-shortcut/Open-as-window on plain-HTTP LAN — secure-context rule live-verified). Hotkey layer verified correct (NOT A BUG); conflict is platform-level, escape is standalone window. Gates: run.js 153/153 fresh volume, final 948/948, smoke 39/39, r46_drill 39, r03/r14/r33/r34 green. Previous: **v1.48.0 RELEASED (R-50 — UI modernization "Calm Ledger").**
 
 ## Product status
 

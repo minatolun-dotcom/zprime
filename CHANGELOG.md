@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.49.0 — R-51: browser-reserved shortcut keys → PWA/app-mode escape + docs (PENDING — holding at RELEASE_REVIEW)
+## v1.49.0 — R-51: browser-reserved shortcut keys → PWA/app-mode escape + docs (RELEASED 2026-09-23 — commit `48321d6ad67945457359605ad443ca2c8837c808`, annotated tag `5454190ac802440dd40b1a0e75d375ad40e66008`, pushed)
 
 **Investigation (`R-51_INVESTIGATION.md`):** browsers process reserved chords (F5 reload, F6 address bar, F12 DevTools, Alt+1–9 Firefox tab-switch, Alt-letter menu access) in the browser process *before* the key event reaches the page — page JS cannot intercept them. zprime's hotkey layer itself is correct (capture-phase listener + preventDefault, live-probed; all page-reachable chords fire). The structural gap: no way out of browser-tab context. **Fix (approved Option A+C):** zprime now ships as an installable PWA — `client/public/manifest.json` (`display: "standalone"`, theme `#4f46e5`, 4 icons) + `icon.svg` + rasterized 192/512 any+maskable PNGs + `<link rel="manifest">`/theme-color/favicon/apple-touch-icon in `index.html`; Gateway Shortcuts card gained the app-window hint (additive paragraph, all existing label text intact); README gained the "Shortcut keys & the browser" section covering both the HTTPS/localhost **Install app** path and the plain-HTTP LAN-IP **Create shortcut… → Open as window** / `--app=` path (secure-context limitation verified live: `isSecureContext=false` on LAN IP → no install prompt there by browser rule, not a defect).
 

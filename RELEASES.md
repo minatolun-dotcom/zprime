@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.49.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-51 — browser-reserved shortcut keys → PWA/app-mode escape + docs
+- **Commit:** `48321d6ad67945457359605ad443ca2c8837c808` (annotated tag `5454190ac802440dd40b1a0e75d375ad40e66008`; pushed)
+- **Purpose:** Reserved chords (F5 reload, F6 address bar, F12 DevTools, Alt+1–9 Firefox tab-switch, Alt-letter menu access) are consumed by the browser process before the key event reaches the page — page JS cannot intercept them (hotkey layer itself verified correct, NOT A BUG; investigation in `R-51_INVESTIGATION.md`). Fix: zprime ships as an installable PWA — `client/public/manifest.json` (`display: "standalone"`, theme `#4f46e5`) + `icon.svg` + 192/512 any+maskable PNGs + manifest/theme-color/favicon/apple-touch-icon wiring in `index.html`; Gateway Shortcuts card install hint (additive); README "Shortcut keys & the browser" section covering **Install app** (HTTPS/localhost) and **Create shortcut… → Open as window** / `--app=` (plain-HTTP LAN; `isSecureContext=false` live-verified on LAN IP → no install prompt there by browser rule). Zero logic change.
+- **Verification:** typecheck+build clean · manifest+icons served 200 correct content-type + JSON parses · install-surface probe (manifest linked, icons 200, beforeinstallprompt supported) · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · r46_drill 39 · r03 12 · r14 11 · r33 13 · r34 20
+- **Immutability:** v1.49.0 and all prior tags are immutable
+
+---
+
 ## v1.48.0
 
 - **Released:** 2026-09-23
