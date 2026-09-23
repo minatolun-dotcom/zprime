@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **v1.46.0 RELEASED (R-48: P4 polish batch — B2C refusal wording + IRP/EWB runbook scope notes).** The R-46 P4s are cleared: B2C refusal names the boundary + Direct EWB path (no semantics change), runbook documents the payload scope boundary and the deliberate EWB no-default-endpoint posture, masked-row shape verified no-op. Estate: final_regression 948, r46_drill 39, r28/r30/r31/smoke/reconciliation green. Previous: **v1.45.0 RELEASED (R-47: drill promoted to permanent suite).**
+**Last updated:** 2026-09-23 — **R-49 HOTFIX IMPLEMENTED — holding at RELEASE_REVIEW (proposed v1.47.0).** Operator-reported blank new-voucher page on IP/LAN hosts live-reproduced: `crypto.randomUUID()` (R-10 idem key, VoucherScreen) throws outside secure contexts, killing the whole React tree → body length 0. Fix: client-only fallback chain (randomUUID → getRandomValues v4 → hex), replay contract unchanged; server legacy no-key path already covered by R-10 suite. Verified in the exact failure context over http://192.168.1.110:3000 (form renders, zero page errors); final_regression 948/948, run.js 153/153, r10/r33/r34/r35/r36/r43/r44/r46_drill green. Previous: **v1.46.0 RELEASED (R-48 P4 polish batch).**
 
 ## Product status
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.47.0 — R-49 hotfix: new-voucher page blank on non-localhost hosts (AT RELEASE_REVIEW — not yet committed)
+
+**Live-reproduced operator report:** opening any **new voucher** screen via a LAN/IP or any non-`localhost` host rendered a **completely white page** — not even the app chrome. Root cause: `VoucherScreen` called `crypto.randomUUID()` directly in a `useRef` initializer (R-10 B-10 idempotency key). That API exists **only in secure contexts** (`https://` or `localhost`); on `http://<ip>:<port>` the call throws `TypeError: crypto.randomUUID is not a function` during the first render of the module tree, React never mounts, and the whole page dies. (It also reproduced on `localhost` in the probe because the page error surfaced before mount — the guard covers both.)
+
+**The fix (client-only, one file):** safe key generation — `crypto.randomUUID()` when available → WebCrypto `getRandomValues` RFC-4122 v4 fallback → random-hex last resort. Still one stable key per new-voucher form (the R-10 replay contract is unchanged), edit saves still carry no key, and the server already treats an absent key as the documented legacy path (R-10 suite check 1). No server, schema, or accounting surface touched.
+
+**Verification:** client typecheck clean · live re-probe in the exact failure context (fresh browser profile, hard `goto` to `/company/1/voucher/5/new` over `http://192.168.1.110:3000`) → full form renders (589 chars of content, Party A/c + LEDGER ENTRIES present), **zero page errors** (before the fix: body length 0 + the TypeError) · final_regression **948/948** · run.js **153/153** · r10_ui 10/10 · r33 13/13 · r34 20/20 · r35 23/23 · r36 25/25 · r43 12/12 · r44 11/11 · r46_drill 39/39.
+
 ## v1.46.0 — R-48 P4 polish batch: IRP/EWB refusal wording + runbook scope boundary (RELEASED 2026-09-23 — commit `cf7796956fb3cbc377c914f959a81baac1511d9e`, annotated tag `f749015319fb21abbbf7a7adf5c12cd702651539`, pushed)
 
 The three actionable P4s recorded by the R-46 drill, cleared:

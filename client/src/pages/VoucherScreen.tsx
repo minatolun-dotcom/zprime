@@ -48,7 +48,29 @@ export default function VoucherScreen() {
   // attempts/retries, so a double-accept or network retry replays the original
   // voucher server-side instead of posting a duplicate). Edit saves are
   // naturally idempotent (PUT) and carry no key.
-  const idemKeyRef = useRef(isEdit ? null : crypto.randomUUID());
+  // F-48-1: crypto.randomUUID is only available in secure contexts (https or
+  // localhost) — a LAN/IP deployment throws "crypto.randomUUID is not a
+  // function", which killed the whole page white before any render. Fall back
+  // to the WebCrypto getRandomValues UUID v4 shape, then to a random-hex key;
+  // the server accepts any string ≤200 chars, and a no-key POST is already the
+  // documented legacy path (R-10 suite, check 1).
+  const idemKeyRef = useRef<string | null>(
+    isEdit
+      ? null
+      : (() => {
+          try {
+            if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+            if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+              const b = crypto.getRandomValues(new Uint8Array(16));
+              b[6] = (b[6] & 0x0f) | 0x40; // version 4
+              b[8] = (b[8] & 0x3f) | 0x80; // RFC variant
+              const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+              return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+            }
+          } catch { /* fall through */ }
+          return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+        })(),
+  );
   const [detailed, setDetailed] = useState(true);
   // R-35: ledger-on-the-fly — quick-create modal state. quickTrigger records
   // which TypeAhead opened the modal so the created ledger is picked back into
