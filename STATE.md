@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **v1.45.0 RELEASED (R-47: IRP/EWB drill promoted to permanent suite).** `scripts/acceptance/r46_drill.js` (38 sequential checks) is now the estate's only sequential connectivity regression — self-spawned mock sidecar, full operator journey (fail-fast → credentials → e-invoice → EWB lifecycle both birth paths → authorization), data contract encoded (taxability + dutyHead=IGST); 38/38 twice consecutively, r30/r31 unaffected, zero application code touched. Previous: R-46 drill closed as evidence (no defect — connectivity production-ready pending real credentials; 39/39 live). Prior R-45 whole-product re-review:
+**Last updated:** 2026-09-23 — **R-48 P4 polish batch IMPLEMENTED — holding at RELEASE_REVIEW.** F-46-1: e-invoice B2C refusal now names the scope boundary + Direct EWB path (no validation-semantics change); F-46-2/F-46-4: runbook payload-scope-boundary + deliberate EWB no-default-endpoint notes; F-46-3 verified no-op. Gates on rebuilt image: final_regression 948/948, r46_drill 39/39, r28/r30/r31 + smoke + reconciliation green. Previous: **v1.45.0 RELEASED (R-47: IRP/EWB drill promoted to permanent suite).**
 
 ## Product status
 

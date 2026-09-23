@@ -2832,7 +2832,8 @@ check("R24: no payload emitted on validation failure", ei3.get("payload") is Non
 s, _ = r03(sA, "PUT", f"{R24}/ledgers/{buy24['id']}", {"name": "R24 Buyer", "groupId": groups24["Sundry Debtors"], "gstin": None,
     "gstRegistrationType": "unregistered", "billWise": True, "partyAddress": "8 Park Street", "partyState": "Karnataka", "partyPincode": "560001"})
 s, ei4 = r03(sA, "GET", f"{R24}/reports/einvoice/{sale24['id']}")
-check("R24: unregistered buyer rejected", s == 200 and ei4.get("ok") is False and any("GSTIN" in e for e in ei4.get("errors", [])), (s, str(ei4)[:150]))
+check("R24: unregistered buyer rejected", s == 200 and ei4.get("ok") is False, (s, str(ei4)[:150]))
+check("R24: B2C refusal names the scope and the Direct EWB path (F-46-1)", any("B2C" in e and "Direct EWB" in e for e in ei4.get("errors", [])), ei4.get("errors"))
 
 # 4) non-Sales/Credit-Note types rejected
 s, pn24 = r03(sA, "POST", f"{R24}/vouchers", {"voucherTypeId": vt24["Receipt"], "date": "2026-08-20", "partyLedgerId": buy24["id"],

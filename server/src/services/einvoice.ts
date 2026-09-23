@@ -139,8 +139,15 @@ export async function eInvoicePayload(companyId: number, voucherId: number): Pro
   const party = row.party;
   // B2B mandatory set: a registered buyer. Unregistered/consumer/composition
   // parties are B2C — out of the approved scope (B2CL large-value is later).
+  // F-46-1 wording: when the buyer is simply not B2B-eligible, name the scope
+  // boundary ("e-way bill via generate-direct" is the B2C path) instead of a
+  // bare field list — the refusal must tell the operator WHERE the work can go.
   if (!party) errors.push("Voucher has no party ledger — set a party before e-invoicing");
-  else if (!party.gstin) errors.push(`Buyer GSTIN missing — set it on ledger "${party.name}"`);
+  else if (!party.gstin && (party.gstRegistrationType === "consumer" || party.gstRegistrationType === "unregistered")) {
+    errors.push(
+      `Buyer "${party.name}" is ${party.gstRegistrationType} (B2C) — e-invoice covers B2B only; B2C e-way bills use the Direct EWB action (no IRN needed)`,
+    );
+  } else if (!party.gstin) errors.push(`Buyer GSTIN missing — set it on ledger "${party.name}"`);
   else if (party.gstRegistrationType !== "regular") {
     errors.push(`Buyer registration type is "${party.gstRegistrationType}" — e-invoice (B2B) requires a regular-registered buyer`);
   }

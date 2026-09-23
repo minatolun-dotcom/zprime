@@ -4,6 +4,8 @@ The operator-facing guide to zprime's NIC connectivity (R-28…R-31): submitting
 
 Without any credentials, zprime still **generates and downloads** the NIC JSON payloads (R-24/R-25) for manual portal upload — connectivity is entirely opt-in. This runbook takes you from zero to a proven first submit, per environment.
 
+> **Payload scope boundary (F-46-2):** the e-invoice payload is **B2B** and the R-25 **EWB-01 payload download is B2B-shaped** (it mirrors the IRN-born EWB request). A **B2C** e-way bill cannot be hand-uploaded this way — use the **Direct EWB** action (`generate-direct`) on the B2C row, which submits straight to the EWB-API portal once credentials are installed (or works via the mock for rehearsal). B2C needs no IRN by law; that is why the direct path exists.
+
 ---
 
 ## 1. Prerequisites (before touching zprime)
@@ -35,6 +37,8 @@ zprime never guesses a production hostname — unknown host = honest refusal wit
 | IRP (e-invoice + IRN-born EWB) | sandbox | `https://einv-apisandbox.nic.in` (built-in default) | NIC sandbox — nothing to configure |
 | IRP | production | **explicit endpoint override required** | your IRP/GSP's production base URL (varies by IRP/GSP) |
 | EWB-API (direct EWBs + lifecycle) | sandbox **and** production | **explicit endpoint override required (always)** | NIC EWB-API host or your GSP's EWB host |
+
+The EWB-API's no-default-endpoint posture is deliberate (R-30 design): a wrong-host EWB submit is a real compliance event, so zprime refuses to guess even a sandbox host. The CI mock and tests always set the override explicitly.
 
 The single override field is shared by both systems (documented R-30 limitation): the CI mock serves both URL families under one host; in production, point the override at the host your GSP documents (a GSP adapter typically fronts both portals; a direct-NIC setup fronts `ewaybillgst.gov.in`'s API host for the EWB system and your IRP's host for e-invoicing — if your IRP and EWB hosts differ, run production submissions against one and switch the override for the other, or front both with a single GSP adapter).
 

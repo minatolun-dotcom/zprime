@@ -216,6 +216,7 @@ function client(jar) {
 
   r = await admin("GET", `${R}/reports/einvoice/${sale3.id}`);
   ok("e-invoice refuses B2C (honest ok=false)", r.status === 200 && r.data?.ok === false && (r.data?.errors || []).length > 0, r);
+  ok("B2C refusal names the scope and the Direct EWB path (F-46-1)", (r.data?.errors || []).some((e) => /B2C/.test(e) && /Direct EWB/.test(e)), r.data?.errors);
 
   r = await admin("POST", `${R}/reports/ewaybill/${sale3.id}/generate-direct?vehicleNo=MH47DR0004&transMode=road`);
   ok("direct EWB submitted on EWB-API (ewayBillNo)", r.status === 200 && r.data?.ok === true && r.data?.submission?.ewbNo, r);

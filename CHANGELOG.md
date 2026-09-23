@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.46.0 — R-48 P4 polish batch: IRP/EWB refusal wording + runbook scope boundary (AT RELEASE_REVIEW — not yet committed)
+
+The three actionable P4s recorded by the R-46 drill, cleared:
+
+- **F-46-1 (server, one message):** the e-invoice refusal for a B2C buyer now **names the scope boundary and the alternative path** — `Buyer "X" is consumer/unregistered (B2C) — e-invoice covers B2B only; B2C e-way bills use the Direct EWB action (no IRN needed)` — instead of a bare "GSTIN missing" field list that sent operators hunting for data they cannot enter. Refusals with a genuinely missing GSTIN on a regular-type buyer keep the original actionable wording. No validation semantics changed: same 200/`ok:false` contract, same error array shape.
+- **F-46-2 (runbook):** `ONBOARDING_IRP_EWB.md` now carries an explicit **payload scope boundary** note — the e-invoice payload is B2B, and the R-25 EWB-01 payload download is B2B-shaped; B2C e-way bills go through the **Direct EWB** action (`generate-direct`), which is also the only B2C path once credentials are installed.
+- **F-46-4 (runbook, no code):** the EWB-API's no-default-endpoint posture documented as deliberate (a wrong-host EWB submit is a real compliance event; zprime refuses to guess even a sandbox host).
+- **F-46-3 (no-op):** masked credential rows omitting `id` is correct by design — delete keys on `environment`; nothing changed.
+
+**Tests strengthened (never weakened):** final_regression's B2C-rejection check now asserts the new scope-naming wording (was: any-error-contains-GSTIN); r46_drill gains a 39th check asserting the same on the live journey. **Verification:** server typecheck clean · final_regression **948/948** · r46_drill **39/39** · r28 15/15 · r30 17/17 · r31 15/15 · smoke 39/39 · reconciliation 61/61 (independent).
+
 ## v1.45.0 — R-47 IRP/EWB drill promoted to permanent suite (RELEASED 2026-09-23 — commit `d34f22a8c2226047c17f6fd8e3ae01055d67fd25`, annotated tag `f6e5d87e5d8f67724e28f5c1e1924a9f6df4416e`, pushed)
 
 The R-46 live drill (39/39, closed as evidence) is now a permanent member of the acceptance estate: **`scripts/acceptance/r46_drill.js`, 38 sequential checks**. Unlike the per-feature connectivity suites (r28/r30/r31), it runs the **full operator journey in order** — the estate's only sequential connectivity regression:
