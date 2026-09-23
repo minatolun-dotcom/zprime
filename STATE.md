@@ -1,6 +1,6 @@
 # zprime — Project State
 
-**Last updated:** 2026-09-23 — **R-48 P4 polish batch IMPLEMENTED — holding at RELEASE_REVIEW.** F-46-1: e-invoice B2C refusal now names the scope boundary + Direct EWB path (no validation-semantics change); F-46-2/F-46-4: runbook payload-scope-boundary + deliberate EWB no-default-endpoint notes; F-46-3 verified no-op. Gates on rebuilt image: final_regression 948/948, r46_drill 39/39, r28/r30/r31 + smoke + reconciliation green. Previous: **v1.45.0 RELEASED (R-47: IRP/EWB drill promoted to permanent suite).**
+**Last updated:** 2026-09-23 — **v1.46.0 RELEASED (R-48: P4 polish batch — B2C refusal wording + IRP/EWB runbook scope notes).** The R-46 P4s are cleared: B2C refusal names the boundary + Direct EWB path (no semantics change), runbook documents the payload scope boundary and the deliberate EWB no-default-endpoint posture, masked-row shape verified no-op. Estate: final_regression 948, r46_drill 39, r28/r30/r31/smoke/reconciliation green. Previous: **v1.45.0 RELEASED (R-47: drill promoted to permanent suite).**
 
 ## Product status
 

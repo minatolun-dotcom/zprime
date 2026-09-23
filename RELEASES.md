@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.46.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-48 — P4 polish batch from the R-46 drill findings
+- **Commit:** `cf7796956fb3cbc377c914f959a81baac1511d9e` (annotated tag `f749015319fb21abbbf7a7adf5c12cd702651539`; pushed)
+- **Purpose:** F-46-1 — e-invoice B2C refusal names the scope boundary + Direct EWB path (one message in `einvoice.ts`; no validation-semantics change; regular buyers with missing GSTIN keep the original actionable wording) · F-46-2/F-46-4 — runbook payload-scope-boundary callout (EWB-01 payload download is B2B-shaped; B2C = Direct EWB) + deliberate EWB no-default-endpoint note · F-46-3 verified no-op. Tests strengthened: final_regression B2C check asserts the new wording; r46_drill +1 check (39).
+- **Verification:** final_regression **948/948** · r46_drill **39/39** · r28 15/15 · r30 17/17 · r31 15/15 · smoke 39/39 · reconciliation 61/61 (independent) · server typecheck clean
+- **Immutability:** v1.46.0 and all prior tags are immutable
+
+---
+
 ## v1.45.0
 
 - **Released:** 2026-09-23

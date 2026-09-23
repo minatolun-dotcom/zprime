@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.46.0 — R-48 P4 polish batch: IRP/EWB refusal wording + runbook scope boundary (AT RELEASE_REVIEW — not yet committed)
+## v1.46.0 — R-48 P4 polish batch: IRP/EWB refusal wording + runbook scope boundary (RELEASED 2026-09-23 — commit `cf7796956fb3cbc377c914f959a81baac1511d9e`, annotated tag `f749015319fb21abbbf7a7adf5c12cd702651539`, pushed)
 
 The three actionable P4s recorded by the R-46 drill, cleared:
 
