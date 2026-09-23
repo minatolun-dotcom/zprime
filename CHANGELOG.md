@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.45.0 — R-47 IRP/EWB drill promoted to permanent suite (AT RELEASE_REVIEW — not yet committed)
+## v1.45.0 — R-47 IRP/EWB drill promoted to permanent suite (RELEASED 2026-09-23 — commit `d34f22a8c2226047c17f6fd8e3ae01055d67fd25`, annotated tag `f6e5d87e5d8f67724e28f5c1e1924a9f6df4416e`, pushed)
 
 The R-46 live drill (39/39, closed as evidence) is now a permanent member of the acceptance estate: **`scripts/acceptance/r46_drill.js`, 38 sequential checks**. Unlike the per-feature connectivity suites (r28/r30/r31), it runs the **full operator journey in order** — the estate's only sequential connectivity regression:
 

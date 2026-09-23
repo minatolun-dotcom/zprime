@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.45.0
+
+- **Released:** 2026-09-23
+- **R-item:** R-47 — IRP/EWB drill promoted to permanent acceptance suite
+- **Commit:** `d34f22a8c2226047c17f6fd8e3ae01055d67fd25` (annotated tag `f6e5d87e5d8f67724e28f5c1e1924a9f6df4416e` → commit verified via describe; pushed)
+- **Purpose:** the R-46 live drill (39/39, closed as evidence) became `scripts/acceptance/r46_drill.js` — **38 sequential checks**, the estate's only sequential connectivity regression: self-spawned wire-faithful mock-irp sidecar (sidecar-skip convention), full operator journey in order (no-cred fail-fast with 422-before-credential ordering → credential lifecycle/masking/owner-gating → e-invoice accept/duplicate-409/fault-502/retry → EWB lifecycle via eivital incl. eager second-extension refusal + CANEBW re-open → direct EWB via ewayapi for B2C → non-member 404), encoding the discovered data contract (`taxability: "taxable"` + seeded `dutyHead='IGST'` ledger). Idempotent re-runs; r30/r31 verified unaffected. Test-only release — zero application code touched (R-11/R-39 precedent).
+- **Verification:** r46_drill **38/38 twice consecutively** · r30/r31 green after the run · `git diff --check` clean
+- **Immutability:** v1.45.0 and all prior tags are immutable
+
+---
+
 ## v1.44.0
 
 - **Released:** 2026-09-23
