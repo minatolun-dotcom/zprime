@@ -536,7 +536,7 @@ export default function VoucherScreen() {
       else await post(`/api/c/${cid}/vouchers`, { ...payload, idempotencyKey: idemKeyRef.current ?? undefined });
       qc.invalidateQueries({ queryKey: ["vouchers"] });
       qc.invalidateQueries({ queryKey: ["daybook"] });
-      nav(`/company/${cid}/daybook`);
+      nav(`/company/${cid}/daybook`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -559,10 +559,9 @@ export default function VoucherScreen() {
     // and Ctrl+A accepts the modal; the half-entered voucher is untouched.
     ...(quickOpen ? {
       "Ctrl+A": () => { submitQuickLedger(); },
-      Escape: () => { setQuickOpen(false); refocusTrigger(); },
+      Escape: (e) => { e.preventDefault(); setQuickOpen(false); refocusTrigger(); },
     } : {
       "Ctrl+A": () => save(),
-      Escape: () => nav(`/company/${cid}/daybook`),
     }),
     "Alt+F1": () => setDetailed(!detailed),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) && !cancelledView
@@ -583,7 +582,7 @@ export default function VoucherScreen() {
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) ? [{ key: "Alt+R", label: isRcm ? "RCM ✓ (toggle off)" : "Reverse Charge", onClick: () => setIsRcm((x) => !x) }] : []),
     ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS", onClick: applyTds }] : []),
     { key: "Alt+C", label: "Create Ledger", onClick: () => { if (!cancelledView) openQuickCreate("", quickTriggerFromFocus()); } },
-    { key: "Esc", label: "Quit (Day Book)", onClick: () => nav(`/company/${cid}/daybook`) },
+    { key: "Esc", label: "Back", onClick: () => nav(-1) },
   ];
 
   return (
@@ -852,7 +851,7 @@ export default function VoucherScreen() {
 
             <div className="flex gap-2.5 pt-2 flex-wrap items-center">
               <button className="btn-primary" disabled={saving || cancelledView} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
-              <button className="btn-ghost" onClick={() => nav(`/company/${cid}/daybook`)}>Cancel (Esc)</button>
+              <button className="btn-ghost" onClick={() => nav(-1)}>Cancel (Esc)</button>
               <span className="flex-1" />
               <span className="text-xs text-slate-400 self-center">
                 Enter on last amount row adds a new line · {fmtDate(date)}

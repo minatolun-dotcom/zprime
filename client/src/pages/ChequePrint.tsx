@@ -6,7 +6,6 @@ import { Card, PageHead } from "../components/ui";
 import { get } from "../lib/api";
 import { useCompany } from "../store";
 import { num, today, fmtDate } from "../lib/format";
-import { useHotkeys } from "../lib/hotkeys";
 
 /** Amount in words (Indian system) for cheque printing. */
 function words(n: number): string {
@@ -39,7 +38,7 @@ export default function ChequePrint() {
     if (selected && !bankName) setBankName(selected.bankLedger ?? "");
   }, [selected, bankName]);
 
-  useHotkeys({ Escape: () => window.history.back() }, []);
+
 
   const doPrint = () => window.print();
 
@@ -62,7 +61,7 @@ export default function ChequePrint() {
               <tbody>
                 {(cheques ?? []).map((c: any, i: number) => (
                   <tr key={i} className="row-link">
-                    <td>{fmtDate(c.date)}</td>
+                    <td className="cell-nowrap">{fmtDate(c.date)}</td>
                     <td className="font-mono">{c.chequeNumber}</td>
                     <td className="text-slate-500 min-w-[180px] [overflow-wrap:anywhere]">{c.bankLedger} · {c.narration}</td>
                     <td className="num">{c.amount.toLocaleString("en-IN")}</td>

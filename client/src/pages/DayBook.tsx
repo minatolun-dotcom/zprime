@@ -79,7 +79,8 @@ export default function DayBook() {
   };
 
   useHotkeys({
-    Escape: () => nav(`/company/${cid}`),
+    // R-53c: F2 = date/period (Tally); Esc-back is owned by Shell.
+    F2: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus(),
     F5: () => open("Payment"),
     F8: () => open("Sales"),
     F9: () => open("Purchase"),
@@ -134,7 +135,7 @@ export default function DayBook() {
           <thead>
             <tr>
               <th className="w-24">Date</th>
-              <th className="w-28">Type</th>
+              <th>Type</th>
               <th className="w-24">Vch No.</th>
               <th>Party / Ledger</th>
               <th className="w-32 text-right">Amount</th>
@@ -144,23 +145,23 @@ export default function DayBook() {
           <tbody>
             {(rows ?? []).map((v) => (
               <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`} onClick={() => nav(`/company/${cid}/voucher/${v.id}/edit`)}>
-                <td>{fmtDate(v.date)}</td>
-                <td>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
+                <td className="cell-nowrap">{fmtDate(v.date)}</td>
+                <td className="cell-nowrap">
+                  <span className={`pill ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
                     {v.typeName}
                   </span>
                   {v.isCancelled && (
-                    <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Cancelled — effects inactive; uncancel to restore">
+                    <span className="pill ml-1.5 font-semibold bg-red-100 text-red-700" title="Cancelled — effects inactive; uncancel to restore">
                       Cancelled
                     </span>
                   )}
                   {v.isRcm && (
-                    <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
+                    <span className="pill ml-1.5 font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
                       RCM
                     </span>
                   )}
                 </td>
-                <td className="font-medium">{v.number}</td>
+                <td className="font-medium cell-nowrap">{v.number}</td>
                 <td className="text-slate-600 min-w-[200px] leading-snug">{v.partyName ?? v.narration}</td>
                 <td className="num">{num(v.amount).toLocaleString("en-IN")}</td>
                 <td className="text-right whitespace-nowrap">

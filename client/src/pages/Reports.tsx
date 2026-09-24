@@ -59,13 +59,14 @@ export default function Reports() {
   const { data: items } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`), enabled: key === "stock-summary" });
 
   useHotkeys({
-    Escape: () => nav(`/company/${cid}`),
+    // R-53c: F2 = date/period (Tally); Esc-back is owned by Shell.
+    F2: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus(),
     "Alt+F1": () => setDetailed(!detailed),
   }, [cid]);
 
   const fkeys: FKeyButton[] = [
     { key: "Alt+F1", label: detailed ? "Condensed" : "Detailed", onClick: () => setDetailed(!detailed) },
-    { key: "Esc", label: "Back to Gateway", onClick: () => nav(`/company/${cid}`) },
+    { key: "F2", label: "Date", onClick: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus() },
   ];
 
   const title = TITLES[key ?? ""] ?? "Report";
@@ -352,7 +353,7 @@ function LedgerVouchersView({ data }: { data: any }) {
         <tbody>
           {data.txns.map((t: any, i: number) => (
             <tr key={i}>
-              <td>{fmtDate(t.date)}</td><td>{t.typeName}</td><td>{t.number}</td>
+              <td className="cell-nowrap">{fmtDate(t.date)}</td><td>{t.typeName}</td><td className="cell-nowrap">{t.number}</td>
               <td className="text-slate-500 min-w-[200px] line-clamp-2 leading-snug">{t.narration}</td>
               <td className="num">{t.debit ? t.debit.toLocaleString("en-IN") : ""}</td>
               <td className="num">{t.credit ? t.credit.toLocaleString("en-IN") : ""}</td>
@@ -417,7 +418,7 @@ function CashBankView({ cid, data }: { cid: string; data: any }) {
             <span className="text-sm text-slate-500">Closing: {b.closing.toLocaleString("en-IN")}</span>
           </div>
           <table className="report-table">
-            <thead><tr><th className="w-24">Period Dr</th><th className="w-24">Period Cr</th><th></th></tr></thead>
+            <thead><tr><th className="w-24 cell-nowrap">Period Dr</th><th className="w-24 cell-nowrap">Period Cr</th><th></th></tr></thead>
             <tbody>
               <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`, { state: { ledgerId: b.ledgerId } })}>
                 <td className="num">{b.debit.toLocaleString("en-IN")}</td>
@@ -445,7 +446,7 @@ function RegisterView({ cid, data, onCsv }: { cid: string; data: any; onCsv: (h:
         <tbody>
           {data.rows.map((r: any) => (
             <tr key={r.voucherId} className="row-link" onClick={() => nav(`/company/${cid}/voucher/${r.voucherId}/edit`)}>
-              <td>{fmtDate(r.date)}</td><td>{r.number}</td><td>{r.partyName ?? "—"}</td>
+              <td className="cell-nowrap">{fmtDate(r.date)}</td><td className="cell-nowrap">{r.number}</td><td>{r.partyName ?? "—"}</td>
               <td className="num">{r.amount.toLocaleString("en-IN")}</td>
               <td className="num">{r.gst ? r.gst.toLocaleString("en-IN") : ""}</td>
             </tr>
@@ -490,7 +491,7 @@ function StockSummaryView({ data, single }: { data: any; single: boolean }) {
         <thead>
           <tr><th>Item</th><th className="w-16">Unit</th>
             <th className="w-24 text-right">In Qty</th><th className="w-28 text-right">Out Qty</th>
-            <th className="w-24 text-right">Closing Qty</th><th className="w-32 text-right">Closing Value</th></tr>
+            <th className="cell-nowrap text-right">Closing Qty</th><th className="w-32 text-right">Closing Value</th></tr>
         </thead>
         <tbody>
           {data.map((it: any) => (
@@ -530,9 +531,9 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
               <tbody>
                 {p.bills.map((b: any, i: number) => (
                   <tr key={i}>
-                    <td>{fmtDate(b.date)}</td><td>{b.billName}</td>
+                    <td className="cell-nowrap">{fmtDate(b.date)}</td><td>{b.billName}</td>
                     <td className={`num ${b.amount < 0 ? "text-amber-600" : ""}`}>{b.amount.toLocaleString("en-IN")}</td>
-                    <td>{b.dueDate ? fmtDate(b.dueDate) : "—"}</td>
+                    <td className="cell-nowrap">{b.dueDate ? fmtDate(b.dueDate) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -695,7 +696,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
       <tbody>
         {rows.map((v: any) => (
           <tr key={v.voucherId}>
-            <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName ?? "—"}</td>{gstin && <td className="text-slate-500">{v.partyGstin}</td>}
+            <td className="cell-nowrap">{fmtDate(v.date)}</td><td className="cell-nowrap">{v.number}</td><td>{v.partyName ?? "—"}</td>{gstin && <td className="text-slate-500">{v.partyGstin}</td>}
             <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
           </tr>
         ))}
@@ -730,7 +731,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
           <tbody>
             {data.b2b.map((v: any) => (
               <tr key={v.voucherId}>
-                <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName}</td><td className="text-slate-500">{v.partyGstin}</td>
+                <td className="cell-nowrap">{fmtDate(v.date)}</td><td className="cell-nowrap">{v.number}</td><td className="cell-nowrap">{v.partyName}</td><td className="text-slate-500 cell-nowrap">{v.partyGstin}</td>
                 <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
                 {einvCell(v)}
               </tr>
@@ -746,7 +747,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
           <tbody>
             {data.b2c.map((v: any) => (
               <tr key={v.voucherId}>
-                <td>{fmtDate(v.date)}</td><td>{v.number}</td><td>{v.partyName ?? "—"}</td>
+                <td className="cell-nowrap">{fmtDate(v.date)}</td><td className="cell-nowrap">{v.number}</td><td>{v.partyName ?? "—"}</td>
                 <td className="num">{money(v.taxable)}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td>
                 {b2cCell(v)}
               </tr>
@@ -861,7 +862,7 @@ function TdsView({ data }: { data: any }) {
             <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
             <tbody>
               {data.remittances.map((r2: any, i: number) => (
-                <tr key={i}><td>{fmtDate(r2.date)}</td><td>{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
+                <tr key={i}><td className="cell-nowrap">{fmtDate(r2.date)}</td><td className="cell-nowrap">{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
               ))}
               {data.remittances.length === 0 && <tr><td colSpan={3} className="text-center text-slate-400 py-4">No TDS remitted in period</td></tr>}
             </tbody>
@@ -978,7 +979,7 @@ function TcsView({ data }: { data: any }) {
             <thead><tr><th>Date</th><th>Voucher</th><th className="w-32 text-right">Amount</th></tr></thead>
             <tbody>
               {data.remittances.map((r2: any, i: number) => (
-                <tr key={i}><td>{fmtDate(r2.date)}</td><td>{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
+                <tr key={i}><td className="cell-nowrap">{fmtDate(r2.date)}</td><td className="cell-nowrap">{r2.number || "—"}</td><td className="num">{money(r2.amount)}</td></tr>
               ))}
               {data.remittances.length === 0 && <tr><td colSpan={3} className="text-center text-slate-400 py-4">No TCS remitted in period</td></tr>}
             </tbody>
@@ -1038,7 +1039,7 @@ function ChequeRegisterView({ data }: { data: any }) {
         <tbody>
           {data.map((c: any, i: number) => (
             <tr key={i}>
-              <td>{fmtDate(c.date)}</td><td className="font-mono">{c.chequeNumber}</td>
+              <td className="cell-nowrap">{fmtDate(c.date)}</td><td className="font-mono cell-nowrap">{c.chequeNumber}</td>
               <td>{c.bankLedger}</td><td className="text-slate-500 min-w-[180px] line-clamp-2 leading-snug">{c.narration}</td>
               <td className="num">{c.amount.toLocaleString("en-IN")}</td>
               <td>{c.direction}</td>

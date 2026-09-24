@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCompany } from "../store";
+import { useHotkeys } from "../lib/hotkeys";
 
 export interface FKeyButton { key: string; label: string; onClick?: () => void; }
 
@@ -17,7 +19,47 @@ export default function Shell({
   const { company } = useCompany();
   const nav = useNavigate();
 
-  const container = wide ? "max-w-none" : "max-w-7xl";
+  // R-53c smart Esc: go back the way the user came. Shell's back arrow and
+  // the history trail are the single Esc owner; pages register their own Esc
+  // only for in-page surfaces (modals) — those handlers run first (capture
+  // phase, later listeners first) and preventDefault() to claim the key, so a
+  // modal Esc never also navigates. Deep links (no trail) fall back to the
+  // Gateway. Nav redirects and Esc-driven backs are not part of the trail.
+  const navBack = () => {
+    if (nav.length > 1) nav(-1);
+    else if (cid) nav(`/company/${cid}`);
+    else nav("/companies");
+  };
+  const navBackRef = useRef(navBack);
+  navBackRef.current = navBack;
+  useEffect(() => {
+    if (!breadcrumb || breadcrumb.length === 0) return; // pages own Esc without a trail
+    const t = window.setTimeout(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key !== "Escape") return; // Esc-back only — any other key is not ours
+        if (e.defaultPrevented) return; // a page-level Esc claimed it (e.g. modal)
+        navBackRef.current();
+      };
+      // Bubble phase: page-level useHotkeys handlers register in capture on the
+      // same window, so they fire first and can claim Esc via preventDefault()
+      // before our back-navigation ever sees the key.
+      window.addEventListener("keydown", handler);
+      (window as any).__zprimeEscBack = handler;
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      const handler = (window as any).__zprimeEscBack;
+      if (handler) {
+        window.removeEventListener("keydown", handler);
+        delete (window as any).__zprimeEscBack;
+      }
+    };
+  }, [breadcrumb]);
+
+  // R-52: standard pages use the full body width — the old max-w-7xl cap idled
+  // 400+px on wide monitors while table columns squeezed. `wide` remains as an
+  // explicit opt-out hook; both resolve to full width now.
+  const container = "max-w-none";
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
@@ -25,7 +67,7 @@ export default function Shell({
         <div className="bg-indigo-700 text-white shadow-card">
           <div className={`mx-auto flex items-center gap-3 px-5 h-12 ${container}`}>
             <button
-              onClick={() => nav(-1)}
+              onClick={() => navBackRef.current()}
               className="text-white/80 hover:text-white text-base px-1 -ml-1"
               title="Back (Esc)"
               aria-label="Back"
@@ -64,7 +106,7 @@ export default function Shell({
           <nav className={`mx-auto w-full px-5 bg-white/80 backdrop-blur border-b border-slate-200 ${container}`}>
             <div className="flex items-center gap-1.5 text-sm text-slate-500 py-2">
               {breadcrumb.map((b, i) => (
-                <span key={i} className="flex items-center gap-1.5">
+                <span key={b.label + String(i)} className="flex items-center gap-1.5">
                   {i > 0 && <span className="text-slate-300">›</span>}
                   {b.to ? (
                     <Link to={b.to} className="hover:text-indigo-600">{b.label}</Link>
@@ -86,7 +128,7 @@ export default function Shell({
         </main>
 
         {fkeys && fkeys.length > 0 && (
-          <aside className="w-48 shrink-0 p-3 overflow-auto hidden lg:block">
+          <aside className="w-64 shrink-0 p-3 overflow-auto hidden lg:block">
             <div className="sticky top-2 card p-2 space-y-1">
               <div className="px-2 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Shortcuts

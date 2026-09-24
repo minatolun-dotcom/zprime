@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
 import { get, post } from "../lib/api";
-import { useHotkeys } from "../lib/hotkeys";
 import { num, monthLabel, today } from "../lib/format";
 
 export default function PayrollProcess() {
@@ -34,7 +33,7 @@ export default function PayrollProcess() {
     }
   };
 
-  useHotkeys({ Escape: () => window.history.back() }, []);
+
 
   return (
     <Shell title="Process Payroll" breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Process Payroll" }]}>

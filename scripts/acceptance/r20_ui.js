@@ -29,7 +29,10 @@ const ok = (name, cond, detail) => {
 
   const auditUrl = `${D.BASE}/company/${cid}/audit`;
 
-  // ---- 1) Gateway card -> page renders ----
+  // ---- 1) Gateway card -> page renders (R-53: open Utilities via its hot
+  //      letter, then click the Audit Trail item in the contents pane) ----
+  await page.keyboard.press("U");
+  await D.sleep(300);
   const card = page.locator('a:has-text("Audit Trail")').first();
   ok("Gateway shows the Audit Trail card", await card.isVisible().catch(() => false), "card missing");
   await card.click();

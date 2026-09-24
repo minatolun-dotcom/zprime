@@ -5,7 +5,6 @@ import Shell from "../components/Shell";
 import { Card, ErrorBanner, Field, PageHead } from "../components/ui";
 import { get, put, del } from "../lib/api";
 import { useCompany } from "../store";
-import { useHotkeys } from "../lib/hotkeys";
 
 // R-28: IRP connectivity credentials (opt-in, owner-only). Secrets are stored
 // AES-256-GCM encrypted server-side; reads return last-4 masks only, and the
@@ -34,7 +33,7 @@ export default function CompanySettings() {
     }
   };
 
-  useHotkeys({ Escape: () => window.history.back() }, []);
+
 
   const F = (name: string, label: string, extra: any = {}) => (
     <Field label={label}>

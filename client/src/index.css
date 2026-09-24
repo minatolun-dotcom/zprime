@@ -41,7 +41,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 
 /* ---- Function-key panel ---- */
 .fkey-chip {
-  @apply inline-flex items-center justify-center min-w-[3.4rem] text-center text-xs font-semibold px-2 py-1 rounded-md border border-indigo-200/80 bg-indigo-50 text-indigo-700 tracking-wide;
+  @apply inline-flex items-center justify-center min-w-[3.4rem] text-center text-xs font-semibold px-2 py-0.5 rounded-md border border-indigo-200/80 bg-indigo-50 text-indigo-700 tracking-wide leading-5;
 }
 .fkey-item {
   @apply w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-800 transition-colors min-h-[2.5rem];
@@ -71,6 +71,15 @@ textarea:focus-visible, [tabindex]:focus-visible {
 /* Explicit opt-in for genuinely truncatable meta text only. */
 .cell-truncate {
   @apply truncate max-w-[320px] text-slate-500;
+}
+/* R-52: one-line guarantees — cells/pills that must never wrap, even under
+   table pressure (hyphens in dd-mm-yyyy dates and multi-word pills are legal
+   break points the browser will use whenever a column is squeezed). */
+.cell-nowrap {
+  @apply whitespace-nowrap;
+}
+.pill {
+  @apply inline-flex items-center whitespace-nowrap rounded-full text-xs font-medium px-2 py-0.5 leading-5;
 }
 
 /* ---- Form controls ---- */

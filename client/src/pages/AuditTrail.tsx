@@ -85,8 +85,8 @@ export default function AuditTrail() {
                   <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
                     {new Date(e.createdAt).toLocaleString()}
                   </td>
-                  <td className="py-2.5 px-4">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_STYLES[e.action] ?? "bg-slate-100 text-slate-600"}`}>
+                  <td className="py-2.5 px-4 whitespace-nowrap">
+                    <span className={`pill ${ACTION_STYLES[e.action] ?? "bg-slate-100 text-slate-600"}`}>
                       {ACTION_LABELS[e.action] ?? e.action}
                     </span>
                   </td>

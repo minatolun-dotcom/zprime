@@ -120,7 +120,7 @@ export default function MasterPage() {
   }, [editing]);
 
   useHotkeys({
-    Escape: () => setEditing(null),
+    Escape: (e) => { e.preventDefault(); setEditing(null); },
   }, []);
 
   const openNew = () => {
@@ -198,7 +198,7 @@ export default function MasterPage() {
                   </td>
                 ))}
                 <td className="text-right">
-                  <button className="btn-danger text-xs px-2.5 py-1.5" onClick={(e) => { e.stopPropagation(); remove(r); }}>Del</button>
+                  <button className="btn-danger text-xs leading-none px-2.5 py-2" onClick={(e) => { e.stopPropagation(); remove(r); }}>Del</button>
                 </td>
               </tr>
             ))}

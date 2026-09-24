@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 import Shell from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
 import { api } from "../lib/api";
-import { useHotkeys } from "../lib/hotkeys";
 
 export default function ImportXml() {
   const { cid } = useParams();
@@ -41,7 +40,7 @@ export default function ImportXml() {
     }
   };
 
-  useHotkeys({ Escape: () => window.history.back() }, []);
+
 
   return (
     <Shell title="XML Import" breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "XML Import" }]}>
