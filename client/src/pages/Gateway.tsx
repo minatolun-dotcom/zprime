@@ -5,7 +5,7 @@ import Shell, { FKeyButton } from "../components/Shell";
 import { useCompany } from "../store";
 import { get } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
-import { today, fyStart, fyEnd } from "../lib/format";
+import { today, fyStart, fyEndFromBegin, fmtDate, loadSessionPeriod, saveSessionPeriod, clearSessionPeriod } from "../lib/format";
 import { buildGatewayMenu, MenuEntry } from "../lib/gatewayMenu";
 
 interface VoucherTypeRow { id: number; name: string; category: string; functionKey: string | null; }
@@ -27,8 +27,38 @@ export default function Gateway() {
     retry: false,
   });
 
-  const fyFrom = company ? fyStart(today()) : "";
-  const fyTo = company ? fyEnd(today()) : "";
+  // R-56 (F1 fix): the FY line shows the STORED financial year — the stored
+  // financialYearStart date IS the anchor (begin → begin+1y−1d), never a
+  // calendar recompute from today.
+  const fyFrom = company?.financialYearStart || "";
+  const fyTo = company?.financialYearStart ? fyEndFromBegin(company.financialYearStart) : "";
+
+  // R-56: session current period (Tally Alt+F2) — a per-company lens stored in
+  // localStorage, NOT company data. Changing it never touches FY-begin or
+  // books-begin; balances carry forward because every report stays
+  // period-parametric. The Gateway both displays and sets it.
+  const [period, setPeriod] = useState<{ from: string; to: string } | null>(() => loadSessionPeriod(cid));
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [pFrom, setPFrom] = useState(period?.from ?? fyFrom);
+  const [pTo, setPTo] = useState(period?.to ?? today());
+  useEffect(() => {
+    setPeriod(loadSessionPeriod(cid));
+    setPFrom(loadSessionPeriod(cid)?.from ?? fyFrom);
+    setPTo(loadSessionPeriod(cid)?.to ?? today());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid]);
+  useHotkeys({ "Alt+F2": () => { setPFrom(period?.from ?? fyFrom); setPTo(period?.to ?? today()); setPeriodOpen(true); } }, [cid, period, fyFrom]);
+  const applyPeriod = () => {
+    const next = { from: pFrom || fyFrom, to: pTo || today() };
+    setPeriod(next);
+    saveSessionPeriod(cid, next);
+    setPeriodOpen(false);
+  };
+  const resetPeriod = () => {
+    clearSessionPeriod(cid);
+    setPeriod(null);
+    setPeriodOpen(false);
+  };
 
   const acct = useMemo(
     () => (voucherTypes ?? []).filter((v) => v.category === "Accounting" || v.category === "Inventory"),
@@ -191,6 +221,16 @@ export default function Gateway() {
               {[company?.gstin, company?.state].filter(Boolean).join(" · ")}
             </div>
             <div className="text-xs text-slate-500 mt-0.5">FY {fyFrom} → {fyTo}</div>
+            {/* R-56: session current period — click or Alt+F2 (Tally parity).
+                A stored session period shows its range; otherwise "Full FY". */}
+            <button
+              data-testid="period-line"
+              onClick={() => { setPFrom(period?.from ?? fyFrom); setPTo(period?.to ?? today()); setPeriodOpen(true); }}
+              className={`text-xs mt-0.5 text-left block max-w-full truncate ${period ? "text-indigo-600 font-medium hover:underline" : "text-slate-500 hover:underline"}`}
+              title="Change period (Alt+F2) — Tally's recommended way to work a different year without touching FY-begin or books-begin"
+            >
+              {period ? `Period ${fmtDate(period.from)} → ${fmtDate(period.to)}` : "Period: Full FY"}
+            </button>
           </div>
           {tbHealth && (
             <div className="pt-2.5 border-t border-slate-100 min-w-0">
@@ -305,6 +345,35 @@ export default function Gateway() {
           )}
         </div>
       </div>
+
+      {/* R-56: Alt+F2 change-period modal (Tally "Change Current Period").
+          Session-scoped: stored per company in localStorage, cleared anytime;
+          reports/daybook default windows follow it. Company FY/books unchanged. */}
+      {periodOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setPeriodOpen(false); }}>
+          <div className="card w-full max-w-sm p-5 space-y-4" data-testid="period-modal">
+            <div>
+              <div className="text-base font-semibold text-slate-800">Change Period</div>
+              <div className="text-xs text-slate-500 mt-0.5">Session current period for {company?.name ?? "this company"} — Alt+F2 (Tally). Reports and Day Book default to it.</div>
+            </div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <input type="date" value={pFrom} onChange={(e) => setPFrom(e.target.value)} aria-label="Period from" />
+              <span className="text-slate-400 text-sm">to</span>
+              <input type="date" value={pTo} onChange={(e) => setPTo(e.target.value)} aria-label="Period to" />
+            </div>
+            <div className="text-xs text-slate-400 leading-relaxed">
+              Company FY stays {fyFrom} → {fyTo}. This is a lens for this session only — balances and books are untouched.
+            </div>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button className="btn-ghost text-sm" onClick={resetPeriod} title="Clear the session period — pages fall back to the company FY">Reset to FY</button>
+              <div className="flex gap-2">
+                <button className="btn-ghost text-sm" onClick={() => setPeriodOpen(false)}>Cancel</button>
+                <button className="btn-primary text-sm" onClick={applyPeriod} data-testid="period-apply">Apply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }

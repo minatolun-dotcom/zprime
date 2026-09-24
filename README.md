@@ -153,6 +153,38 @@ docker compose exec db psql -U zprime -d postgres -c "DROP DATABASE r39_drill;"
 
 **Whole-volume alternative:** to snapshot everything (including volume metadata), stop the stack and copy the named volume, e.g. `docker run --rm -v zprime_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/pgdata.tgz -C /data .` — restore by reversing the copy into a fresh volume. Prefer `pg_dump` for version-safe, human-readable backups.
 
+## New Financial Year (Tally's recommended path)
+
+Tally's guidance for crossing 31 March is: **do not** create a new company or
+fiddle with year settings — keep the same company and **change the current
+period**. zprime follows the same model (R-56):
+
+- **Nothing to migrate.** All reports are period-parametric and openings are
+  computed from full history, so last year's vouchers remain reachable at any
+  time and balances carry forward automatically.
+- **Company settings stay fixed.** *Financial Year Begins* and *Books Begin
+  From* (Company → Alter) describe the company's FIRST year and the earliest
+  entry date — never change them to "start a new year".
+
+**Checklist at year end**
+
+1. Finish the old year: post all pending vouchers; reconcile GST (GSTR-1/3B
+   for 1 Apr → 31 Mar) and TDS/TCS returns for the closing FY.
+2. Press **Alt+F2** on the Gateway and set the session period to the new FY
+   (e.g. 1 Apr 2026 → 31 Mar 2027). It is stored per company in this browser;
+   Day Book and every report default to it. *Reset to FY* clears it.
+3. Create any **recurring vouchers** for the new year as usual — numbering
+   continues from where it left off (per voucher type).
+4. Stock, ledgers and masters carry over untouched. Physical stock counts for
+   the new year go in as Physical Stock vouchers dated 1 April.
+5. If you *want* a fresh set of books (new entity, data handover), create a
+   new company and enter opening balances — zprime has no split-data path
+   (documented boundary; not planned).
+
+**Pre-books and future dates:** vouchers dated before *Books Begin From* or
+in the future are accepted with an amber advisory (never silently dropped) and
+are fully counted in openings and reports.
+
 ## e-Invoice & e-Way Bill connectivity (optional)
 
 zprime can submit e-invoices and e-way bills to NIC directly (R-28+): B2B e-invoice → IRN, e-way bill from IRN, direct e-way bills for B2C (no IRN), and the full EWB lifecycle (vehicle/extend/cancel). Without credentials, payload **generate + download** works as always.

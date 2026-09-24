@@ -43,17 +43,25 @@ export function fmtDate(v: string | null | undefined): string {
   return `${dd}-${m}-${y}`;
 }
 
-/** Financial year start (1 Apr) for a given date. */
-export function fyStart(dateStr: string): string {
+/** Financial year start for a given date. R-56: honours the company's
+ *  stored financialYearStart ('YYYY-MM-DD'); April when absent (F1 fix). */
+export function fyStart(dateStr: string, fyBegin?: string): string {
+  const bmRaw = fyBegin ? parseInt(fyBegin.slice(5, 7), 10) : 4;
+  const bm = Number.isFinite(bmRaw) && bmRaw >= 1 && bmRaw <= 12 ? bmRaw : 4;
   const dt = new Date(dateStr + "T00:00:00Z");
   const y = dt.getUTCFullYear();
-  return dt.getUTCMonth() + 1 >= 4 ? `${y}-04-01` : `${y - 1}-04-01`;
+  const begin = (yy: number) => `${String(yy).padStart(4, "0")}-${String(bm).padStart(2, "0")}-01`;
+  return dt.getUTCMonth() + 1 >= bm ? begin(y) : begin(y - 1);
 }
 
-/** Financial year end (31 Mar) for a given date. */
-export function fyEnd(dateStr: string): string {
-  const s = fyStart(dateStr);
-  return `${parseInt(s.slice(0, 4), 10) + 1}-03-31`;
+/** Financial year end (day before the next FY begin) for a given date. */
+export function fyEnd(dateStr: string, fyBegin?: string): string {
+  const s = fyStart(dateStr, fyBegin);
+  const dt = new Date(s + "T00:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  const next = new Date(dt.getTime());
+  next.setUTCFullYear(next.getUTCFullYear() + 1);
+  return next.toISOString().slice(0, 10);
 }
 
 export function addDays(dateStr: string, days: number): string {

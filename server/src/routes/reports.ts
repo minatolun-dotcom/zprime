@@ -21,8 +21,9 @@ import { tdsSections, tcsSections } from "../db/schema.js";
 // these helpers make that measurable from the postings themselves — no new
 // state, no enforcement, no behavior change. The books record; the operator
 // judges; the advisory surfaces what the books already know.
-function fyWindow(booksBegin?: string): { from: string; to: string } {
-  return { from: booksBegin ?? fyStart(today()), to: today() };
+function fyWindow(booksBegin?: string, financialYearStart?: string): { from: string; to: string } {
+  // R-56 (F1): the FY window honours the company's STORED financialYearStart.
+  return { from: booksBegin ?? fyStart(today(), financialYearStart), to: today() };
 }
 
 /** Per-section FY aggregates for one duty head ("TDS" | "TCS") + the books-
@@ -41,7 +42,8 @@ function fyWindow(booksBegin?: string): { from: string; to: string } {
  *  { ledgerId, ledgerName, hasPan (GSTIN chars 3–12 present), fyAmount,
  *  maxSingle, count }. Section-level totals remain the rollup across payees. */
 async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
-  const { from, to } = fyWindow();
+  const [fyCompany] = await db.select({ financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, companyId));
+  const { from, to } = fyWindow(undefined, fyCompany?.financialYearStart);
   const sectionTable = dutyHead === "TDS" ? tdsSections : tcsSections;
   const sectionCol = dutyHead === "TDS" ? ledgers.tdsSectionId : ledgers.tcsSectionId;
   const sections = await db.select().from(sectionTable).where(eq(sectionTable.companyId, companyId));
@@ -106,9 +108,9 @@ async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
     .sort((a, b) => a.section.localeCompare(b.section));
 }
 
-function period(q: any, booksBegin?: string): { from: string; to: string } {
+function period(q: any, booksBegin?: string, financialYearStart?: string): { from: string; to: string } {
   return {
-    from: q.from ?? booksBegin ?? fyStart(today()),
+    from: q.from ?? booksBegin ?? fyStart(today(), financialYearStart),
     to: q.to ?? today(),
   };
 }
@@ -125,13 +127,13 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/trial-balance", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    return trialBalance(c, period(req.query as any, company?.booksBeginFrom));
+    return trialBalance(c, period(req.query as any, company?.booksBeginFrom, company?.financialYearStart));
   });
 
   app.get("/profit-loss", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    return profitAndLoss(c, period(req.query as any, company?.booksBeginFrom));
+    return profitAndLoss(c, period(req.query as any, company?.booksBeginFrom, company?.financialYearStart));
   });
 
   app.get("/balance-sheet", async (req) => {
@@ -164,7 +166,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/ledger-vouchers/:ledgerId", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     const result = await ledgerVouchers(c, parseInt((req.params as any).ledgerId, 10), p);
     if (!result) throw bad("Ledger not found");
     return result;
@@ -173,7 +175,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/group-summary/:groupId", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     const groupId = parseInt((req.params as any).groupId, 10);
     const groupRows = await getGroupRows(c);
     const group = groupRows.find((g) => g.id === groupId);
@@ -195,13 +197,13 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/cash-bank", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    return cashBankBook(c, period(req.query as any, company?.booksBeginFrom));
+    return cashBankBook(c, period(req.query as any, company?.booksBeginFrom, company?.financialYearStart));
   });
 
   app.get("/register", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     const typeName = (req.query as any).typeName ?? "Sales";
     return register(c, p, typeName);
   });
@@ -228,7 +230,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/gstr1", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     return gstr1(c, p.from, p.to);
   });
 
@@ -415,7 +417,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/gstr3b", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     return gstr3b(c, p.from, p.to);
   });
 
@@ -424,7 +426,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/gstr9", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
     return gstr9(c, p.from, p.to);
   });
 
@@ -437,7 +439,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/tcs", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
 
     const tcsLedgers = await db
       .select({ id: ledgers.id, name: ledgers.name, closing: ledgers.openingBalance })
@@ -509,7 +511,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/tds", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    const p = period(req.query as any, company?.booksBeginFrom);
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
 
     const tdsLedgers = await db
       .select({ id: ledgers.id, name: ledgers.name, closing: ledgers.openingBalance })

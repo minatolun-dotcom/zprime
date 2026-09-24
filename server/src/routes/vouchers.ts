@@ -7,7 +7,7 @@ import {
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
-import { r2, num } from "../lib/util.js";
+import { r2, num, today } from "../lib/util.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -75,6 +75,32 @@ function assertPhysicalRows(input: VoucherInput, isPhysicalType: boolean) {
   for (const ie of input.inventoryEntries ?? []) {
     if (ie.qty < -1e-9) throw bad("Physical Stock counted quantity cannot be negative");
   }
+}
+
+// ---------- R-56: date-window advisory (Tally parity) ----------
+/**
+ * Non-blocking warnings for a voucher dated outside the books' expected
+ * window [booksBeginFrom, today]. Tally warns at the door; it does not block.
+ * zprime accepts the voucher either way — the point is that the facts are
+ * SAID, not silently swallowed:
+ *  - pre-books-begin: the voucher is still included in every opening
+ *    computation (the booksBegin lower bounds in accounting.ts were removed
+ *    in R-56 precisely so such vouchers keep counting), but the operator
+ *    should know they are entering history before the declared books-begin;
+ *  - future-dated: recorded as-is (Tally allows back/future dating too),
+ *    advisory only.
+ * Returns the warning strings; callers surface them in the API response.
+ */
+function voucherDateWindowWarnings(company: { booksBeginFrom: string } | undefined, date: string): string[] {
+  const out: string[] = [];
+  if (!company) return out;
+  if (company.booksBeginFrom && date < company.booksBeginFrom) {
+    out.push(`Voucher date ${date} is before Books Begin From (${company.booksBeginFrom}). Accepted — it is included in openings and prior-period movements.`);
+  }
+  if (date > today()) {
+    out.push(`Voucher date ${date} is in the future (today is ${today()}). Accepted — reports will include it once the date arrives.`);
+  }
+  return out;
 }
 
 // ---------- R-06 (B-01): negative-stock guard ----------
@@ -446,7 +472,10 @@ export async function recordAuditEvent(tx: Tx, companyId: number, voucherId: num
 
 // R-17: actor provance — `actor` is the authenticated user's id (verified
 // JWT), stamped as created_by on every voucher insert (manual + import).
-async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number) {
+async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number, warnings?: string[]) {
+  const [company] = await tx.select({ booksBeginFrom: companies.booksBeginFrom }).from(companies).where(eq(companies.id, companyId));
+  const dateWarnings = voucherDateWindowWarnings(company, input.date);
+  if (warnings) warnings.push(...dateWarnings);
   const type = await assertTypeTx(tx, companyId, input.voucherTypeId);
   await assertLedgersTx(tx, companyId, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
   await assertRefsTx(tx, companyId, input);
@@ -587,15 +616,20 @@ export default async function voucherRoutes(app: FastifyInstance) {
     // transaction would redraw the same colliding number. On a unique-index
     // collision for automatic numbering, burn numbers OUTSIDE the transaction
     // so the next attempt advances past the stale counter value.
+    // R-56: date-window advisories are computed inside the transaction (via
+    // the warnings sink) and attached to the response — the voucher saves
+    // normally; the client shows the amber banner. Nothing blocks.
+    const dateWarnings: string[] = [];
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        return await db.transaction(async (tx) => {
-          const v = await insertVoucherTx(tx, c, input, "manual", req.userId);
+        const v = await db.transaction(async (tx) => {
+          const created = await insertVoucherTx(tx, c, input, "manual", req.userId, dateWarnings);
           if (idemKey) {
-            await tx.insert(idempotencyKeys).values({ companyId: c, key: idemKey, voucherId: v.id });
+            await tx.insert(idempotencyKeys).values({ companyId: c, key: idemKey, voucherId: created.id });
           }
-          return v;
+          return created;
         });
+        return dateWarnings.length ? { ...v, warnings: dateWarnings } : v;
       } catch (err: any) {
         // R-10: two concurrent requests with the same key race on the unique
         // index; the loser must return the winner's voucher, not 409.
@@ -639,6 +673,9 @@ export default async function voucherRoutes(app: FastifyInstance) {
         // GST, bills, narration, amounts must all stay untouched. The only legal
         // transition is the dedicated /uncancel endpoint.
         if (existing.isCancelled) throw bad("Cancelled vouchers cannot be edited. Uncancel the voucher first.", 409);
+        // R-56: same date-window advisory on edit — computed but advisory-only.
+        const [editCompany] = await tx.select({ booksBeginFrom: companies.booksBeginFrom }).from(companies).where(eq(companies.id, c));
+        const editWarnings = voucherDateWindowWarnings(editCompany, input.date);
         const type = await assertTypeTx(tx, c, input.voucherTypeId);
         await assertLedgersTx(tx, c, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
         await assertRefsTx(tx, c, input);
@@ -686,7 +723,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await tx.delete(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
         await writeBody(tx, id, input);
         await recordAuditEvent(tx, c, id, req.userId, "edit");
-        return { id };
+        return editWarnings.length ? { id, warnings: editWarnings } : { id };
       });
     } catch (err: any) {
       throw pgFriendly(err);

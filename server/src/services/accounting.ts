@@ -1,10 +1,17 @@
 import { db } from "../db/index.js";
 import { companies, groups, ledgers, vouchers, voucherEntries, billAllocations, voucherTypes } from "../db/schema.js";
-import { and, eq, gte, lte, sql, asc, desc } from "drizzle-orm";
+import { and, eq, gte, lte, lt, sql, asc, desc } from "drizzle-orm";
 import { num, r2, addDays, cmpDate, fyStart } from "../lib/util.js";
 import { stockClosingValue } from "./stock.js";
 
 export interface Period { from: string; to: string }
+
+/** R-56 (F2): P&L/balance-sheet computations reach down to the earliest
+ *  recorded activity — this sentinel sorts below every real date string, so
+ *  no window lower bound is needed. 0001-01-02 (not 01-01) on purpose: the
+ *  opening-stock path does addDays(from, -1), and '0000-12-31' is outside
+ *  Postgres' date range. No voucher can ever carry this date. */
+const EARLIEST_DATE = "0001-01-02";
 
 export interface LedgerBalance {
   ledgerId: number; name: string; groupId: number; groupName: string; groupParentId: number | null;
@@ -14,9 +21,10 @@ export interface LedgerBalance {
 
 /** Per-ledger opening/movement/closing for a period. Opening includes pre-period movement. */
 export async function ledgerBalances(companyId: number, from: string, to: string): Promise<LedgerBalance[]> {
-  const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  const booksBegin = company ? company.booksBeginFrom : from;
-
+  // R-56 (F2 fix): pre-books-begin vouchers were silently excluded here by a
+  // `date >= booksBeginFrom` lower bound — accepted at the door but invisible
+  // in openings, which broke the trial balance. Openings now aggregate ALL
+  // prior movements (the opening-balance master field stays additive on top).
   const led = await db
     .select({
       id: ledgers.id, name: ledgers.name, groupId: ledgers.groupId,
@@ -46,7 +54,7 @@ export async function ledgerBalances(companyId: number, from: string, to: string
     })
     .from(voucherEntries)
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
-    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), gte(vouchers.date, booksBegin), lte(vouchers.date, addDays(from, -1))))
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), lt(vouchers.date, from)))
     .groupBy(voucherEntries.ledgerId);
 
   const mv = new Map(movements.map((m) => [m.ledgerId, { dr: num(m.debit), cr: num(m.credit) }]));
@@ -236,10 +244,9 @@ export async function balanceSheet(companyId: number, asOf: string) {
 
   const tree = buildGroupTree(groupRows, balances, { includeZero: true });
 
-  // Compute P&L (net profit) for books-begin..asOf and add to capital section
-  const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  const bsFrom = company ? company.booksBeginFrom : asOf;
-  const pnl = await profitAndLoss(companyId, { from: bsFrom, to: asOf });
+  // Compute P&L (net profit) from the earliest recorded activity (pre-books
+  // vouchers included — R-56 F2 fix) through as-of, and add to capital section.
+  const pnl = await profitAndLoss(companyId, { from: EARLIEST_DATE, to: asOf });
 
   const liabilities = tree.filter((t) => t.nature === "Liabilities");
   const assets = tree.filter((t) => t.nature === "Assets");
@@ -272,9 +279,8 @@ export async function ledgerVouchers(companyId: number, ledgerId: number, period
     .where(and(eq(ledgers.companyId, companyId), eq(ledgers.id, ledgerId)));
   if (!ledger) return null;
 
-  const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  const booksBegin = company ? company.booksBeginFrom : period.from;
-
+  // R-56 (F2 fix): prior movement reaches down to the earliest voucher, not
+  // to booksBeginFrom — a pre-books voucher must surface in the opening.
   const prior = await db
     .select({ total: sql<string>`coalesce(sum(${voucherEntries.amount}), 0)` })
     .from(voucherEntries)
@@ -282,7 +288,7 @@ export async function ledgerVouchers(companyId: number, ledgerId: number, period
     .where(and(
       eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
       eq(voucherEntries.ledgerId, ledgerId),
-      gte(vouchers.date, booksBegin), lte(vouchers.date, addDays(period.from, -1)),
+      lt(vouchers.date, period.from),
     ));
 
   let running = r2(num(ledger.opening) + num(prior[0]?.total));

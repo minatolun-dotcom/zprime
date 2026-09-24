@@ -8,7 +8,8 @@ import { Card, ErrorBanner } from "../components/ui";
 import { get, post } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
-import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel } from "../lib/format";
+import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel, loadSessionPeriod } from "../lib/format";
+import { useCompanyPeriod } from "../lib/period";
 import { csvDownload, textDownload } from "../lib/csv";
 
 export default function Reports() {
@@ -16,8 +17,10 @@ export default function Reports() {
   const nav = useNavigate();
   const location = useLocation();
   const { company } = useCompany();
-  const [from, setFrom] = useState(fyStart(today()));
-  const [to, setTo] = useState(today());
+  // R-56: default window = the session current period (Alt+F2, per company)
+  // when set, else the company's STORED financial year (F1 fix — no hardcoded
+  // April). User changes (date inputs, +/− stepping) override for the page.
+  const { from, to, setFrom, setTo } = useCompanyPeriod(company, loadSessionPeriod(cid));
   const [detailed, setDetailed] = useState(true);
   const [ledgerId, setLedgerId] = useState("");
   const [groupId, setGroupId] = useState("");

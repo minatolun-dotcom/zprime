@@ -532,10 +532,18 @@ export default function VoucherScreen() {
     setSaving(true);
     savingRef.current = true;
     try {
-      if (isEdit) await put(`/api/c/${cid}/vouchers/${voucherId}`, payload);
-      else await post(`/api/c/${cid}/vouchers`, { ...payload, idempotencyKey: idemKeyRef.current ?? undefined });
+      // R-56: the server may attach non-blocking date-window advisories
+      // (pre-books-begin, future date) to the 200 response. The voucher SAVES;
+      // the banner informs, then the Day Book shows the voucher as usual.
+      const res: any = isEdit
+        ? await put(`/api/c/${cid}/vouchers/${voucherId}`, payload)
+        : await post(`/api/c/${cid}/vouchers`, { ...payload, idempotencyKey: idemKeyRef.current ?? undefined });
+      const warns: string[] = Array.isArray(res?.warnings) ? res.warnings : [];
       qc.invalidateQueries({ queryKey: ["vouchers"] });
       qc.invalidateQueries({ queryKey: ["daybook"] });
+      if (warns.length) {
+        sessionStorage.setItem("zprime_voucher_warnings_last", JSON.stringify(warns));
+      }
       nav(`/company/${cid}/daybook`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

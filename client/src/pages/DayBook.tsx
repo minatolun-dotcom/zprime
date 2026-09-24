@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
 import { get, del, cancelVoucher, uncancelVoucher } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
-import { num, today, fmtDate, fyStart, fyEnd } from "../lib/format";
+import { num, today, fmtDate, fyStart, fyEnd, fyEndFromBegin, loadSessionPeriod } from "../lib/format";
+import { useCompanyPeriod } from "../lib/period";
+import { useCompany } from "../store";
 
 const TYPE_COLORS: Record<string, string> = {
   Sales: "bg-green-100 text-green-700",
@@ -22,10 +24,31 @@ export default function DayBook() {
   const { cid } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
-  const [from, setFrom] = useState(fyStart(today()));
-  const [to, setTo] = useState(today());
+  const { company } = useCompany();
+  // R-56: default window = the session current period (Alt+F2, per company)
+  // when set, else the company's STORED financial year (not hardcoded April —
+  // F1 fix). A user change to the date inputs overrides both for the page.
+  const session = loadSessionPeriod(cid);
+  const { from, to, setFrom, setTo } = useCompanyPeriod(company, session);
   const [type, setType] = useState("");
   const [error, setError] = useState("");
+  // R-56: one-shot amber surface for the server's date-window advisories
+  // (pre-books-begin / future date). Set by VoucherScreen on save via
+  // sessionStorage; shown here once, then cleared. Nothing blocks — the
+  // voucher is already in the books.
+  const [voucherWarn, setVoucherWarn] = useState<string[]>(() => {
+    try {
+      const raw = sessionStorage.getItem("zprime_voucher_warnings_last");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    if (voucherWarn.length) {
+      sessionStorage.removeItem("zprime_voucher_warnings_last");
+      const t = setTimeout(() => setVoucherWarn([]), 15000);
+      return () => clearTimeout(t);
+    }
+  }, [voucherWarn]);
 
   const { data: voucherTypes } = useQuery({ queryKey: ["voucher-types", cid], queryFn: () => get<any[]>(`/api/c/${cid}/voucher-types`) });
   const { data: rows, isLoading } = useQuery({
@@ -129,6 +152,11 @@ export default function DayBook() {
         }
       />
       <ErrorBanner error={error} />
+      {voucherWarn.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm px-4 py-2.5 leading-relaxed">
+          {voucherWarn.map((w, i) => (<div key={i}>⚠ {w}</div>))}
+        </div>
+      )}
 
       <Card>
         <table className="report-table">
@@ -187,7 +215,7 @@ export default function DayBook() {
           </tbody>
         </table>
       </Card>
-      <p className="mt-3 text-xs text-slate-400">FY: {fyStart(today())} → {fyEnd(today())} · Esc returns to Gateway</p>
+      <p className="mt-3 text-xs text-slate-400">FY: {company?.financialYearStart ?? ""} → {company ? fyEndFromBegin(company.financialYearStart) : ""} · Esc returns to Gateway</p>
     </Shell>
   );
 }
