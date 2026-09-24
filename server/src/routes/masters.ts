@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
-  groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections, tcsSections,
+  groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections, tcsSections, vouchers,
 } from "../db/schema.js";
 import { and, asc, eq, ilike } from "drizzle-orm";
 import { cid, bad, groupSchema, tdsSectionSchema, tcsSectionSchema } from "../lib/routes.js";
@@ -56,7 +56,30 @@ export default async function masterRoutes(app: FastifyInstance) {
       groupId: { table: stockGroups, label: "Stock group" },
       categoryId: { table: stockCategories, label: "Stock category" },
     } });
-  crud(app, "voucher-types", voucherTypes, { orderBy: byName });
+  // R-57: numbering periodicity is only editable while the type has NO vouchers
+  // at all — flipping after the first voucher would interleave two numbering
+  // series under one prefix (a 'never' type would suddenly restart per FY; a
+  // 'fiscal' type would abandon its per-FY counters for the single series).
+  // Tally is equally strict in spirit: periodicity is a create-time property;
+  // change the behaviour via a new voucher type. A body that omits the field,
+  // or repeats the current value (e.g. a plain rename from the masters form),
+  // is not a flip and passes through untouched.
+  crud(app, "voucher-types", voucherTypes, {
+    orderBy: byName,
+    beforeSave: async (data: any, companyId: number) => {
+      if (data.numberingPeriodicity === undefined || data.id === undefined) return data;
+      const typeId = typeof data.id === "string" ? parseInt(data.id, 10) : data.id;
+      if (!Number.isFinite(typeId) || typeId <= 0) return data; // create path — no history
+      const [current] = await db.select({ periodicity: voucherTypes.numberingPeriodicity })
+        .from(voucherTypes).where(and(eq(voucherTypes.companyId, companyId), eq(voucherTypes.id, typeId)));
+      if (!current || data.numberingPeriodicity === current.periodicity) return data; // not a flip
+      const [anyVch] = await db.select({ id: vouchers.id }).from(vouchers)
+        .where(and(eq(vouchers.companyId, companyId), eq(vouchers.voucherTypeId, typeId)))
+        .limit(1);
+      if (anyVch) throw bad("This voucher type already has vouchers — numbering periodicity cannot be changed after the first voucher (the two series would interleave). Use a new voucher type instead.", 409);
+      return data;
+    },
+  });
   // tds_sections has no `name` column — sorting by name crashed the list route (F-TDS-01)
   crud(app, "tds-sections", tdsSections, { orderBy: bySection, schema: tdsSectionSchema });
   // R-27: TCS sections — same shape as TDS (no `name` column → bySection)

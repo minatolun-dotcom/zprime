@@ -7,7 +7,7 @@ import {
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
-import { r2, num, today } from "../lib/util.js";
+import { r2, num, today, fyKeyOf } from "../lib/util.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -235,24 +235,32 @@ export function validateEntries(entries: { amount: number }[], inventoryCount: n
  * Draw the next voucher number atomically. A per-(company, voucherType) counter
  * row is advanced with UPDATE ... RETURNING under row lock, so concurrent
  * writers can never draw the same number and deletion never rewinds it.
- * The unique index on (companyId, voucherTypeId, number) is the final authority.
+ * R-57 (R-55 Option B): the counter is scoped to the voucher's FY key when the
+ * type's numberingPeriodicity is 'fiscal' (Tally: numbering restarts each
+ * financial year, starting at the type's startNumber); 'never' keeps the
+ * classic single never-resetting counter (fy = '', byte-identical history).
+ * The unique index on (companyId, voucherTypeId, fy, number) is the final authority.
  */
-export async function nextNumber(tx: Tx, companyId: number, typeId: number): Promise<string> {
+export async function nextNumber(tx: Tx, companyId: number, typeId: number, opts: { fy?: string | null } = {}): Promise<string> {
   const [t] = await tx.select().from(voucherTypes).where(eq(voucherTypes.id, typeId));
   const start = t.startNumber ?? 1;
-  // Initialize the counter to startNumber-1 if this is the first voucher of the type.
-  await tx.insert(voucherCounters).values({ companyId, voucherTypeId: typeId, lastNumber: start - 1 }).onConflictDoNothing();
+  // The bucket is the FY key for 'fiscal' types, '' for 'never' — a REAL value
+  // either way (a NULL bucket would defeat the unique index: SQL treats NULLs
+  // as distinct, splitting the never-series across divergent counter rows).
+  const fy = opts.fy ?? "";
+  // Initialize the counter to startNumber-1 if this is the first voucher of the type/FY.
+  await tx.insert(voucherCounters).values({ companyId, voucherTypeId: typeId, lastNumber: start - 1, fy }).onConflictDoNothing();
   const [c] = await tx
     .update(voucherCounters)
     .set({ lastNumber: sql`${voucherCounters.lastNumber} + 1` })
-    .where(and(eq(voucherCounters.companyId, companyId), eq(voucherCounters.voucherTypeId, typeId)))
+    .where(and(eq(voucherCounters.companyId, companyId), eq(voucherCounters.voucherTypeId, typeId), eq(voucherCounters.fy, fy)))
     .returning({ lastNumber: voucherCounters.lastNumber });
   let n = c.lastNumber;
   if (n < start) {
     const [c2] = await tx
       .update(voucherCounters)
       .set({ lastNumber: sql`GREATEST(${voucherCounters.lastNumber}, ${start})` })
-      .where(and(eq(voucherCounters.companyId, companyId), eq(voucherCounters.voucherTypeId, typeId), lt(voucherCounters.lastNumber, start)))
+      .where(and(eq(voucherCounters.companyId, companyId), eq(voucherCounters.voucherTypeId, typeId), eq(voucherCounters.fy, fy), lt(voucherCounters.lastNumber, start)))
       .returning({ lastNumber: voucherCounters.lastNumber });
     n = c2 ? c2.lastNumber : start;
   }
@@ -473,16 +481,21 @@ export async function recordAuditEvent(tx: Tx, companyId: number, voucherId: num
 // R-17: actor provance — `actor` is the authenticated user's id (verified
 // JWT), stamped as created_by on every voucher insert (manual + import).
 async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number, warnings?: string[]) {
-  const [company] = await tx.select({ booksBeginFrom: companies.booksBeginFrom }).from(companies).where(eq(companies.id, companyId));
+  const [company] = await tx.select({ booksBeginFrom: companies.booksBeginFrom, financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, companyId));
   const dateWarnings = voucherDateWindowWarnings(company, input.date);
   if (warnings) warnings.push(...dateWarnings);
   const type = await assertTypeTx(tx, companyId, input.voucherTypeId);
+  // R-57: stamp EVERY voucher with its bucket key — the fiscal-year BEGIN of
+  // its date for 'fiscal' types, '' for 'never' types (the classic single
+  // series, byte-identical to pre-R-57 behaviour). The number-uniqueness index
+  // is scoped to this key.
+  const fyKey = type.numberingPeriodicity === "fiscal" ? fyKeyOf(input.date, company?.financialYearStart) : "";
   await assertLedgersTx(tx, companyId, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
   await assertRefsTx(tx, companyId, input);
   assertPhysicalRows(input, type.name === "Physical Stock");
   validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
   await assertStockAvailabilityTx(tx, companyId, input);
-  const number = input.number?.trim() || (await nextNumber(tx, companyId, input.voucherTypeId));
+  const number = input.number?.trim() || (await nextNumber(tx, companyId, input.voucherTypeId, { fy: fyKey }));
   await validateBillsTx(tx, companyId, input.entries);
 
   const [v] = await tx
@@ -491,6 +504,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       companyId,
       voucherTypeId: input.voucherTypeId,
       date: input.date,
+      fy: fyKey,
       number,
       reference: input.reference ?? null,
       refDate: input.refDate ?? null,
@@ -528,11 +542,17 @@ export default async function voucherRoutes(app: FastifyInstance) {
         typeId: voucherTypes.id, typeName: voucherTypes.name, shortCode: voucherTypes.shortCode,
         isCancelled: vouchers.isCancelled, source: vouchers.source,
         isRcm: vouchers.isRcm, // R-23: Day Book badge + report drill-down context
+        // R-59: who posted it / last touched it (R-22 provance, usernames via
+        // left join — null-safe for system rows and pre-R-22 data).
+        createdByUsername: users.username,
+        updatedByUsername: sql<string | null>`(select u2.username from users u2 where u2.id = ${vouchers.updatedBy})`,
+        updatedAt: vouchers.updatedAt,
         amount: sql<number>`coalesce((select sum(amount) from voucher_entries e where e.voucher_id = ${vouchers.id} and e.amount > 0), 0)::float8`,
       })
       .from(vouchers)
       .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
       .leftJoin(ledgers, eq(ledgers.id, vouchers.partyLedgerId))
+      .leftJoin(users, eq(users.id, vouchers.createdBy))
       .where(and(...conds))
       .orderBy(desc(vouchers.date), asc(vouchers.id))
       .limit(5000);
@@ -569,19 +589,41 @@ export default async function voucherRoutes(app: FastifyInstance) {
       .where(eq(inventoryEntries.voucherId, id))
       .orderBy(asc(inventoryEntries.order));
     const [type] = await db.select().from(voucherTypes).where(eq(voucherTypes.id, v.voucherTypeId));
-    return { ...v, type, entries: entries.map((e) => ({ ...e, amount: num(e.amount), bills: bills.filter((b) => b.entryId === e.id) })), inventoryEntries: inv.map((e) => ({ ...e, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount) })) };
+    // R-59: provance usernames for the edit screen (null-safe left joins).
+    const [createdByUser] = v.createdBy ? await db.select({ username: users.username }).from(users).where(eq(users.id, v.createdBy)) : [];
+    const [updatedByUser] = v.updatedBy ? await db.select({ username: users.username }).from(users).where(eq(users.id, v.updatedBy)) : [];
+    return {
+      ...v,
+      type,
+      createdByUsername: createdByUser?.username ?? null,
+      updatedByUsername: updatedByUser?.username ?? null,
+      entries: entries.map((e) => ({ ...e, amount: num(e.amount), bills: bills.filter((b) => b.entryId === e.id) })),
+      inventoryEntries: inv.map((e) => ({ ...e, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount) })),
+    };
   });
 
-  // Peek the next auto number without consuming it
+  // Peek the next auto number without consuming it. R-57: fiscal types peek
+  // the FY bucket of the given (or today's) date — the client passes date= so
+  // the preview matches what posting that date will actually draw.
   app.get("/vouchers/next-number", async (req) => {
     const c = await cid(req);
-    const typeId = parseInt((req.query as any).voucherTypeId, 10);
+    const q = req.query as any;
+    const typeId = parseInt(q.voucherTypeId, 10);
     const [t] = await db.select().from(voucherTypes).where(and(eq(voucherTypes.companyId, c), eq(voucherTypes.id, typeId)));
     if (!t) throw bad("Voucher type not found", 404);
-    const [ctr] = await db.select().from(voucherCounters).where(and(eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, typeId)));
+    let fy: string | null = null;
+    if (t.numberingPeriodicity === "fiscal") {
+      const [company] = await db.select({ financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, c));
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(q.date ?? "")) ? String(q.date) : today();
+      fy = fyKeyOf(date, company?.financialYearStart);
+    }
+    const [ctr] = await db.select().from(voucherCounters).where(and(
+      eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, typeId),
+      eq(voucherCounters.fy, fy ?? ""),
+    ));
     const last = ctr?.lastNumber ?? (t.startNumber ?? 1) - 1;
     const n = Math.max(last + 1, t.startNumber ?? 1);
-    return { number: `${t.prefix ?? ""}${n}${t.suffix ?? ""}` };
+    return { number: `${t.prefix ?? ""}${n}${t.suffix ?? ""}`, ...(fy ? { fy } : {}) };
   });
 
   app.post("/vouchers", async (req) => {
@@ -674,7 +716,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         // transition is the dedicated /uncancel endpoint.
         if (existing.isCancelled) throw bad("Cancelled vouchers cannot be edited. Uncancel the voucher first.", 409);
         // R-56: same date-window advisory on edit — computed but advisory-only.
-        const [editCompany] = await tx.select({ booksBeginFrom: companies.booksBeginFrom }).from(companies).where(eq(companies.id, c));
+        const [editCompany] = await tx.select({ booksBeginFrom: companies.booksBeginFrom, financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, c));
         const editWarnings = voucherDateWindowWarnings(editCompany, input.date);
         const type = await assertTypeTx(tx, c, input.voucherTypeId);
         await assertLedgersTx(tx, c, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
@@ -704,6 +746,9 @@ export default async function voucherRoutes(app: FastifyInstance) {
           .set({
             voucherTypeId: input.voucherTypeId,
             date: input.date,
+            // R-57 numbering bucket: re-derived from the (possibly moved) date
+            // for 'fiscal' types; 'never' types always carry the '' bucket.
+            fy: type.numberingPeriodicity === "fiscal" ? fyKeyOf(input.date, editCompany?.financialYearStart) : "",
             number,
             reference: input.reference ?? null,
             refDate: input.refDate ?? null,

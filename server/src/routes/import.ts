@@ -7,7 +7,7 @@ import {
 } from "../db/schema.js";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { cid, bad, pgFriendly } from "../lib/routes.js";
-import { r2, num } from "../lib/util.js";
+import { r2, num, fyKeyOf } from "../lib/util.js";
 import { recordAuditEvent } from "./vouchers.js";
 import { validateEntries, assertStockAvailabilityTx } from "./vouchers.js";
 
@@ -141,7 +141,9 @@ export default async function importRoutes(app: FastifyInstance) {
 
     /** After importing vouchers with explicit numbers, advance each touched
      *  type's counter past the highest imported number so future automatic
-     *  numbering can never collide with an imported number. */
+     *  numbering can never collide with an imported number. R-57: fiscal
+     *  types sync per-FY counters (bucketed by each voucher's stamped fy);
+     *  'never' types keep the single ''-bucket counter. */
     async function syncCounters(touchedTypeIds: number[]) {
       for (const typeId of touchedTypeIds) {
         const [t] = await tx.select().from(voucherTypes).where(eq(voucherTypes.id, typeId));
@@ -150,23 +152,34 @@ export default async function importRoutes(app: FastifyInstance) {
         // just-inserted (uncommitted) imported numbers, or the counter could
         // lag and future auto-numbering would collide with an imported number.
         const rows = await tx
-          .select({ number: vouchers.number })
+          .select({ number: vouchers.number, fy: vouchers.fy })
           .from(vouchers)
           .where(and(eq(vouchers.companyId, c), eq(vouchers.voucherTypeId, typeId)));
         const pre = (t.prefix ?? "").length, suf = (t.suffix ?? "").length;
-        let maxN = (t.startNumber ?? 1) - 1;
+        const fiscal = t.numberingPeriodicity === "fiscal";
+        const maxByFy = new Map<string, number>();
+        const base = (t.startNumber ?? 1) - 1;
+        maxByFy.set("", base);
         for (const r of rows) {
           const s = r.number ?? "";
           if (s.length >= pre + suf && s.startsWith(t.prefix ?? "") && s.endsWith(t.suffix ?? "")) {
             const n = numericTail(s.slice(pre, s.length - suf));
-            if (n != null && Number.isFinite(n)) maxN = Math.max(maxN, n);
+            if (n != null && Number.isFinite(n)) {
+              const key = fiscal ? (r.fy ?? "") : "";
+              maxByFy.set(key, Math.max(maxByFy.get(key) ?? base, n));
+            }
           }
         }
-        await tx.insert(voucherCounters).values({ companyId: c, voucherTypeId: typeId, lastNumber: maxN }).onConflictDoNothing();
-        await tx
-          .update(voucherCounters)
-          .set({ lastNumber: sql`GREATEST(${voucherCounters.lastNumber}, ${maxN})` })
-          .where(and(eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, typeId)));
+        for (const [fy, maxN] of maxByFy) {
+          await tx.insert(voucherCounters).values({ companyId: c, voucherTypeId: typeId, lastNumber: maxN, fy }).onConflictDoNothing();
+          await tx
+            .update(voucherCounters)
+            .set({ lastNumber: sql`GREATEST(${voucherCounters.lastNumber}, ${maxN})` })
+            .where(and(
+              eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, typeId),
+              eq(voucherCounters.fy, fy),
+            ));
+        }
       }
     }
 
@@ -184,7 +197,11 @@ export default async function importRoutes(app: FastifyInstance) {
     const godownIdByName = new Map<string, number>();
     for (const g of await tx.select().from(godowns).where(eq(godowns.companyId, c))) godownIdByName.set(g.name.toLowerCase(), g.id);
     const vtIdByName = new Map<string, number>();
-    for (const vt of await tx.select().from(voucherTypes).where(eq(voucherTypes.companyId, c))) vtIdByName.set(vt.name.toLowerCase(), vt.id);
+    const vtPeriodicity = new Map<number, string>();
+    for (const vt of await tx.select().from(voucherTypes).where(eq(voucherTypes.companyId, c))) {
+      vtIdByName.set(vt.name.toLowerCase(), vt.id);
+      vtPeriodicity.set(vt.id, vt.numberingPeriodicity);
+    }
 
     const RESERVED_PRIMARY = new Set([
       "Capital Account", "Loans (Liability)", "Current Liabilities", "Fixed Assets", "Investments",
@@ -362,6 +379,7 @@ export default async function importRoutes(app: FastifyInstance) {
               category, affectsStock: category === "Inventory",
             }).returning({ id: voucherTypes.id });
             vtIdByName.set(typeName.toLowerCase(), row.id);
+            vtPeriodicity.set(row.id, "never");
             typeId = row.id;
           }
           const date = parseDate(v.DATE);
@@ -458,6 +476,9 @@ export default async function importRoutes(app: FastifyInstance) {
 
           const [nv] = await tx.insert(vouchers).values({
             companyId: c, voucherTypeId: typeId, date, number,
+            // R-57 numbering bucket: fiscal-year BEGIN of the date for 'fiscal'
+            // types, '' for 'never' types (the classic single series).
+            fy: vtPeriodicity.get(typeId) === "fiscal" ? fyKeyOf(date, company?.financialYearStart) : "",
             reference: v.REFERENCE ?? null,
             refDate: parseDate(v.REFERENCEDATE),
             narration: String(v.NARRATION ?? ""),

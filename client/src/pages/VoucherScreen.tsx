@@ -163,7 +163,7 @@ export default function VoucherScreen() {
         } else {
           const t = await get<VoucherType>(`/api/c/${cid}/voucher-types/${typeId}`);
           setVType(t);
-          const next = await get<{ number: string }>(`/api/c/${cid}/vouchers/next-number?voucherTypeId=${t.id}`);
+          const next = await get<{ number: string }>(`/api/c/${cid}/vouchers/next-number?voucherTypeId=${t.id}&date=${today()}`);
           setNumber(next.number);
           if (t.affectsStock) setInv([newInvRow()]);
         }
@@ -553,6 +553,20 @@ export default function VoucherScreen() {
     }
   };
 
+  // R-57 (R-55 Option B): when the user changes the voucher DATE on a NEW
+  // voucher of a fiscal-periodicity type, re-peek the next number for THAT
+  // date's FY bucket — the preview matches what posting will draw. The user
+  // editing the number field cancels the auto-peek (manual override wins).
+  useEffect(() => {
+    if (isEdit || !vType || numberLocked) return;
+    const t = setTimeout(() => {
+      get<{ number: string }>(`/api/c/${cid}/vouchers/next-number?voucherTypeId=${vType.id}&date=${date}`)
+        .then((next) => setNumber(next.number))
+        .catch(() => { /* preview-only — posting re-draws server-side anyway */ });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [date, vType?.id, isEdit, numberLocked, cid]);
+
   // R-54 Option A (Tally voucher actions): keyboard delete/cancel use the
   // same server contracts as the Day Book buttons. Edit mode only.
   const doDelete = async () => {
@@ -665,7 +679,7 @@ export default function VoucherScreen() {
           <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl flex-wrap">
             <span className="text-base font-semibold text-indigo-700">{vType.name}</span>
             <span className="text-sm text-slate-400">No.</span>
-            <input className="w-32" value={number} onChange={(e) => setNumber(e.target.value)} />
+            <input className="w-32" value={number} onChange={(e) => setNumber(e.target.value)} data-testid="v-number" />
             <span className="text-sm text-slate-400 ml-2">Date (F2)</span>
             <input id="v-date" type="date" className="w-36" value={date} onChange={(e) => setDate(e.target.value)} />
             {vType && ["Purchase", "Debit Note"].includes(vType.name) && (

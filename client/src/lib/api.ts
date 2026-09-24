@@ -27,6 +27,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
 export const get = <T = any>(path: string) => api<T>(path);
 export const post = <T = any>(path: string, body: unknown) => api<T>(path, { method: "POST", body: JSON.stringify(body) });
 export const put = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });
+export const patch = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const del = <T = any>(path: string) => api<T>(path, { method: "DELETE" });
 // R-02 voucher cancellation — explicit state transitions (not part of the
 // voucher PUT schema). Reason is optional and capped server-side.

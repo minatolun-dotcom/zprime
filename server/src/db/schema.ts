@@ -128,6 +128,12 @@ export const voucherTypes = pgTable("voucher_types", {
   prefix: text("prefix").notNull().default(""),
   suffix: text("suffix").notNull().default(""),
   startNumber: integer("start_number").notNull().default(1),
+  // R-57 (R-55 Option B): Tally's voucher-numbering periodicity. 'never' =
+  // the pre-R-57 single never-resetting counter (every existing type —
+  // byte-identical behaviour); 'fiscal' = the automatic counter restarts
+  // each financial year (counter is per company + type + FY of the voucher
+  // date, FY-begin month from the company's stored financialYearStart).
+  numberingPeriodicity: text("numbering_periodicity").notNull().default("never"), // never | fiscal
   functionKey: text("function_key"),
 }, (t) => [uniqueIndex("vt_company_name_uq").on(t.companyId, t.name)]);
 
@@ -220,7 +226,13 @@ export const voucherCounters = pgTable("voucher_counters", {
   companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   voucherTypeId: integer("voucher_type_id").notNull().references(() => voucherTypes.id, { onDelete: "cascade" }),
   lastNumber: integer("last_number").notNull().default(0),
-}, (t) => [uniqueIndex("counter_company_type_uq").on(t.companyId, t.voucherTypeId)]);
+  // R-57: FY key (fiscal-year BEGIN date) for periodicity 'fiscal' counters —
+  // one row per (company, type, FY), so each year restarts at startNumber.
+  // '' for 'never' types (the classic single counter). NOT NULL is load-bearing:
+  // a NULL bucket would make the unique index treat every counter row as
+  // distinct (SQL: NULL != NULL) and split the never-series across rows.
+  fy: text("fy").notNull().default(""),
+}, (t) => [uniqueIndex("counter_company_type_fy_uq").on(t.companyId, t.voucherTypeId, t.fy)]);
 
 export const vouchers = pgTable("vouchers", {
   id: serial("id").primaryKey(),
@@ -228,6 +240,12 @@ export const vouchers = pgTable("vouchers", {
   voucherTypeId: integer("voucher_type_id").notNull().references(() => voucherTypes.id),
   date: date("date").notNull(),
   number: text("number").notNull(),
+  // R-57: FY key (fiscal-year BEGIN date) this voucher belongs to — stamped
+  // on every API/import write; the number-uniqueness index is scoped to it.
+  // '' = 'never'-periodicity series (the classic single counter, pre-R-57
+  // rows included — their old (company, type, number) uniqueness guarantees
+  // they cannot collide once folded into that bucket).
+  fy: text("fy").notNull().default(""),
   reference: text("reference"),
   refDate: date("ref_date"),
   narration: text("narration").notNull().default(""),
@@ -260,7 +278,9 @@ export const vouchers = pgTable("vouchers", {
   index("vouchers_type_idx").on(t.voucherTypeId),
   // Database is the final authority: duplicate numbers within a company+voucher
   // type are impossible (across concurrent writes, manual or automatic numbering).
-  uniqueIndex("vouchers_company_type_number_uq").on(t.companyId, t.voucherTypeId, t.number),
+  // R-57: uniqueness gains the fy dimension — two FYs can each restart at 1.
+  // NULL-fy (legacy) rows are exempt from unique enforcement by SQL rule.
+  uniqueIndex("vouchers_company_type_fy_number_uq").on(t.companyId, t.voucherTypeId, t.fy, t.number),
 ]);
 
 // R-18: full audit feature — append-only voucher event log. One row per

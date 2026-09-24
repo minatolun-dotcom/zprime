@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell from "../components/Shell";
 import { Card, ErrorBanner, Field, PageHead } from "../components/ui";
-import { get, put, del } from "../lib/api";
+import { get, post, put, patch, del } from "../lib/api";
 import { useCompany } from "../store";
 
 // R-28: IRP connectivity credentials (opt-in, owner-only). Secrets are stored
@@ -40,6 +40,57 @@ export default function CompanySettings() {
       <input className="w-full" value={form[name] ?? ""} onChange={(e) => setForm({ ...form, [name]: e.target.value })} {...extra} />
     </Field>
   );
+
+  // ---- R-58: company members (list / add / remove / reset password) ----
+  // Creator-only management, matching the server's requireOwner gate. Every
+  // member has full access to the company (Tally-style: no permission matrix);
+  // the only privileged actions are these member-admin actions, held by the
+  // company creator. The current user is identified by /auth/me username.
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => get<{ username: string | null }>("/api/auth/me") });
+  const membersKey = ["members", cid];
+  const { data: members } = useQuery({ queryKey: membersKey, queryFn: () => get<any[]>(`/api/companies/${cid}/members`) });
+  const [mForm, setMForm] = useState({ username: "", password: "" });
+  const [mMsg, setMMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [resetFor, setResetFor] = useState<any>(null); // member row being reset
+  const [resetPw, setResetPw] = useState("");
+
+  const isManager = !!(me?.username && (members ?? []).some((m) => m.username === me.username && m.role === "owner"));
+
+  const addMember = async (e: FormEvent) => {
+    e.preventDefault();
+    setMMsg(null);
+    try {
+      const created = await post(`/api/companies/${cid}/members`, mForm);
+      setMMsg({ ok: true, text: `User "${created.username}" can now sign in and work in this company.` });
+      setMForm({ username: "", password: "" });
+      qc.invalidateQueries({ queryKey: membersKey });
+    } catch (err) {
+      setMMsg({ ok: false, text: err instanceof Error ? err.message : "Could not add the user" });
+    }
+  };
+
+  const removeMember = async (m: any) => {
+    setMMsg(null);
+    try {
+      await del(`/api/companies/${cid}/members/${m.userId}`);
+      setMMsg({ ok: true, text: `"${m.username}" no longer has access to this company.` });
+      qc.invalidateQueries({ queryKey: membersKey });
+    } catch (err) {
+      setMMsg({ ok: false, text: err instanceof Error ? err.message : "Could not remove the user" });
+    }
+  };
+
+  const resetPassword = async () => {
+    setMMsg(null);
+    try {
+      await patch(`/api/companies/${cid}/members/${resetFor.userId}`, { password: resetPw });
+      setMMsg({ ok: true, text: `Password reset for "${resetFor.username}".` });
+      setResetFor(null);
+      setResetPw("");
+    } catch (err) {
+      setMMsg({ ok: false, text: err instanceof Error ? err.message : "Could not reset the password" });
+    }
+  };
 
   // ---- R-28 IRP credentials state ----
   const [env, setEnv] = useState<"sandbox" | "production">("sandbox");
@@ -130,6 +181,61 @@ export default function CompanySettings() {
       </Card>
 
       <Card className="p-6 max-w-3xl mt-5">
+        <PageHead title="Users" sub="People who can sign in and work in this company. Every user has full access — there are no permission levels; only the company creator manages this list." />
+        {mMsg && (
+          <div className={`mb-4 rounded-lg border text-sm px-4 py-2.5 ${mMsg.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{mMsg.text}</div>
+        )}
+        {(members ?? []).length > 0 && (
+          <table className="w-full text-sm mb-4">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
+                <th className="py-2 font-semibold">User</th>
+                <th className="py-2 font-semibold">Access</th>
+                {isManager && <th className="py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {(members ?? []).map((m) => (
+                <tr key={m.userId} className="border-t border-slate-100">
+                  <td className="py-2.5 font-medium">
+                    {m.username}
+                    {m.username === me?.username && <span className="ml-2 text-xs text-slate-400">(you)</span>}
+                    {m.role === "owner" && <span className="ml-2 text-xs text-slate-400">can manage users</span>}
+                  </td>
+                  <td className="py-2.5 text-slate-600">Full access</td>
+                  {isManager && (
+                    <td className="py-2.5 text-right whitespace-nowrap">
+                      <button type="button" className="text-indigo-600 hover:underline mr-3" onClick={() => { setResetFor(m); setResetPw(""); }}>
+                        Reset password
+                      </button>
+                      <button
+                        type="button"
+                        className="text-red-600 hover:underline"
+                        onClick={() => {
+                          if (window.confirm(`Remove "${m.username}" from this company? They will no longer be able to sign in to it.`)) removeMember(m);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {isManager ? (
+          <form onSubmit={addMember} className="flex items-end gap-3 flex-wrap">
+            <Field label="Username"><input className="w-44" value={mForm.username} onChange={(e) => setMForm({ ...mForm, username: e.target.value })} required /></Field>
+            <Field label="Password"><input className="w-44" type="password" value={mForm.password} onChange={(e) => setMForm({ ...mForm, password: e.target.value })} autoComplete="new-password" required /></Field>
+            <button className="btn-primary">Add user</button>
+          </form>
+        ) : (
+          <p className="text-xs text-slate-500">Only the company creator can add or remove users.</p>
+        )}
+      </Card>
+
+      <Card className="p-6 max-w-3xl mt-5">
         <PageHead title="IRP / e-Way Bill Connectivity" sub="Optional — submit e-invoices and e-way bills to the IRP directly. Without credentials, generate + download works as before." />
         {irpMsg && (
           <div className={`mb-4 rounded-lg border text-sm px-4 py-2.5 ${irpMsg.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{irpMsg.text}</div>
@@ -182,6 +288,19 @@ export default function CompanySettings() {
           {current && <button type="button" className="btn-secondary" onClick={removeIrp}>Remove ({env})</button>}
         </div>
       </Card>
+
+      {/* R-58: password reset inline row — kept on the card so the operator
+          context (this company, this member) stays visible. */}
+      {resetFor && (
+        <Card className="p-6 max-w-3xl mt-5 border-amber-200">
+          <PageHead title={`Reset password — ${resetFor.username}`} sub="Type a new password for this user. They sign in with it immediately; their data access does not change." />
+          <div className="flex items-end gap-3 flex-wrap">
+            <Field label="New password"><input className="w-56" type="password" value={resetPw} onChange={(e) => setResetPw(e.target.value)} autoComplete="new-password" /></Field>
+            <button type="button" className="btn-primary" onClick={resetPassword} disabled={!resetPw}>Reset password</button>
+            <button type="button" className="btn-secondary" onClick={() => setResetFor(null)}>Cancel</button>
+          </div>
+        </Card>
+      )}
     </Shell>
   );
 }

@@ -194,7 +194,7 @@ export default async function companyRoutes(app: FastifyInstance) {
     return row;
   });
 
-  // ---- R-03 minimal membership management ----
+  // ---- R-03 minimal membership management (R-58: + password reset) ----
   // Smallest mechanism required to operate multi-user memberships: an owner
   // lists/invites/removes members on THEIR company. No invitations, no email,
   // no roles beyond the membership role label. Owner role changes/deletions
@@ -242,6 +242,25 @@ export default async function companyRoutes(app: FastifyInstance) {
     if (targetRow.role === "owner" && owners.length <= 1) throw bad("Cannot remove the last owner of a company", 409);
     await db.delete(userCompanies).where(and(eq(userCompanies.companyId, id), eq(userCompanies.userId, target)));
     return { ok: true };
+  });
+
+  // R-58: owner resets an existing member's password (forgotten password is
+  // otherwise unrecoverable — there is no email flow by design). The target
+  // must be a member of THIS company (404 otherwise — same no-leak rule).
+  app.patch("/companies/:id/members/:userId", async (req) => {
+    const id = await requireOwner(req, parseInt((req.params as any).id, 10));
+    const target = parseInt((req.params as any).userId, 10);
+    if (!Number.isFinite(target) || target <= 0) throw bad("Invalid member");
+    const parsed = z.object({ password: z.string().min(1).max(200) }).safeParse(req.body);
+    if (!parsed.success) throw bad("Invalid password: " + parsed.error.issues[0]?.message);
+    const [row] = await db
+      .select({ userId: userCompanies.userId, username: users.username })
+      .from(userCompanies)
+      .innerJoin(users, eq(users.id, userCompanies.userId))
+      .where(and(eq(userCompanies.companyId, id), eq(userCompanies.userId, target)));
+    if (!row) throw bad("Member not found", 404);
+    await db.update(users).set({ passwordHash: hashPassword(parsed.data.password) }).where(eq(users.id, target));
+    return { ok: true, username: row.username };
   });
 
   // ---- R-28: IRP connectivity credentials (opt-in) ----

@@ -8,3 +8,7 @@ secrets*
 server/dist/
 client/dist/
 postgres-data/
+
+# python bytecode from acceptance-suite imports
+__pycache__/
+*.pyc

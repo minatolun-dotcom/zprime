@@ -175,7 +175,13 @@ export default function DayBook() {
               <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`} onClick={() => nav(`/company/${cid}/voucher/${v.id}/edit`)}>
                 <td className="cell-nowrap">{fmtDate(v.date)}</td>
                 <td className="cell-nowrap">
-                  <span className={`pill ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}>
+                  <span
+                    className={`pill ${TYPE_COLORS[v.typeName] ?? "bg-slate-100 text-slate-600"}`}
+                    title={[
+                      v.createdByUsername ? `Posted by ${v.createdByUsername}` : null,
+                      v.updatedByUsername && v.updatedByUsername !== v.createdByUsername ? `Last edited by ${v.updatedByUsername}` : null,
+                    ].filter(Boolean).join(" · ") || undefined}
+                  >
                     {v.typeName}
                   </span>
                   {v.isCancelled && (

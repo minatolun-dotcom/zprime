@@ -397,6 +397,10 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
         { name: "prefix", label: "Prefix", type: "text" },
         { name: "suffix", label: "Suffix", type: "text" },
         { name: "startNumber", label: "Start Number", type: "number" },
+        { name: "numberingPeriodicity", label: "Restart Numbering", type: "select", options: [
+          { value: "never", label: "Never (one continuous series)" },
+          { value: "fiscal", label: "Each financial year (Tally)" },
+        ], hint: "Fiscal: automatic numbers restart at Start Number every FY (the FY-begin month comes from Company Settings). Locks after the first voucher." },
         { name: "affectsStock", label: "Affects Stock", type: "checkbox" },
       ],
       columns: [{ key: "name", label: "Name" }, { key: "category", label: "Category" }],

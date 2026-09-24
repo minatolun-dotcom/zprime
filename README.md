@@ -54,6 +54,7 @@ migrates cleanly instead of staying dead).
 - **XML import** — masters (groups/ledgers/stock items/units/godowns) + vouchers (all types, bill refs, GSTIN) from standard accounting XML exports; duplicates skipped
 - Cheque printing (printable cheque face with amount in words)
 - Company settings, simple JWT login
+- **Company users** — the company creator adds/removes users and resets passwords in Company Settings → Users; every user has full access to the company (no permission levels, Tally-style)
 
 **Keyboard workflow (TallyPrime parity — R-54)**
 
@@ -173,8 +174,12 @@ period**. zprime follows the same model (R-56):
 2. Press **Alt+F2** on the Gateway and set the session period to the new FY
    (e.g. 1 Apr 2026 → 31 Mar 2027). It is stored per company in this browser;
    Day Book and every report default to it. *Reset to FY* clears it.
-3. Create any **recurring vouchers** for the new year as usual — numbering
-   continues from where it left off (per voucher type).
+3. Create any **recurring vouchers** for the new year as usual. Voucher
+   numbering behaves as configured per voucher type (*Create → Voucher Types →
+   Restart Numbering*): **Never** continues the one continuous series;
+   **Each financial year (Tally)** restarts automatic numbers at the type's
+   Start Number every FY. Flip periodicity only before the type's first
+   voucher — after that the setting is locked (use a new type instead).
 4. Stock, ledgers and masters carry over untouched. Physical stock counts for
    the new year go in as Physical Stock vouchers dated 1 April.
 5. If you *want* a fresh set of books (new entity, data handover), create a

@@ -74,6 +74,17 @@ export function cmpDate(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * R-57: the FY key of a voucher date — the fiscal-year BEGIN date
+ * ('YYYY-MM-DD'), computed from the company's stored financialYearStart
+ * (FY-begin month; April default). This is the identity of the numbering
+ * bucket: vouchers in the same bucket share one counter, each fiscal year
+ * restarts at the type's startNumber (periodicity 'fiscal').
+ */
+export function fyKeyOf(dateStr: string, financialYearStart?: string): string {
+  return fyStart(dateStr, financialYearStart);
+}
+
 /** 'YYYY-MM' helpers for payroll */
 export function monthOf(dateStr: string): string {
   return dateStr.slice(0, 7);

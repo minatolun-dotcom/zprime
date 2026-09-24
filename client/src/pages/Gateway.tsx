@@ -250,15 +250,6 @@ export default function Gateway() {
             Signed in as <span className="font-medium text-slate-700">{me?.username}</span>
             <button onClick={logout} className="ml-1.5 text-indigo-600 hover:underline">Logout</button>
           </div>
-          {/* R-51: browsers reserve F6/F12/Alt+digits etc. in tab context; an
-              app-mode (standalone) zprime window gets every key back. One
-              notice line — the shortcut chips live in the Shell rail only. */}
-          <p
-            className="pt-2.5 border-t border-slate-100 text-xs text-slate-400 leading-relaxed"
-            title="Browsers reserve F6, F12 and Alt+digits in tab view. Install app (HTTPS/localhost) or Create shortcut… → Open as window gives every key back. Full notes: README, Shortcut keys & the browser."
-          >
-            Some keys are browser-reserved in tab view — <b>install as an app</b> for the full keyboard.
-          </p>
         </aside>
 
         {/* ---- Level 1: general headings only (middle) ---- */}
@@ -290,10 +281,6 @@ export default function Gateway() {
               </button>
             )
           )}
-          <p className="px-2 pt-2.5 pb-1 text-xs text-slate-400 leading-relaxed">
-            Press a heading's letter — <b>V</b> · <b>K</b> · <b>C</b> · <b>A</b> · <b>R</b> ·{" "}
-            <b>U</b> — then an item's letter. <b>Esc</b> closes the list.
-          </p>
         </div>
 
         {/* ---- Level 2: contents of the selected heading only (right) ---- */}

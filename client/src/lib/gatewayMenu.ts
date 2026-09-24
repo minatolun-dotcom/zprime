@@ -67,9 +67,13 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
         { label: "XML Import", to: `/company/${cid}/import`, letter: "X", hint: "Masters + vouchers" },
         { label: "Cheque Printing", to: `/company/${cid}/cheques`, letter: "J" },
         { label: "Audit Trail", to: `/company/${cid}/audit`, letter: "Z", hint: "Voucher history" },
-        { label: "Company Settings", to: `/company/${cid}/settings` },
       ],
     },
+    // R-59: Company Settings at level 1 (letterless — all 26 letters + 10
+    // digits are allocated; R-53c arithmetic). Tally parks administrative
+    // entry points last on the Gateway too ("Display More"); the Settings
+    // page hosts Users, which deserves one-keystroke-less discoverability.
+    { letter: "·", title: "Company Settings", to: `/company/${cid}/settings` },
   ];
 }
 

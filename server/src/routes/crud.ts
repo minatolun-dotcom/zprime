@@ -153,9 +153,11 @@ export function crud(
       Object.assign(data, parsed.data);
       delete (data as any).id;
     }
+    // beforeSave must see the target id (route params folded in) — some hooks
+    // (R-57 numbering periodicity) validate the row's HISTORY, not just the body.
+    if (opts.beforeSave) data = await opts.beforeSave({ ...data, id }, c);
     delete data.id;
     delete data.companyId;
-    if (opts.beforeSave) data = await opts.beforeSave(data, c);
     await assertCompanyRefs(c, opts.refs, data);
     requireName(data);
     try {
