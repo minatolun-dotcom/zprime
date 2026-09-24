@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import TypeAhead, { Option } from "../components/TypeAhead";
 import { ErrorBanner } from "../components/ui";
-import { get, post, put } from "../lib/api";
+import { get, post, put, del } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate } from "../lib/format";
@@ -545,6 +545,28 @@ export default function VoucherScreen() {
     }
   };
 
+  // R-54 Option A (Tally voucher actions): keyboard delete/cancel use the
+  // same server contracts as the Day Book buttons. Edit mode only.
+  const doDelete = async () => {
+    try {
+      await del(`/api/c/${cid}/vouchers/${voucherId}`);
+      qc.invalidateQueries({ queryKey: ["daybook", cid] });
+      nav(`/company/${cid}/daybook`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  const doCancel = async () => {
+    try {
+      await post(`/api/c/${cid}/vouchers/${voucherId}/cancel`, {});
+      qc.invalidateQueries({ queryKey: ["daybook", cid] });
+      nav(`/company/${cid}/daybook`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+
   useHotkeys({
     // R-35: ledger-on-the-fly — Alt+C from anywhere on the voucher screen.
     // Prefill comes from the focused input's typed text when it is a ledger or
@@ -569,16 +591,26 @@ export default function VoucherScreen() {
       : {}),
     // R-34 (D-1): the advertised chords actually fire — same guards as the chips.
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name)
-      ? { "Alt+G": () => applyGst() }
+      ? { "Alt+J": () => applyGst() } // R-54: Tally's statutory-adjustment slot; Alt+G is now Go To
       : {}),
     ...(vType?.category === "Accounting" ? { "Alt+T": () => applyTds() } : {}),
-  }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView, quickOpen, quickName, quickGroupId, quickTaxability, quickRate]);
+    // R-54 Option A (Tally voucher actions): Alt+D delete, Alt+X cancel —
+    // edit mode only, never while the quick-create modal is up, confirm-guarded.
+    ...(isEdit && !cancelledView && !quickOpen ? {
+      "Alt+D": () => { if (window.confirm("Delete this voucher? This cannot be undone.")) doDelete(); },
+      "Alt+X": () => { if (window.confirm("Cancel this voucher? It stays in the books but is excluded; Uncancel restores it.")) doCancel(); },
+    } : {}),
+  }, [entries, inv, date, number, reference, narration, party, diff, vType, isRcm, cancelledView, quickOpen, quickName, quickGroupId, quickTaxability, quickRate, isEdit]);
 
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
     { key: "F2", label: "Date", onClick: () => (document.getElementById("v-date") as HTMLInputElement)?.focus() },
     ...(hasParty ? [{ key: "F12", label: "Ref / Party", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
-    ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+G", label: "Apply GST", onClick: applyGst }] : []),
+    ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+J", label: "Apply GST", onClick: applyGst }] : []),
+    ...(isEdit && !cancelledView ? [
+      { key: "Alt+D", label: "Delete Voucher", onClick: () => { if (window.confirm("Delete this voucher? This cannot be undone.")) doDelete(); } },
+      { key: "Alt+X", label: "Cancel Voucher", onClick: () => { if (window.confirm("Cancel this voucher? It stays in the books but is excluded; Uncancel restores it.")) doCancel(); } },
+    ] : []),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) ? [{ key: "Alt+R", label: isRcm ? "RCM ✓ (toggle off)" : "Reverse Charge", onClick: () => setIsRcm((x) => !x) }] : []),
     ...(vType?.category === "Accounting" ? [{ key: "Alt+T", label: "Deduct TDS", onClick: applyTds }] : []),
     { key: "Alt+C", label: "Create Ledger", onClick: () => { if (!cancelledView) openQuickCreate("", quickTriggerFromFocus()); } },

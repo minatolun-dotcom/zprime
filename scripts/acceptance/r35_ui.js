@@ -139,14 +139,14 @@ const ok = (name, cond, detail) => {
   let grid2 = await D.readGrid();
   ok("party row auto-inserted at grid top with the new ledger", grid2[0]?.name === "New Buyer Traders", grid2.map((g) => g.name));
 
-  // Finish the sale: income line + amount, Alt+G must see the fresh party (27 state)
+  // Finish the sale: income line + amount, apply-GST (chip) must see the fresh party (27 state)
   const lt2 = page.locator("table").filter({ hasText: "Ledger" }).last();
   while ((await lt2.locator("tbody tr").count()) < 2) { await page.click('button:has-text("+ Add Ledger")'); await D.sleep(120); }
   const s1 = lt2.locator("tbody tr").nth(1);
   await D.pickAhead(s1.locator("input").first(), "R35 Sales Main");
   await s1.locator('input[type="number"]').nth(1).fill("5000");
   await D.sleep(200);
-  await page.keyboard.press("Alt+g");
+  await page.keyboard.press("Alt+j"); // R-54: apply-GST moved from Alt+G (Alt+G is Go To now)
   await D.sleep(400);
   grid2 = await D.readGrid();
   const cg = grid2.find((g) => g.name === "CGST"), sg = grid2.find((g) => g.name === "SGST/UTGST");

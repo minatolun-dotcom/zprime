@@ -20,6 +20,10 @@ export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
       else if (e.ctrlKey && (k === "h" || k === "H")) combo = "Ctrl+H";
       else if (e.altKey && /^[0-9]$/.test(k)) combo = `Alt+F${k}`;
       else if (k === "Escape") combo = "Escape";
+      // R-54 (Tally reports): +/- next/previous artifact/report date.
+      // "=" and "_" are the unshifted siblings of "+" and "-" on US layouts.
+      else if (k === "+" || k === "=") combo = "+";
+      else if (k === "-" || k === "_") combo = "-";
       else if (k === "Enter" && e.altKey) combo = "Alt+Enter";
       // R-23: single-letter Alt chords (Alt+R reverse-charge toggle). Only when
       // no modifier beyond Alt — avoids swallowing AltGr international layouts.

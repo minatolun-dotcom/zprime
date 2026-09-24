@@ -55,8 +55,25 @@ migrates cleanly instead of staying dead).
 - Cheque printing (printable cheque face with amount in words)
 - Company settings, simple JWT login
 
-**Keyboard workflow**
-`F2` date · `F5/F8/F9` quick vouchers · `Ctrl+A` accept/save · `Alt+F1` detailed/condensed · `Esc` back · Enter adds a new entry row · type-ahead ledger & item search
+**Keyboard workflow (TallyPrime parity — R-54)**
+
+| Key | Action |
+|---|---|
+| `F2` | Date / period (voucher date, Day Book + report date inputs) |
+| `F4` `F5` `F6` `F7` `F8` `F9` | Contra · Payment · Receipt · Journal · Sales · Purchase — from any screen |
+| `Alt+F5`…`Alt+F9`, `Ctrl+F7` | Debit Note · Credit Note · Stock Journal · Delivery Note · Receipt Note · Physical Stock |
+| `Ctrl+A` | Accept / save voucher (accepts the on-the-fly ledger modal too) |
+| `Alt+J` | Apply GST on Sales/Purchase/CN/DN (Tally's statutory-adjustment slot) |
+| `Alt+C` | Create ledger on the fly |
+| `Alt+D` / `Alt+X` | Delete / cancel the open voucher (edit mode, confirm-guarded) |
+| `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
+| `F3` | Change company (company select) |
+| `+` / `-` | Next / previous report day (period length kept) |
+| `Alt+F1` | Detailed / condensed report view |
+| `Esc` | Back the way you came; closes modals; the Gateway is the last stop |
+| `Enter` | Drill down / add entry row · type-ahead ledger & item search |
+
+The Gateway additionally carries Tally-style menu mnemonics (`V` `K` `C` `A` `R` `U` + per-item letters/digits — zprime's own layer; official TallyPrime documents no such global table). Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
 
 **Shortcut keys & the browser (R-51)**
 In a normal browser **tab**, some chords are reserved by the browser itself and never reach the page — notably `F5` (reload in some browsers), `F6` (address bar), `F11/F12` (fullscreen/DevTools), `Alt+1–9` (Firefox tab switch) and `Alt`-letter menu access (Firefox/Linux). zprime intercepts everything the browser forwards, but it cannot intercept what the browser consumes first.

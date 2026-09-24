@@ -14,7 +14,7 @@
  *  - Party A/c header exists only for Sales/Purchase/CN/DN; party row auto-inserts
  *    at grid top with amount 0 — we fill it LAST with the balancing total.
  *  - Ctrl+A saves; F-keys open vouchers from Day Book; duty lines entered manually
- *    (Alt+G helper is probed separately as a suspected wrong-base bug).
+ *    (Apply-GST helper is probed separately as a suspected wrong-base bug).
  *  - Physical Stock: qty field = COUNTED qty (server computes diff at running avg).
  */
 const { execSync } = require("child_process");
@@ -908,7 +908,7 @@ async function gstHelperProbe() {
     const grid = await D.readGrid();
     const duty = grid.filter((g) => /GST/i.test(g.name));
     if (duty.length === 0) {
-      D.record(true, "ux/apply-gst-base", "Alt+G probe: no duty rows inserted (helper inert without duty ledgers in grid) — inconclusive",
+      D.record(true, "ux/apply-gst-base", "Apply-GST probe: no duty rows inserted (helper inert without duty ledgers in grid) — inconclusive",
         JSON.stringify(grid.map((g) => g.name)));
     } else {
       // R-34 (F-34-1): the helper posts BOTH halves on the ₹10,000 base @18% —
@@ -918,7 +918,7 @@ async function gstHelperProbe() {
       const cgst = grid.find((g) => g.cr != null && Math.abs(g.cr - 900) < 0.02 && /CGST/i.test(g.name));
       const sgst = grid.find((g) => g.cr != null && Math.abs(g.cr - 900) < 0.02 && /SGST/i.test(g.name));
       const ok = !!cgst && !!sgst;
-      D.record(!!ok, "ux/apply-gst-base", "Alt+G applies GST on the sales-line base: BOTH halves at ₹900 (R-34 F-34-1)",
+      D.record(!!ok, "ux/apply-gst-base", "Apply-GST (Alt+J chip) applies GST on the sales-line base: BOTH halves at ₹900 (R-34 F-34-1)",
         JSON.stringify(duty));
     }
   } finally {

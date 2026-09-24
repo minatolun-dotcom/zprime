@@ -7,14 +7,21 @@
 // 3) item letters win over heading letters (R then T -> Trial Balance);
 // 4) globally unique letters fire directly from the bare Gateway (R-53c:
 //    P = Purchase Register, F = Profit & Loss, X = XML Import, G = Groups —
-//    same option under Create and Alter counts once, so G fires too);
+//    same option under Create and Alter counts once, so G fires too;
+//    v1.50.1: W = Process Payroll, 2 = Stock Groups, 8 = TCS Report — every
+//    option except Company Settings carries a shortcut now);
 // 5) Esc closes the contents pane back to the neutral hint;
 // 6) all 31 item labels present as links + Day Book as direct heading link;
 // 7) F5/F8/F9 chrome buttons present; F2 is NOT on the Gateway (F2 = date);
-// 8) letter uniqueness is GLOBAL (R-53c rule 1): no letter is shared between
-//    any heading and any pane item, or between two different panes — items
-//    whose every name letter is taken ship letterless (arrows/Enter/click);
-// 9) no page errors during the scenario.
+// 8) letter uniqueness is GLOBAL (R-53c rule 1): no letter or digit is
+//    shared between any heading and any pane item, or between two panes;
+// 9) Esc on a master page (Alter → Ledgers) closes the slide-over first,
+//    then goes history-back to the Gateway (v1.50.1: the editor no longer
+//    claims Esc while closed);
+// 10) the Gateway is the LAST STOP: browser Back from the Gateway never
+//    reaches the company-select page (Logout / Switch Company only), the
+//    ← arrow does not render on the Gateway but does on Day Book;
+// 11) no page errors during the scenario.
 // Prereqs: fresh compose stack at localhost:3000 (admin/admin123).
 const D = require("./driver.js");
 
@@ -31,7 +38,10 @@ const ok = (name, cond, detail) => {
   page.on("pageerror", (e) => pageErrors.push(String(e?.message ?? e)));
 
   await D.login();
-  await D.createCompany({ name: "R53 Gateway UI", gstin: "27R53GWUI0A1B2", stateCode: "27", fyStart: "2026-04-01", booksBegin: "2026-04-01" });
+  // Unique per run: section 12 clicks the card by name on the select page —
+  // a stale duplicate on a reused volume would navigate to the wrong cid.
+  const coName = `R53 GW ${Date.now().toString(36)}`;
+  await D.createCompany({ name: coName, gstin: "27R53GWUI0A1B2", stateCode: "27", fyStart: "2026-04-01", booksBegin: "2026-04-01" });
   const cid = D.cid();
   ok("company created, gateway open", !!cid, cid);
   const gw = `${D.BASE}/company/${cid}`;
@@ -97,6 +107,21 @@ const ok = (name, cond, detail) => {
   await D.sleep(600);
   ok("G fires Groups (Create/Alter share the option, deduped by target)", page.url().includes("/masters/groups"), page.url());
 
+  await gateway();
+  await page.keyboard.press("W");
+  await D.sleep(600);
+  ok("W fires Process Payroll from anywhere", page.url().includes("/payroll"), page.url());
+
+  await gateway();
+  await page.keyboard.press("2");
+  await D.sleep(600);
+  ok("2 fires Stock Groups (digit fallback slot)", page.url().includes("/masters/stock-groups"), page.url());
+
+  await gateway();
+  await page.keyboard.press("8");
+  await D.sleep(600);
+  ok("8 fires TCS Report (digit fallback slot)", page.url().includes("/reports/tcs"), page.url());
+
   // ---- 5) Esc closes the pane ----
   // (Section 4 ends with direct navigations, so open a pane deliberately.)
   await gateway();
@@ -138,7 +163,9 @@ const ok = (name, cond, detail) => {
   // ---- 7) fkey chrome: F5/F8/F9 present, F2 absent (F2 = date/period, Tally) ----
   await gateway();
   for (const k of ["F5", "F8", "F9"]) {
-    ok(`fkey rail has ${k}`, await page.locator(`aside button:has-text("${k}")`).isVisible().catch(() => false));
+    // .first(): the data-driven rail (R-54) also carries Alt+F5 etc., which
+    // substring-match "F5" — multiple hits would strict-violate isVisible().
+    ok(`fkey rail has ${k}`, await page.locator(`aside button:has-text("${k}")`).first().isVisible().catch(() => false));
   }
   ok("Gateway rail has no F2 (F2 belongs to date/period)", !(await page.locator('aside button:has-text("F2")').isVisible().catch(() => false)));
 
@@ -202,7 +229,43 @@ const ok = (name, cond, detail) => {
   const f2Focus = await page.evaluate(() => document.activeElement?.getAttribute("type") === "date");
   ok("F2 on Day Book focuses the date (period) input", f2Focus);
 
-  // ---- 11) Esc origin: Gateway -> voucher -> Esc -> Gateway; F2 inert here ----
+  // ---- 11) Esc on a master page: slide-over first, then history-back ----
+  await gateway();
+  await page.keyboard.press("C");
+  await D.sleep(300);
+  await page.locator('a:has-text("Ledgers")').first().click();
+  await D.sleep(600);
+  ok("C -> Ledgers master page open", page.url().includes("/masters/ledgers"), page.url());
+  await page.locator("table tbody tr").first().click();
+  await D.sleep(400);
+  await page.keyboard.press("Escape");
+  await D.sleep(300);
+  ok("Esc closes the slide-over (still on the master page)",
+    page.url().includes("/masters/ledgers") && !(await page.locator(".bg-black\\/30").isVisible().catch(() => false)), page.url());
+  await page.keyboard.press("Escape");
+  await D.sleep(500);
+  ok("Esc again history-backs to the Gateway", new RegExp(`/company/${cid}$`).test(page.url()), page.url());
+
+  // ---- 12) Gateway is the LAST STOP (history barrier) ----
+  await page.goto(`${D.BASE}/companies`, { waitUntil: "domcontentloaded" });
+  await D.sleep(500);
+  await page.locator(`text=${coName}`).first().click();
+  await page.waitForSelector("text=Gateway of zprime", { timeout: 15000 });
+  await D.sleep(400);
+  ok("opened company from the select page", new RegExp(`/company/${cid}$`).test(page.url()), page.url());
+  await page.goBack();
+  await D.sleep(600);
+  ok("browser Back at the Gateway stays on the Gateway (no Companies)",
+    new RegExp(`/company/${cid}$`).test(page.url()) && !page.url().includes("/companies"), page.url());
+  ok("no back arrow on the Gateway header", !(await page.locator("header button[aria-label=Back]").isVisible().catch(() => false)));
+  await page.keyboard.press("Escape");
+  await D.sleep(400);
+  ok("Esc at the bare Gateway does nothing", new RegExp(`/company/${cid}$`).test(page.url()), page.url());
+  await page.goto(`${D.BASE}/company/${cid}/daybook`, { waitUntil: "domcontentloaded" });
+  await D.sleep(500);
+  ok("back arrow present on Day Book header", await page.locator("header button[aria-label=Back]").isVisible().catch(() => false));
+
+  // ---- 13) Esc origin: Gateway -> voucher -> Esc -> Gateway; F2 inert here ----
   await gateway();
   await page.keyboard.press("F5");
   await D.sleep(600);

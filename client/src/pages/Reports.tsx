@@ -58,11 +58,23 @@ export default function Reports() {
   const { data: ledgers } = useQuery({ queryKey: ["all-ledgers", cid], queryFn: () => get<any[]>(`/api/c/${cid}/ledgers`), enabled: key === "ledger-vouchers" });
   const { data: items } = useQuery({ queryKey: ["all-items", cid], queryFn: () => get<any[]>(`/api/c/${cid}/stock-items`), enabled: key === "stock-summary" });
 
+  // R-54 Option A (Tally reports): +/- steps the period by one day, keeping
+  // the range length. Inert while typing in an input (engine ignores those).
+  const stepPeriod = (dir: number) => {
+    const DAY = 86400000;
+    const f = new Date(`${from}T00:00:00Z`).getTime() + dir * DAY;
+    const t = new Date(`${to}T00:00:00Z`).getTime() + dir * DAY;
+    setFrom(new Date(f).toISOString().slice(0, 10));
+    setTo(new Date(t).toISOString().slice(0, 10));
+  };
+
   useHotkeys({
     // R-53c: F2 = date/period (Tally); Esc-back is owned by Shell.
     F2: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus(),
     "Alt+F1": () => setDetailed(!detailed),
-  }, [cid]);
+    "+": () => stepPeriod(1),
+    "-": () => stepPeriod(-1),
+  }, [cid, from, to]);
 
   const fkeys: FKeyButton[] = [
     { key: "Alt+F1", label: detailed ? "Condensed" : "Detailed", onClick: () => setDetailed(!detailed) },

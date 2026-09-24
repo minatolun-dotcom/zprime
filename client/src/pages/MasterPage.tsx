@@ -119,9 +119,14 @@ export default function MasterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
+  // v1.50.1: claim Esc ONLY while the slide-over editor is open. A permanent
+  // Esc claim starved Shell's history-back — Esc on the master list did
+  // nothing (operator report). Same pattern as VoucherScreen's quick-create
+  // modal: the map omits Escape when no modal is open, so the key falls
+  // through to Shell (history-back / Gateway last stop).
   useHotkeys({
-    Escape: (e) => { e.preventDefault(); setEditing(null); },
-  }, []);
+    ...(editing ? { Escape: (e) => { e.preventDefault(); setEditing(null); } } : {}),
+  }, [editing]);
 
   const openNew = () => {
     setEditing(config.newRow());

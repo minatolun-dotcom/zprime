@@ -2,7 +2,7 @@
 // the Day Book drill-down works, and Apply-GST posts both duty halves.
 // Prereqs: fresh compose stack at localhost:3000 (admin/admin123).
 //
-// D-1: Alt+G / Alt+T chords + chips actually fire on the voucher screen.
+// D-1: Alt+J (apply-GST, moved from Alt+G in R-54) / Alt+T chords + chips fire.
 // D-2: the six advertised Day Book chords open their voucher types (real
 //      key presses — the former "App quirk" is fixed, not worked around).
 // D-3: clicking a Day Book row opens the voucher; row action buttons
@@ -66,7 +66,7 @@ const ok = (name, cond, detail) => {
     ok(`Day Book chord ${chord} opens ${label} (D-2)`, opened, chord);
   }
 
-  // ================= D-1 + F-34-1: Alt+G fires and posts BOTH halves =================
+  // ================= D-1 + F-34-1: Alt+J fires and posts BOTH halves =================
   await D.openVoucher("Sales");
   await page.fill("#v-date", "2026-06-01");
   const partyField = page.locator('xpath=//span[text()="Party A/c"]/following::input[1]');
@@ -87,13 +87,13 @@ const ok = (name, cond, detail) => {
   ok("aside Apply-GST chip fires (D-1)", !!cgst || !!sgst, grid.map((g) => g.name));
   ok("intrastate GST posts BOTH halves (F-34-1)", cgst?.cr === 900 && sgst?.cr === 900, { cgst, sgst });
 
-  // ... and the Alt+G KEYBOARD CHORD fires too (strip via re-apply, then chord)
-  await page.keyboard.press("Alt+g");
+  // ... and the Alt+J KEYBOARD CHORD fires too (strip via re-apply, then chord; R-54 moved the chord from Alt+G to Alt+J — Alt+G is Go To now)
+  await page.keyboard.press("Alt+j");
   await D.sleep(400);
   grid = await D.readGrid();
   const cgst2 = grid.find((g) => g.name === "CGST");
   const sgst2 = grid.find((g) => g.name === "SGST/UTGST");
-  ok("Alt+G keyboard chord fires (D-1)", !!cgst2 && !!sgst2, grid.map((g) => g.name));
+  ok("Alt+J keyboard chord fires (D-1)", !!cgst2 && !!sgst2, grid.map((g) => g.name));
 
   await page.keyboard.press("Escape"); await D.sleep(300);
 

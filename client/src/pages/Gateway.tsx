@@ -1,23 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import Shell from "../components/Shell";
+import Shell, { FKeyButton } from "../components/Shell";
 import { useCompany } from "../store";
 import { get } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
 import { today, fyStart, fyEnd } from "../lib/format";
+import { buildGatewayMenu, MenuEntry } from "../lib/gatewayMenu";
 
 interface VoucherTypeRow { id: number; name: string; category: string; functionKey: string | null; }
-
-interface MenuLeaf { label: string; to: string; letter?: string; hint?: string; }
-interface MenuEntry {
-  letter: string;
-  title: string;
-  /** Direct navigation targets (Day Book) skip the contents pane. */
-  to?: string;
-  /** Contents shown in the right pane when the heading is selected. */
-  items?: MenuLeaf[];
-}
 
 export default function Gateway() {
   const { cid } = useParams();
@@ -44,75 +35,10 @@ export default function Gateway() {
     [voucherTypes]
   );
 
-  // R-53b: TallyPrime-faithful Gateway. The menu shows ONLY the general
-  // headings — Masters are reached through Create / Alter, voucher entry
-  // through Vouchers, and reports stay folded under Reports until selected.
-  // R-53c: hot letters are GLOBALLY unique — no two options share a shortcut
-  // letter (headings V/K/C/A/R/U included). The best letter of the option's
-  // own name wins; when every letter of the name is already taken the item
-  // ships letterless and stays reachable via arrows + Enter and by clicking.
-  // Losers of a clash and their fallbacks: Purchase Register G→P (P&L keeps
-  // F of "ProFit"), Sales Register keeps S over Stock Groups/Company
-  // Settings, Voucher Types keeps Y (tYpes) over Payables, TDS Sections
-  // keeps D over TDS Report/Audit Trail, Employees keeps E over Receivables.
-  const masters = useMemo<MenuLeaf[]>(() => [
-    { label: "Ledgers", to: `/company/${cid}/masters/ledgers`, letter: "L", hint: "Create / alter ledger accounts" },
-    { label: "Groups", to: `/company/${cid}/masters/groups`, letter: "G", hint: "Account groups (28 pre-defined)" },
-    { label: "Stock Items", to: `/company/${cid}/masters/stock-items`, letter: "I", hint: "Inventory items" },
-    { label: "Units of Measure", to: `/company/${cid}/masters/units`, letter: "N" },
-    { label: "Stock Groups", to: `/company/${cid}/masters/stock-groups` },
-    { label: "Godowns / Locations", to: `/company/${cid}/masters/godowns`, letter: "O" },
-    { label: "Voucher Types", to: `/company/${cid}/masters/voucher-types`, letter: "Y" },
-    { label: "TDS Sections", to: `/company/${cid}/masters/tds-sections`, letter: "D" },
-    { label: "TCS Sections", to: `/company/${cid}/masters/tcs-sections` },
-    { label: "Employees & Payroll", to: `/company/${cid}/masters/employees`, letter: "E" },
-  ], [cid]);
-
-  const entries: MenuEntry[] = useMemo(() => [
-    {
-      letter: "V",
-      title: "Vouchers",
-      items: [
-        ...acct.map((v) => ({ label: v.name, to: `/company/${cid}/voucher/${v.id}/new`, hint: v.functionKey ?? "" })),
-        { label: "Process Payroll", to: `/company/${cid}/payroll`, hint: "Monthly salary vouchers" },
-      ],
-    },
-    { letter: "K", title: "Day Book", to: `/company/${cid}/daybook` },
-    { letter: "C", title: "Create", items: masters },
-    { letter: "A", title: "Alter", items: masters },
-    {
-      letter: "R",
-      title: "Reports",
-      items: [
-        { label: "Balance Sheet", to: `/company/${cid}/reports/balance-sheet`, letter: "B" },
-        { label: "Profit & Loss A/c", to: `/company/${cid}/reports/profit-loss`, letter: "F" },
-        { label: "Trial Balance", to: `/company/${cid}/reports/trial-balance`, letter: "T" },
-        { label: "Cash / Bank Book", to: `/company/${cid}/reports/cash-bank`, letter: "H" },
-        { label: "Sales Register", to: `/company/${cid}/reports/register-sales`, letter: "S" },
-        { label: "Purchase Register", to: `/company/${cid}/reports/register-purchase`, letter: "P" },
-        { label: "Stock Summary", to: `/company/${cid}/reports/stock-summary`, letter: "M" },
-        { label: "Receivables (B/R)", to: `/company/${cid}/reports/receivables` },
-        { label: "Payables (B/P)", to: `/company/${cid}/reports/payables` },
-        { label: "GSTR-1", to: `/company/${cid}/reports/gstr1`, letter: "1" },
-        { label: "GSTR-3B", to: `/company/${cid}/reports/gstr3b`, letter: "3" },
-        { label: "GSTR-9 (Annual)", to: `/company/${cid}/reports/gstr9`, letter: "9" },
-        { label: "TDS Report", to: `/company/${cid}/reports/tds` },
-        { label: "TCS Report", to: `/company/${cid}/reports/tcs` },
-        { label: "Salary Register", to: `/company/${cid}/reports/salary-register` },
-        { label: "Cheque Register", to: `/company/${cid}/reports/cheque-register`, letter: "Q" },
-      ],
-    },
-    {
-      letter: "U",
-      title: "Utilities",
-      items: [
-        { label: "XML Import", to: `/company/${cid}/import`, letter: "X", hint: "Masters + vouchers" },
-        { label: "Cheque Printing", to: `/company/${cid}/cheques` },
-        { label: "Audit Trail", to: `/company/${cid}/audit`, hint: "Voucher history" },
-        { label: "Company Settings", to: `/company/${cid}/settings` },
-      ],
-    },
-  ], [cid, acct, masters]);
+  // R-53b/R-53c/R-54: TallyPrime-faithful Gateway with globally unique hot
+  // letters (full scheme documented in lib/gatewayMenu.ts — the single
+  // source of truth shared with the Alt+G Go To palette).
+  const entries: MenuEntry[] = useMemo(() => buildGatewayMenu(cid ?? "", acct), [cid, acct]);
 
   // Headings only at first view — the contents pane opens on selection.
   const [open, setOpen] = useState<string | null>(null);
@@ -220,17 +146,19 @@ export default function Gateway() {
 
   const openEntry = entries.find((s) => s.title === open) ?? null;
 
-  const f5 = acct.find((v) => v.name === "Payment");
-  const f8 = acct.find((v) => v.name === "Sales");
-  const f9 = acct.find((v) => v.name === "Purchase");
-
   // R-53c: F2 belongs to date/period (Tally behaviour) — the Gateway carries
   // no F2. K (Day Book) is the keyboard path from here.
-  useHotkeys({
-    F5: () => f5 && nav(`/company/${cid}/voucher/${f5.id}/new`),
-    F8: () => f8 && nav(`/company/${cid}/voucher/${f8.id}/new`),
-    F9: () => f9 && nav(`/company/${cid}/voucher/${f9.id}/new`),
-  }, [cid, acct]);
+  // R-54 Option A: bind EVERY seeded voucher-type functionKey (Tally opens
+  // its vouchers from anywhere, not only from Day Book) + Alt+G Go To.
+  const fkeyMap: Record<string, () => void> = {};
+  for (const v of acct) {
+    const fk = (v.functionKey ?? "").trim();
+    if (!fk || fkeyMap[fk]) continue; // first type wins; duplicates ignored
+    fkeyMap[fk] = () => nav(`/company/${cid}/voucher/${v.id}/new`);
+  }
+  const rail: FKeyButton[] = Object.entries(fkeyMap).map(([key, onClick]) => ({ key, label: "", onClick }));
+
+  useHotkeys({ ...fkeyMap }, [cid, acct]);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
@@ -240,11 +168,7 @@ export default function Gateway() {
   return (
     <Shell
       title="Gateway"
-      fkeys={[
-        ...(f5 ? [{ key: "F5", label: "Payment", onClick: () => nav(`/company/${cid}/voucher/${f5.id}/new`) }] : []),
-        ...(f8 ? [{ key: "F8", label: "Sales", onClick: () => nav(`/company/${cid}/voucher/${f8.id}/new`) }] : []),
-        ...(f9 ? [{ key: "F9", label: "Purchase", onClick: () => nav(`/company/${cid}/voucher/${f9.id}/new`) }] : []),
-      ]}
+      fkeys={rail.map((r) => ({ ...r, label: acct.find((v) => (v.functionKey ?? "").trim() === r.key)?.name ?? "" }))}
     >
       {/* R-53b: TallyPrime layout — company context left (info only; the Shell
           fkey rail is the single shortcut surface), general headings middle

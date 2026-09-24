@@ -1,7 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
+import { useQuery } from "@tanstack/react-query";
+import { get } from "../lib/api";
+import GoTo from "./GoTo";
+import { buildGatewayMenu, flattenMenu } from "../lib/gatewayMenu";
 
 export interface FKeyButton { key: string; label: string; onClick?: () => void; }
 
@@ -25,6 +29,15 @@ export default function Shell({
   // phase, later listeners first) and preventDefault() to claim the key, so a
   // modal Esc never also navigates. Deep links (no trail) fall back to the
   // Gateway. Nav redirects and Esc-driven backs are not part of the trail.
+  //
+  // v1.50.1 history barrier (operator rule): the Gateway is the LAST STOP —
+  // browser Back at the Gateway must not climb to the company-select page
+  // (reachable only via Logout / Switch Company), and the ← arrow has no
+  // business on a page without a trail. Opening a company does a full page
+  // load, so the SPA stack beneath the Gateway entry is exactly the
+  // pre-Gateway trail (e.g. Companies) — while the Gateway is mounted we
+  // bury it: every popstate re-pushes the Gateway entry, so Back is a no-op
+  // at the top. Esc at a bare Gateway does nothing — Tally behaviour.
   const navBack = () => {
     if (nav.length > 1) nav(-1);
     else if (cid) nav(`/company/${cid}`);
@@ -36,8 +49,8 @@ export default function Shell({
     if (!breadcrumb || breadcrumb.length === 0) return; // pages own Esc without a trail
     const t = window.setTimeout(() => {
       const handler = (e: KeyboardEvent) => {
-        if (e.key !== "Escape") return; // Esc-back only — any other key is not ours
-        if (e.defaultPrevented) return; // a page-level Esc claimed it (e.g. modal)
+        if (e.key !== "Escape") return; // Esc-back only — any other key is not ours (v1.49 lesson: without this guard every keystroke back-navigates)
+        if (e.defaultPrevented) return; // a page-level handler claimed it (e.g. modal Esc)
         navBackRef.current();
       };
       // Bubble phase: page-level useHotkeys handlers register in capture on the
@@ -56,6 +69,50 @@ export default function Shell({
     };
   }, [breadcrumb]);
 
+  // v1.50.1: the barrier lives for the whole Gateway mount (breadcrumbless
+  // company page). Mounting pushes one same-document duplicate of the
+  // Gateway entry, so the FIRST Back pops within this document (absorbable)
+  // instead of across the document boundary to the page that opened the
+  // company (not absorbable — the browser would unload us). Every popstate
+  // re-pushes the Gateway path, so the buried boundary never surfaces.
+  useEffect(() => {
+    if (!cid) return;
+    if (breadcrumb && breadcrumb.length > 0) return;
+    const gateway = window.location.pathname;
+    const lock = () => window.history.pushState(null, "", gateway);
+    lock();
+    window.addEventListener("popstate", lock);
+    return () => window.removeEventListener("popstate", lock);
+  }, [breadcrumb, cid]);
+
+  // R-54 (Tally): F3 = change company — available on EVERY company page,
+  // including breadcrumbless ones (Gateway) where the Esc-back handler
+  // deliberately does not register. F3 is page-interceptable in tab view
+  // (not in the R-51 browser-reserved set).
+  useEffect(() => {
+    if (!cid) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === "F3") { e.preventDefault(); nav("/companies"); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [cid, nav]);
+
+  // R-54 Option B: Alt+G = Go To (Tally's universal navigator) on every page.
+  // Shares the Gateway's ["voucher-types", cid] query cache — no extra request.
+  const { data: goToVoucherTypes } = useQuery({
+    queryKey: ["voucher-types", cid],
+    queryFn: () => get<{ id: number; name: string; category: string; functionKey: string | null }[]>(`/api/c/${cid}/voucher-types`),
+    enabled: !!cid,
+  });
+  const [goToOpen, setGoToOpen] = useState(false);
+  const goToItems = useMemo(
+    () => flattenMenu(buildGatewayMenu(cid ?? "", (goToVoucherTypes ?? []).filter((v) => v.category === "Accounting" || v.category === "Inventory"))),
+    [cid, goToVoucherTypes]
+  );
+  useHotkeys({ "Alt+G": () => setGoToOpen(true) }, [cid]);
+
   // R-52: standard pages use the full body width — the old max-w-7xl cap idled
   // 400+px on wide monitors while table columns squeezed. `wide` remains as an
   // explicit opt-out hook; both resolve to full width now.
@@ -63,9 +120,11 @@ export default function Shell({
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
+      <GoTo open={goToOpen} items={goToItems} onClose={() => setGoToOpen(false)} />
       <header className="sticky top-0 z-30">
         <div className="bg-indigo-700 text-white shadow-card">
           <div className={`mx-auto flex items-center gap-3 px-5 h-12 ${container}`}>
+          {breadcrumb && breadcrumb.length > 0 && (
             <button
               onClick={() => navBackRef.current()}
               className="text-white/80 hover:text-white text-base px-1 -ml-1"
@@ -74,6 +133,7 @@ export default function Shell({
             >
               ←
             </button>
+          )}
             <Link to={`/company/${cid}`} className="font-bold tracking-tight text-white">
               zprime
             </Link>
