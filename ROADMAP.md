@@ -1,11 +1,12 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.50.0.
+The permanent development roadmap. Current at v1.52.0.
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
 | Release | R-item | Purpose |
 |---|---|---|
+| v1.52.0 | **R-56** | multi-FY Option A (from R-55_INVESTIGATION.md): session current period — Alt+F2 Gateway modal, per-company localStorage lens (`zprime_period_<cid>`), Day Book/report defaults follow, company FY/books untouched; F1 fix — all client defaults honour the stored `financialYearStart` (`useCompanyPeriod`, `fyEndFromBegin`; server `fyStart/fyEnd` accept the stored begin); F2 fix — silent `booksBeginFrom` lower bounds removed (pre-books vouchers count in openings; full-history P&L sentinel 0001-01-02); non-blocking pre-books/future voucher advisories → Day Book amber banner; README New-FY checklist. Option B (per-FY numbering restart) deferred | r56 22/22, r54 26/26, r53 43/43, r34 20, r35 23, r20/r26/r27, run.js 153 fresh volume, final 948, smoke 39 | multi-FY/UX | client format/period/Gateway/DayBook/Reports/VoucherScreen + server util/reports/vouchers/accounting; openings aggregation change covered by full estate |
 | v1.0.0 | — | Initial production release |
 | v1.1.0 | — | Feature/fix release |
 | v1.1.1 | **R-01** | GSTR-1 HSN reporting integrity (purchases/receipt notes no longer pollute HSN Table 12; sales inventory lines reported; HSN/rate snapshot resolution) |

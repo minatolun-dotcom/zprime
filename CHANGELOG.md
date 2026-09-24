@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.52.0 — multi-FY Option A: session current period (Alt+F2), stored-FY defaults, honest date-window handling (IN RELEASE REVIEW 2026-09-24 — commit/tag appended at release)
+## v1.52.0 — multi-FY Option A: session current period (Alt+F2), stored-FY defaults, honest date-window handling (RELEASED 2026-09-24 — commit `06e6dd9c34f5246e4bf1fc9877a4ce91a68b982d`, annotated tag `e4097e1738278cc434e2951bee3765d1a5fe9062`)
 
 **R-56 implements Option A of the R-55 multi-FY study** (`R-55_INVESTIGATION.md`): Tally's recommended "Change Current Period" model — one company, balances carry forward, the period is a lens — plus the study's two client findings fixed.
 

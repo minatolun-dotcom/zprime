@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.52.0
+
+- **Released:** 2026-09-24
+- **R-item:** R-56 — multi-FY Option A: session current period (Alt+F2), stored-FY defaults, honest date windows (from `R-55_INVESTIGATION.md`)
+- **Commit:** `06e6dd9c34f5246e4bf1fc9877a4ce91a68b982d` (annotated tag `e4097e1738278cc434e2951bee3765d1a5fe9062`)
+- **Purpose:** Tally's recommended "Change Current Period" multi-FY model, per the approved R-55 Option A. **Session current period:** Alt+F2 on the Gateway opens a Change Period modal — a per-company session period persisted in `localStorage` (`zprime_period_<cid>`; `loadSessionPeriod`/`saveSessionPeriod`/`clearSessionPeriod` in format.ts); the Gateway company block shows the period line (`Period dd-mm-yyyy → dd-mm-yyyy` when set, `Period: Full FY` otherwise; clickable) with **Reset to FY**; Day Book and every report **default to the session period**; company data untouched — the period is a lens, not books (balances carry forward). **F1 fixed:** all client default windows derive from the **stored `financialYearStart`** — Gateway FY line = stored begin → begin+1y−1d (new `fyEndFromBegin`); Day Book/Reports via the new `useCompanyPeriod` hook (session period first, stored FY second, April fallback while the company query loads, explicit page changes override; `to` stays running `today()`); server `fyStart`/`fyEnd` accept the stored begin and the reports router passes `company.financialYearStart` through. **F2 fixed:** the silent `booksBeginFrom` lower bounds removed from `ledgerBalances` (prior movements), `balanceSheet` (P&L, full history via the `EARLIEST_DATE = 0001-01-02` sentinel — one day up so `addDays(from,-1)` stays inside Postgres' date range) and `ledgerVouchers` (prior running balance) — pre-books-begin vouchers now **count in openings** (opening-balance master field still additive); `voucherDateWindowWarnings` attaches **non-blocking** pre-books/future advisories to voucher create/edit 200s (Tally warns, never blocks) — VoucherScreen forwards them via a one-shot sessionStorage hand-off rendered as a self-clearing amber Day Book banner. README: "New Financial Year (Tally's recommended path)" checklist. **Option B (per-FY voucher-numbering restart) remains deferred.**
+- **Verification:** typecheck server+client clean · build clean · new `r56_ui.js` **22/22** (July-begin company proves non-April defaults on the Gateway FY line + Day Book + Trial Balance; Alt+F2 open → apply → localStorage persisted → Day Book/Reports follow → user date-change override → Reset to FY; pre-books voucher: 200 + books-begin warning + still listed in a covering Day Book window + counted in a ledger opening (400) after books-begin; future voucher warns; second company shows its own April FY and no session period — per-company isolation) · r54 **26/26** · r53 **43/43** · r34 **20/20** · r35 **23/23** · r20 12 · r26 12 · r27 15 · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · `git diff --check` clean
+- **Immutability:** v1.52.0 and all prior tags are immutable
+
+---
+
 ## v1.51.0
 
 - **Released:** 2026-09-24
