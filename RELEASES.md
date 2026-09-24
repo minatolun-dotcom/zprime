@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.53.0
+
+- **Released:** 2026-09-24
+- **R-item:** R-57 (per-FY voucher-numbering restart, from `R-55_INVESTIGATION.md` Option B) + R-58 (company users: creator-only member management + password reset) + R-59 (Gateway discoverability + Day Book provance)
+- **Commit:** `a89d441a4ed42bcc824a616fc3ebe31710751d5e` (annotated tag `894f6d65d386977b5fb943549fafb8203247d82b`)
+- **Purpose:** **R-57** — Tally's "voucher numbering restarts each financial year" as a per-type `numbering_periodicity` ('never' default = the classic single counter, byte-identical; 'fiscal' = the auto counter restarts each FY at Start Number). Migration 0016: `vouchers.fy` / `voucher_counters.fy` = the numbering **bucket**, NOT NULL DEFAULT '' (FY-begin key for fiscal rows, '' for the never-series) + unique indexes rebuilt with the fy dimension — **NOT NULL is load-bearing: a NULL bucket defeats a unique index (SQL treats NULLs as distinct)**, live-reproduced mid-cycle as one never-series split across ~20 divergent counter rows with duplicate-number 409 storms (caught by run.js). '' folds pre-R-57 rows into the never-bucket with zero backfill; fiscal types may reuse a manual number across FYs, never within one bucket. Create/edit/import stamp the bucket (edit re-derives from the moved date); `/vouchers/next-number?date=` peeks the queried date's FY bucket; periodicity locked once vouchers exist (409, flip = body value ≠ stored value so renames pass; crud.ts PUT beforeSave now sees the target id). Client: Restart Numbering selector + VoucherScreen date-aware re-peek. **R-58** — the missing UI for R-03's membership API, per the approved no-roles model (every member full access; creator manages users): Company Settings → Users card — list ("can manage users" tag on the creator), Add user (one call creates user + membership), Remove (confirm; last-owner 409 surfaced), Reset password (new owner-only `PATCH /companies/:id/members/:userId`, 404 no-leak, 403 for plain members — UI hides AND API refuses); removed users keep their login but instantly lose the company. **R-59** — Company Settings at level 1 on the Gateway (letterless `·` chip, Tally's "Display More" slot; U pane keeps its items; Alt+G palette unchanged); `/vouchers` + `/vouchers/:id` join R-22 actor stamps — Day Book type pill tooltips "Posted by <user> · Last edited by <user>"; the two Gateway hint lines removed per operator request.
+- **Verification:** typecheck server+client clean · build clean · `r59_ui.js` **11/11** · `r58_ui.js` **15/15** ×3 consecutive · `r57_ui.js` **21/21** (fiscal restart F-1 per FY, within-FY continuation, peek per date, manual dup refused within FY / reused across FYs, R-10 replay intact, edit re-stamps bucket, flip refused both directions) · r56 **22/22** · r54 **26/26** · r53 **43/43** · r34 **20/20** · r35 **23/23** · r20 12 · r26 12 · r27 15 · run.js **153/153** fresh volume (caught the counter-split regression) · final_regression **948/948** · smoke **39/39** · counter-bucket uniqueness verified in psql (total rows = distinct buckets) · `git diff --check` clean
+- **Immutability:** v1.53.0 and all prior tags are immutable
+
+---
+
 ## v1.52.0
 
 - **Released:** 2026-09-24
