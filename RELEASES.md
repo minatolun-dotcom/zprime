@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.50.0
+
+- **Released:** 2026-09-24
+- **R-item:** R-52 + R-53 + R-53c — one-line text fit + TallyPrime-style Gateway with globally unique hot letters
+- **Commit:** `7d0dcf2f6ccdde29e7b8a87bb454cfc468f520af` (annotated tag `e09d0844da4b0e636861008b2662aa1792a8b0cc`; pushed)
+- **Purpose:** **R-52** — dates snap at their own hyphens and inline pills break mid-word (Day Book rows stretched to 58px); `.cell-nowrap`/`.pill` tokens applied across DayBook/Reports/AuditTrail/ChequePrint, fkey rail w-64 (labels one line), `max-w-7xl` body cap dropped (448px idle at 1920 recovered), Masters Del `leading-none` — CSS/class strings only, zero logic. **R-53** — Gateway mirrors TallyPrime (layout verified against Tally documentation): company info rail left, general headings only at rest (**V**ouchers · **K** Day Book direct · **C**reate · **A**lter · **R**eports · **U**tilities; masters under Create/Alter), right pane = the one selected heading's contents, duplicate Shortcuts card removed (Shell rail is the single shortcut surface). **R-53c** (operator rules): (1) hot letters **globally unique** — no two options share a letter (headings included); best letter of the option's own name wins, name-clash items ship letterless (Stock Groups, TCS Sections, Process Payroll, Receivables, Payables, TDS Report, TCS Report, Salary Register, Cheque Printing, Audit Trail, Company Settings — arrows/Enter/click reachable); Purchase Register G→P, Profit & Loss keeps **F** of "ProFit", GSTR digits 1/3/9 kept; Create/Alter render one shared masters option set and the key handler dedupes by target. (2) **Esc = true history-back** owned by Shell — Day Book → voucher → Esc returns to the Day Book, Gateway-F5 voucher → Esc returns to the Gateway, modals still claim Esc first; the interim every-keydown `navBack` bug (phantom letter navigation + run.js crash) was found via a CDP listener probe and fixed with a key guard + bubble-phase listener. (3) Gateway rail = F5/F8/F9 only (K is the Day Book keyboard path); **F2 = date/period** like TallyPrime (Day Book date-input focus, inert on the Gateway).
+- **Verification:** typecheck+build clean · `r53_ui.js` **32/32** (global letter-uniqueness scan across headings + all four panes, direct-fire P/F/X/G, Esc-origin both paths, F2 both surfaces, 31 labels + Day Book direct link, zero page errors) · r20 **12/12** · r26 **12/12** · r27 **15/15** · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · `git diff --check` clean
+- **Immutability:** v1.50.0 and all prior tags are immutable
+
+---
+
 ## v1.49.0
 
 - **Released:** 2026-09-23

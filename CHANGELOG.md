@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.50.0 — R-52: one-line text fit + full-width body · R-53: TallyPrime-style Gateway (PENDING — holding at RELEASE_REVIEW; CSS-only + one client page)
+## v1.50.0 — R-52: one-line text fit + full-width body · R-53/R-53c: TallyPrime-style Gateway, globally unique hot letters (RELEASED 2026-09-24 — commit `7d0dcf2f6ccdde29e7b8a87bb454cfc468f520af`, annotated tag `e09d0844da4b0e636861008b2662aa1792a8b0cc`, pushed)
 
 **Investigation (`R-52_INVESTIGATION.md`, all findings DOM-measured at 1366+1920):** two systemic wrap bugs — (1) dates snap at their own hyphens (`dd-mm-yyyy` break points; GSTR-1 date wrapped in a 72px cell on a 1686px table) and (2) inline pills break mid-word (Day Book type pill 57px × 2 lines stretched every row to 58px — the operator-reported "compressed" Day Book). Plus: fkey rail labels wrapped (rail narrowed to 168px), `max-w-7xl` idled 448px on 1920 monitors, Masters Del button rendered as two stacked line boxes (37px).
 
