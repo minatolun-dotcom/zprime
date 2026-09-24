@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.51.0 — TallyPrime shortcut parity: Go To palette + full voucher-key vocabulary (PENDING — holding at RELEASE_REVIEW; includes the v1.50.1 operator fixes, client-only)
+## v1.51.0 — TallyPrime shortcut parity: Go To palette + full voucher-key vocabulary (RELEASED 2026-09-24 — commit `b31201115147dfe91481d303018d854ab4b1dd02`, annotated tag `e37e7b94d96fa8caded01841c5f32ee3ac2ef9b9`, pushed; includes the v1.50.1 operator fixes, client-only)
 
 **v1.50.1 operator fixes (folded into this release):** master-page Esc-back restored (the slide-over editor claimed Esc while closed; now the hotkey map carries Escape only while `editing` is open) · **the Gateway is the last stop** — Shell pushes a same-document duplicate history entry on breadcrumbless company pages and re-pushes on every popstate, so browser Back can never climb to the company-select page (reachable only via Switch Company / Logout); the ← arrow renders only when a breadcrumb exists; Esc at a bare Gateway does nothing · second-pass shortcut slots **W** Process Payroll, **2** Stock Groups, **4** TCS Sections, **5** Receivables, **6** Payables, **7** TDS Report, **8** TCS Report, **0** Salary Register, **J** Cheque Printing, **Z** Audit Trail (Company Settings stays the one letterless option — 26 letters + 10 digits all taken).
 

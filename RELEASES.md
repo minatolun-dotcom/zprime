@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.51.0
+
+- **Released:** 2026-09-24
+- **R-item:** R-54 — TallyPrime shortcut parity (Go To palette + full voucher key vocabulary) + the v1.50.1 operator fixes
+- **Commit:** `b31201115147dfe91481d303018d854ab4b1dd02` (annotated tag `e37e7b94d96fa8caded01841c5f32ee3ac2ef9b9`; pushed together with v1.50.0)
+- **Purpose:** **Alt+G = Go To** (Tally's universal navigator) — type-to-filter command palette over every Gateway destination on every screen (`GoTo.tsx`; shared menu model `gatewayMenu.ts`; Create/Alter deduped; label-prefix → substring → section ranking); **apply-GST moved to Alt+J**, Tally's statutory-adjustment slot (r34/r35 re-anchored, zero accounting change). **Option A:** Gateway binds every seeded voucher-type functionKey data-driven (F4/F6/F7 from any screen); **Alt+D delete / Alt+X cancel** vouchers from the keyboard (confirm-guarded, R-02 semantics); **F3 = change company** on every page incl. the breadcrumbless Gateway; **+/− step the report period**; README parity table. **v1.50.1 fixes folded in:** master-page Esc-back (slide-over claims Esc only while open); **Gateway as the last stop** (same-document duplicate-entry history barrier — company select reachable only via Switch Company/Logout; ← arrow only with a trail; Esc inert at a bare Gateway); second-pass shortcut slots W/2/4/5/6/7/8/0/J/Z (Company Settings letterless — all 26 letters + 10 digits taken). Reference: `R-54_INVESTIGATION.md`, `TALLYPRIME_SHORTCUTS_REFERENCE.md` (official map, reference-only), `R-55_INVESTIGATION.md` (multi-FY study — not implemented, awaiting approval).
+- **Verification:** typecheck+build clean · `r54_ui.js` **26/26** (new suite: data-driven rail, distinct-type F4/F6/F7 navigation, palette open/filter/navigate/Esc-isolation on Gateway + voucher screens, F3 + Back round-trip, +/- period step/restore, Alt+X isCancelled row-kept, Alt+D gone-from-books, Alt+J posts both GST halves at ₹900 on the unsaved voucher) · r53 **43/43** (rail check relaxed to `.first()` for the richer data-driven rail) · r34 **20/20** · r35 **23/23** · r20 12 · r26 12 · r27 15 · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · `git diff --check` clean
+- **Immutability:** v1.51.0 and all prior tags are immutable
+
+---
+
 ## v1.50.0
 
 - **Released:** 2026-09-24
