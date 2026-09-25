@@ -68,13 +68,14 @@ migrates cleanly instead of staying dead).
 | `Alt+C` | Create ledger on the fly |
 | `Alt+D` / `Alt+X` | Delete / cancel the open voucher (edit mode, confirm-guarded) |
 | `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
+| `Alt+S` | Company Settings (Tally's Stock-Query chord, unused here) — from any screen |
 | `F3` | Change company (company select) |
 | `+` / `-` | Next / previous report day (period length kept) |
 | `Alt+F1` | Detailed / condensed report view |
 | `Esc` | Back the way you came; closes modals; the Gateway is the last stop |
 | `Enter` | Drill down / add entry row · type-ahead ledger & item search |
 
-The Gateway additionally carries Tally-style menu mnemonics (`V` `K` `C` `A` `R` `U` + per-item letters/digits — zprime's own layer; official TallyPrime documents no such global table). Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
+The Gateway carries Tally-style menu mnemonics (`K` `V` `C` `A` `R` `U` in workflow order — Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists the common types first: Payment, Receipt, Sales, Purchase. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
 
 **Shortcut keys & the browser (R-51)**
 In a normal browser **tab**, some chords are reserved by the browser itself and never reach the page — notably `F5` (reload in some browsers), `F6` (address bar), `F11/F12` (fullscreen/DevTools), `Alt+1–9` (Firefox tab switch) and `Alt`-letter menu access (Firefox/Linux). zprime intercepts everything the browser forwards, but it cannot intercept what the browser consumes first.

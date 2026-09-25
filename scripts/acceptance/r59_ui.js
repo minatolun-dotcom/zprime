@@ -1,11 +1,13 @@
 // R-59 browser acceptance: Gateway discoverability of Company Settings +
 // Day Book provance ("Posted by …" / "Last edited by …").
-// A) Company Settings surfaces as a level-1 Gateway entry (letterless "·"
-//    chip, Tally's "Display More" slot) — one click, no pane drill; it is
-//    also served by the Go To palette (Alt+G); the U pane no longer claims
-//    it. B) Every Day Book type pill carries the poster's username in its
-//    tooltip (server joins R-22 provance), covering admin-posted rows and
-//    R-10-replayed ones; the voucher edit screen keeps R-18's audit strip.
+// A) Company Settings surfaces as a level-1 Gateway entry — one click, no
+//    pane drill; R-62 upgraded its chip from letterless "·" to the Alt+S
+//    chord (Tally's Stock-Query slot, unused in zprime; plain S stays with
+//    Sales Register); it is also served by the Go To palette (Alt+G); the
+//    U pane no longer claims it. B) Every Day Book type pill carries the
+//    poster's username in its tooltip (server joins R-22 provance), covering
+//    admin-posted rows and R-10-replayed ones; the voucher edit screen keeps
+//    R-18's audit strip.
 // Prereqs: fresh compose stack at localhost:3000 (admin/admin123).
 const D = require("./driver.js");
 
@@ -50,10 +52,16 @@ const ok = (name, cond, detail) => {
   await D.sleep(300);
   const settingsLink = page.locator('a:has-text("Company Settings")').first();
   ok("Company Settings is a level-1 Gateway link", await settingsLink.isVisible().catch(() => false), "visible");
-  ok("its chip is the letterless · (no hot letter claimed)", (await settingsLink.locator(".fkey-chip").textContent())?.trim() === "·", "chip");
+  ok("its chip advertises the Alt+S chord (R-62; was R-59's letterless ·)", (await settingsLink.locator(".fkey-chip").textContent())?.trim() === "Alt+S", "chip");
   await settingsLink.click();
   await page.waitForURL("**/settings", { timeout: 10000 });
   ok("clicking it opens Company Settings (Users card reachable in one click)", page.url().includes("/settings"), page.url());
+  await page.goto(`${D.BASE}/company/${cid}/daybook`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('input[type="date"]', { timeout: 10000 });
+  await page.keyboard.press("Alt+s");
+  await page.waitForURL("**/settings", { timeout: 8000 });
+  ok("Alt+S also opens Company Settings from Day Book (R-62 chord)", page.url().includes("/settings"), page.url());
+  await page.goto(`${D.BASE}/company/${cid}`, { waitUntil: "domcontentloaded" });
 
   // ---- A2) the Utilities pane no longer claims it; palette still serves it ----
   await page.goto(`${D.BASE}/company/${cid}`, { waitUntil: "domcontentloaded" });

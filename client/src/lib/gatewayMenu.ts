@@ -1,7 +1,14 @@
-// R-54: single source of truth for the Gateway menu tree — consumed by the
+// R-54/R-62: single source of truth for the Gateway menu tree — consumed by the
 // Gateway page (letter navigation) and the Go To palette (Alt+G, Tally's
-// universal navigator). Letters are globally unique per R-53c; Company
-// Settings is letterless by arithmetic (all 26 letters + 10 digits taken).
+// universal navigator). Letters are globally unique per R-53c.
+//
+// R-62 order: headings follow workflow order — Day Book first (where the
+// day's work starts), then Vouchers/Create/Alter/Reports/Utilities/Company
+// Settings. The Vouchers pane floats the common types (Payment, Receipt,
+// Sales, Purchase, then the rest of the seed) to the top. Company Settings
+// carries a real Alt+S chord (Tally's Stock-Query slot, unused in zprime),
+// registered globally in Shell and advertised on its chip; the plain letter
+// S stays with Sales Register. R-59's unpressable · chip is retired.
 
 export interface MenuLeaf { label: string; to: string; letter?: string; hint?: string; }
 export interface MenuEntry {
@@ -11,9 +18,26 @@ export interface MenuEntry {
   to?: string;
   /** Contents shown in the right pane when the heading is selected. */
   items?: MenuLeaf[];
+  /** Full chord shortcut (e.g. "Alt+S") advertised on the chip — for entries
+   *  whose plain letter would collide with an item letter (R-62: Company
+   *  Settings; plain S belongs to Sales Register). Registered in Shell. */
+  chord?: string;
 }
 
 export function buildGatewayMenu(cid: string, acct: { id: number; name: string; functionKey: string | null }[]): MenuEntry[] {
+  // R-62: the Vouchers pane lists the COMMON types first (Payment, Receipt,
+  // Sales, Purchase, then the rest of the seed in seed order), custom types
+  // after, Payroll last — the everyday vouchers are the first thing seen.
+  const COMMON_VOUCHERS = ["Payment", "Receipt", "Sales", "Purchase", "Contra", "Journal"];
+  const commonRank = (name: string) => {
+    const i = COMMON_VOUCHERS.indexOf(name);
+    return i === -1 ? COMMON_VOUCHERS.length : i;
+  };
+  const voucherItems: MenuLeaf[] = [
+    ...[...acct].sort((a, b) => commonRank(a.name) - commonRank(b.name))
+      .map((v) => ({ label: v.name, to: `/company/${cid}/voucher/${v.id}/new`, hint: v.functionKey ?? "" })),
+    { label: "Process Payroll", to: `/company/${cid}/payroll`, letter: "W", hint: "Monthly salary vouchers" },
+  ];
   const masters: MenuLeaf[] = [
     { label: "Ledgers", to: `/company/${cid}/masters/ledgers`, letter: "L", hint: "Create / alter ledger accounts" },
     { label: "Groups", to: `/company/${cid}/masters/groups`, letter: "G", hint: "Account groups (28 pre-defined)" },
@@ -27,15 +51,15 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
     { label: "Employees & Payroll", to: `/company/${cid}/masters/employees`, letter: "E" },
   ];
   return [
+    // R-62 order: workflow order, most-used first — Day Book opens the day's
+    // work, Vouchers posts, Create/Alter shape the books, then reports and
+    // utilities. (Was V/K/C/A/R/U — same headings, better order.)
+    { letter: "K", title: "Day Book", to: `/company/${cid}/daybook` },
     {
       letter: "V",
       title: "Vouchers",
-      items: [
-        ...acct.map((v) => ({ label: v.name, to: `/company/${cid}/voucher/${v.id}/new`, hint: v.functionKey ?? "" })),
-        { label: "Process Payroll", to: `/company/${cid}/payroll`, letter: "W", hint: "Monthly salary vouchers" },
-      ],
+      items: voucherItems,
     },
-    { letter: "K", title: "Day Book", to: `/company/${cid}/daybook` },
     { letter: "C", title: "Create", items: masters },
     { letter: "A", title: "Alter", items: masters },
     {
@@ -69,11 +93,13 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
         { label: "Audit Trail", to: `/company/${cid}/audit`, letter: "Z", hint: "Voucher history" },
       ],
     },
-    // R-59: Company Settings at level 1 (letterless — all 26 letters + 10
-    // digits are allocated; R-53c arithmetic). Tally parks administrative
-    // entry points last on the Gateway too ("Display More"); the Settings
-    // page hosts Users, which deserves one-keystroke-less discoverability.
-    { letter: "·", title: "Company Settings", to: `/company/${cid}/settings` },
+    // R-62: Company Settings carries a REAL shortcut — Alt+S (Tally's
+    // Stock-Query chord, unused in zprime) registered globally in Shell, so
+    // Settings is one chord from any screen. The chip advertises the chord;
+    // the plain letter S stays with Sales Register (no collision). This
+    // replaces R-59's letterless · chip (an unpressable punctuation chip was
+    // a dead end — the operator asked for a real shortcut).
+    { letter: "·", chord: "Alt+S", title: "Company Settings", to: `/company/${cid}/settings` },
   ];
 }
 
@@ -88,7 +114,7 @@ export function flattenMenu(entries: MenuEntry[]): GoToItem[] {
   const out: GoToItem[] = [];
   const seen = new Set<string>();
   for (const s of entries) {
-    if (s.to) out.push({ label: s.title, to: s.to, section: "Gateway", letter: s.letter });
+    if (s.to) out.push({ label: s.title, to: s.to, section: "Gateway", letter: s.chord ?? s.letter });
     for (const it of s.items ?? []) {
       const key = `${it.label}\u0000${it.to}`;
       if (seen.has(key)) continue;

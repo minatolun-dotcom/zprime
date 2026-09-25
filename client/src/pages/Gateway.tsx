@@ -262,9 +262,10 @@ export default function Gateway() {
               <Link
                 key={s.title}
                 to={s.to}
+                title={s.chord ? `${s.title} (${s.chord})` : undefined}
                 className="fkey-item !min-h-[2.5rem]"
               >
-                <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{s.letter}</span>
+                <span className="fkey-chip shrink-0 !px-1.5">{s.chord ?? s.letter}</span>
                 <span className="flex-1 text-left font-medium">{s.title}</span>
               </Link>
             ) : (

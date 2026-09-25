@@ -89,11 +89,18 @@ export default function Shell({
   // including breadcrumbless ones (Gateway) where the Esc-back handler
   // deliberately does not register. F3 is page-interceptable in tab view
   // (not in the R-51 browser-reserved set).
+  // R-62: Alt+S = Company Settings (Tally's Stock-Query chord, unused in
+  // zprime) — same every-screen registration. The GoTo overlay claims keys
+  // while open; both handlers no-op then via defaultPrevented.
   useEffect(() => {
     if (!cid) return;
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === "F3") { e.preventDefault(); nav("/companies"); }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        nav(`/company/${cid}/settings`);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
