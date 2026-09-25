@@ -1,20 +1,24 @@
 // R-53 browser acceptance: the TallyPrime-style Gateway through the REAL UI.
-// 1) layout: company panel left, general headings middle (Vouchers/Day Book/
-//    Create/Alter/Reports/Utilities — headings only, nothing expanded),
-//    contents pane right;
-// 2) hot letters: K fires Day Book from anywhere, R opens Reports contents,
-//    B fires Balance Sheet from inside Reports, C opens Create (masters);
-// 3) item letters win over heading letters (R then T -> Trial Balance);
+// (R-61 reorganized level 1 into Tally's four sections — Masters, Transactions,
+// Utilities, Reports — with Utilities items + headline reports promoted to
+// level 1 and the report tail behind "Display More Reports"; all letters kept
+// their targets, and the freed heading letters R/U fire nothing.)
+// 1) layout: company panel left, the four Tally sections middle (section
+//    headers + promoted items + expander), contents pane right (V/C/A only);
+// 2) hot letters: K fires Day Book from anywhere, B fires Balance Sheet
+//    directly (promoted), C opens Create (masters pane);
+// 3) item letters fire directly from the bare Gateway (R-then-T is now one T);
 // 4) globally unique letters fire directly from the bare Gateway (R-53c:
 //    P = Purchase Register, F = Profit & Loss, X = XML Import, G = Groups —
 //    same option under Create and Alter counts once, so G fires too;
 //    v1.50.1: W = Process Payroll, 2 = Stock Groups, 8 = TCS Report — every
 //    option except Company Settings carries a shortcut now);
 // 5) Esc closes the contents pane back to the neutral hint;
-// 6) all 31 item labels present as links + Day Book as direct heading link;
+// 6) all 31 item labels present as links (level-1 promoted / tail behind the
+//    expander) + Day Book as direct heading link;
 // 7) F5/F8/F9 chrome buttons present; F2 is NOT on the Gateway (F2 = date);
 // 8) letter uniqueness is GLOBAL (R-53c rule 1): no letter or digit is
-//    shared between any heading and any pane item, or between two panes;
+//    shared between any level-1 item and any pane item, or between two panes;
 // 9) Esc on a master page (Alter → Ledgers) closes the slide-over first,
 //    then goes history-back to the Gateway (v1.50.1: the editor no longer
 //    claims Esc while closed);
@@ -67,20 +71,15 @@ const ok = (name, cond, detail) => {
   ok("K fires Day Book from anywhere", page.url().includes("/daybook"), page.url());
 
   await gateway();
-  await page.keyboard.press("R");
-  await D.sleep(300);
-  ok("R opens Reports contents", (await paneHead()) === "Reports", await paneHead());
   await page.keyboard.press("B");
   await D.sleep(600);
-  ok("B fires Balance Sheet from Reports", page.url().includes("balance-sheet"), page.url());
+  ok("B fires Balance Sheet directly (promoted to level 1, R-61)", page.url().includes("balance-sheet"), page.url());
 
-  // ---- 3) item letters win over section letters ----
+  // ---- 3) item letters fire directly (the R-then-T flow is now one key) ----
   await gateway();
-  await page.keyboard.press("R");
-  await D.sleep(300);
   await page.keyboard.press("T");
   await D.sleep(600);
-  ok("R then T fires Trial Balance (item letter precedence)", page.url().includes("trial-balance"), page.url());
+  ok("T fires Trial Balance directly from the bare Gateway", page.url().includes("trial-balance"), page.url());
 
   // ---- 4) globally unique letters fire directly from the bare Gateway ----
   // (R-53c: letters no longer collide across sections, so a single press
@@ -123,9 +122,10 @@ const ok = (name, cond, detail) => {
   ok("8 fires TCS Report (digit fallback slot)", page.url().includes("/reports/tcs"), page.url());
 
   // ---- 5) Esc closes the pane ----
-  // (Section 4 ends with direct navigations, so open a pane deliberately.)
+  // (Section 4 ends with direct navigations, so open a pane deliberately.
+  // R-61: panes exist only for V/C/A — Create is the canonical one here.)
   await gateway();
-  await page.keyboard.press("R");
+  await page.keyboard.press("C");
   await D.sleep(300);
   await page.keyboard.press("Escape");
   await D.sleep(300);
@@ -145,12 +145,20 @@ const ok = (name, cond, detail) => {
     "XML Import", "Cheque Printing", "Audit Trail", "Company Settings",
   ];
   const missing = [];
-  const owners = { "Ledgers": "C", "Groups": "C", "Stock Items": "C", "Units of Measure": "C", "Stock Groups": "C", "Godowns / Locations": "C", "Voucher Types": "C", "TDS Sections": "C", "TCS Sections": "C", "Employees & Payroll": "C", "Process Payroll": "V", "Balance Sheet": "R", "Profit & Loss A/c": "R", "Trial Balance": "R", "Cash / Bank Book": "R", "Sales Register": "R", "Purchase Register": "R", "Stock Summary": "R", "Receivables (B/R)": "R", "Payables (B/P)": "R", "GSTR-1": "R", "GSTR-3B": "R", "GSTR-9 (Annual)": "R", "TDS Report": "R", "TCS Report": "R", "Salary Register": "R", "Cheque Register": "R", "XML Import": "U", "Cheque Printing": "U", "Audit Trail": "U", "Company Settings": "U" };
+  // R-61 ownership: "" = promoted to level 1 (visible with no keypress),
+  // "MORE" = behind the Display More Reports expander, otherwise the pane
+  // letter that owns the label (V/C — A shares C's masters set by design).
+  const owners = { "Ledgers": "C", "Groups": "C", "Stock Items": "C", "Units of Measure": "C", "Stock Groups": "C", "Godowns / Locations": "C", "Voucher Types": "C", "TDS Sections": "C", "TCS Sections": "C", "Employees & Payroll": "C", "Process Payroll": "V", "Balance Sheet": "", "Profit & Loss A/c": "", "Trial Balance": "", "Cash / Bank Book": "", "Sales Register": "", "Purchase Register": "", "Stock Summary": "", "Receivables (B/R)": "MORE", "Payables (B/P)": "MORE", "GSTR-1": "MORE", "GSTR-3B": "MORE", "GSTR-9 (Annual)": "MORE", "TDS Report": "MORE", "TCS Report": "MORE", "Salary Register": "MORE", "Cheque Register": "MORE", "XML Import": "", "Cheque Printing": "", "Audit Trail": "", "Company Settings": "" };
   for (const label of labels) {
     await gateway();
-    // open the heading that owns the label, then assert the link exists
-    await page.keyboard.press(owners[label][0]);
-    await D.sleep(220);
+    // surface the label: open its pane, expand the tail, or nothing
+    if (owners[label] === "MORE") {
+      await page.locator('[data-testid="gateway-more-toggle"]').click();
+      await page.locator('[data-testid="gateway-more-expanded"]').waitFor({ state: "visible", timeout: 5000 });
+    } else if (owners[label]) {
+      await page.keyboard.press(owners[label]);
+      await D.sleep(220);
+    }
     const link = page.locator(`a:has-text("${label}")`).first();
     if (!(await link.isVisible().catch(() => false))) missing.push(label);
   }
@@ -176,6 +184,8 @@ const ok = (name, cond, detail) => {
   // so only Create is sampled; its letters are checked against the rest.)
   await gateway();
   const uniq = (a) => [...new Set(a)];
+  // R-61: the middle column mixes section headers (no chips), promoted items
+  // and panes-owning headings — every single-char chip there must be unique.
   const headingLetters = await page.evaluate(() => {
     const out = [];
     for (const el of document.querySelectorAll(".grid > div:nth-child(2) .fkey-chip")) {
@@ -184,8 +194,10 @@ const ok = (name, cond, detail) => {
     }
     return out;
   });
-  ok("heading letters unique", uniq(headingLetters).length === headingLetters.length, headingLetters);
-  const panes = ["V", "C", "R", "U"];
+  ok("level-1 letters unique", uniq(headingLetters).length === headingLetters.length, headingLetters);
+  // R-61: panes exist only for V/C (A shares C's masters set by design, so
+  // only Create is sampled — same convention as pre-R-61).
+  const panes = ["V", "C"];
   const paneLetters = {};
   const cross = [];
   for (const p of panes) {

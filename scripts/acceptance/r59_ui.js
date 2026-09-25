@@ -55,14 +55,11 @@ const ok = (name, cond, detail) => {
   await page.waitForURL("**/settings", { timeout: 10000 });
   ok("clicking it opens Company Settings (Users card reachable in one click)", page.url().includes("/settings"), page.url());
 
-  // ---- A2) the Utilities pane no longer claims it; palette still serves it ----
+  // ---- A2) Utilities items are level 1 now (R-61); palette still serves Settings ----
   await page.goto(`${D.BASE}/company/${cid}`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("text=Gateway of zprime", { timeout: 15000 });
-  await page.keyboard.press("U");
-  await D.sleep(350);
-  ok("U pane lists XML Import (pane intact)", await page.locator('a:has-text("XML Import")').first().isVisible().catch(() => false), "pane");
-  await page.keyboard.press("Escape");
   await D.sleep(250);
+  ok("Utilities items sit at level 1 (R-61 sectioned Gateway)", await page.locator('a:has-text("XML Import")').first().isVisible().catch(() => false), "level-1");
   await page.keyboard.press("Alt+g");
   await D.sleep(350);
   await page.fill('[data-testid="goto-input"]', "company sett");

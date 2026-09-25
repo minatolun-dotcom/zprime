@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
@@ -200,9 +200,11 @@ export default function Gateway() {
       title="Gateway"
       fkeys={rail.map((r) => ({ ...r, label: acct.find((v) => (v.functionKey ?? "").trim() === r.key)?.name ?? "" }))}
     >
-      {/* R-53b: TallyPrime layout — company context left (info only; the Shell
-          fkey rail is the single shortcut surface), general headings middle
-          (nothing expanded), contents of the one selected heading right. */}
+      {/* R-53b/R-61: TallyPrime layout — company context left (info only; the
+          Shell fkey rail is the single shortcut surface), the four Tally
+          sections (Masters/Transactions/Utilities/Reports) middle with
+          Utilities items + headline reports promoted to level 1, contents of
+          the one selected heading right (V/C/A + panes only). */}
       <div className="grid grid-cols-1 lg:grid-cols-[300px_250px_minmax(0,1fr)] gap-6 items-start">
 
         {/* ---- Company panel (left, Tally's top-left company block) ---- */}
@@ -252,40 +254,70 @@ export default function Gateway() {
           </div>
         </aside>
 
-        {/* ---- Level 1: general headings only (middle) ---- */}
+        {/* ---- Level 1: Tally's four sections (R-61) — "organised into
+            Masters, Vouchers, Utilities, and Reports". Utilities items and
+            the headline reports sit directly here (Tally's seamlessness —
+            no drill to SEE them); V/C/A keep a contents pane, and the report
+            tail folds out in place via the letterless "Display More Reports"
+            (Tally's own expander pattern). ---- */}
         <div className="card p-2">
           <div className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
             Gateway of zprime
           </div>
-          {entries.map((s) =>
-            s.to ? (
-              <Link
-                key={s.title}
-                to={s.to}
-                className="fkey-item !min-h-[2.5rem]"
-              >
-                <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{s.letter}</span>
-                <span className="flex-1 text-left font-medium">{s.title}</span>
-              </Link>
-            ) : (
-              <button
-                key={s.title}
-                onClick={() => {
-                  setOpen(open === s.title ? null : s.title);
-                  setHl(0);
-                }}
-                className={`fkey-item !min-h-[2.5rem] ${open === s.title ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
-              >
-                <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{s.letter}</span>
-                <span className="flex-1 text-left font-medium">{s.title}</span>
-              </button>
-            )
-          )}
+          {entries.map((s) => (
+            <Fragment key={s.title}>
+              {s.header && (
+                <div data-testid="gateway-section-header" className="px-2 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  {s.header}
+                </div>
+              )}
+              {s.to ? (
+                <Link
+                  to={s.to}
+                  title={s.hint}
+                  className="fkey-item !min-h-[2.25rem]"
+                >
+                  <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{s.letter}</span>
+                  <span className="flex-1 text-left font-medium">{s.title}</span>
+                </Link>
+              ) : (
+                <button
+                  onClick={() => {
+                    setOpen(open === s.title ? null : s.title);
+                    setHl(0);
+                  }}
+                  data-testid={s.letter === "…" ? "gateway-more-toggle" : undefined}
+                  className={`fkey-item !min-h-[2.25rem] ${open === s.title ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
+                >
+                  <span className={`fkey-chip shrink-0 ${s.letter === "…" ? "!px-1.5" : "!min-w-[1.7rem] !px-0"}`}>{s.letter}</span>
+                  <span className="flex-1 text-left font-medium">{s.title}</span>
+                </button>
+              )}
+              {s.letter === "…" && open === s.title && (
+                <ul data-testid="gateway-more-expanded" className="pb-1">
+                  {s.items!.map((it, i) => (
+                    <li key={it.label}>
+                      <Link
+                        to={it.to}
+                        onMouseEnter={() => setHl(i)}
+                        className={`fkey-item !min-h-[2.25rem] !pl-4 !rounded-md ${i === hl ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
+                      >
+                        <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{it.letter}</span>
+                        <span className="flex-1 truncate">{it.label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Fragment>
+          ))}
         </div>
 
-        {/* ---- Level 2: contents of the selected heading only (right) ---- */}
+        {/* ---- Level 2: contents of the selected heading only (right). The
+            expander shows its list in place (above), so the pane keeps the
+            neutral hint for it — one list, not two. ---- */}
         <div className="card p-2 min-h-[280px]" data-testid="gateway-contents">
-          {openEntry?.items ? (
+          {openEntry?.items && openEntry.title !== "Display More Reports" ? (
             <>
               <div className="px-2 pt-1 pb-2 flex items-baseline gap-2 flex-wrap">
                 <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
@@ -323,10 +355,10 @@ export default function Gateway() {
           ) : (
             <div className="h-full min-h-[260px] grid place-items-center text-center p-8 text-sm text-slate-400 leading-relaxed">
               <div>
-                Select a menu — or press its letter (<b>V</b> · <b>K</b> · <b>C</b> · <b>A</b> ·{" "}
-                <b>R</b> · <b>U</b>).
+                Select a menu — or press its letter (<b>C</b> · <b>A</b> · <b>V</b> · <b>K</b>).
                 <br />
-                <b>K</b> opens the Day Book from anywhere.
+                <b>K</b> opens the Day Book; <b>X</b>/<b>J</b>/<b>Z</b> and the headline
+                reports (<b>B</b>/<b>F</b>/<b>T</b>/<b>H</b>/<b>S</b>/<b>P</b>/<b>M</b>) fire directly.
               </div>
             </div>
           )}
