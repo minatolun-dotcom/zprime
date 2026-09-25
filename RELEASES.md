@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.56.0
+
+- **Released:** 2026-09-25
+- **R-item:** R-65 — Gateway voucher-hint restore + Day Book data-driven voucher map/rail (operator feedback on R-64 D-3)
+- **Commit:** `e7f5f06676f5f7ad88c73c5121953a7eabff7d3f` (annotated tag `6c89a8b744e2cedef8d6439787120c9fa4a077de`)
+- **Purpose:** the operator reported that R-64's D-3 dedup removed the F-key hint chips from the Gateway's Vouchers pane ("the voucher list option shortcut hint is gone meaning the shortcut letter are not showing") — review agreed: **the hints ARE the menu** (TallyPrime's Gateway shows each voucher's key beside its name; discoverability, not duplication). The pane renders `Kbd wide` hint chips again (F4 Contra … F10, Alt+F5 … Ctrl+F7, W). Second half (operator-approved "Pane + Day Book rail combined"): **Day Book's hand-maintained voucher map + rail replaced with the data-driven pattern** (same as the Gateway; shared `voucherKeyRank` shortcut-class order; page map shadows R-64's global floor) — **fixing the F10 Manufacturing Journal gap**: the hand list omitted F10, so it was missing from Day Book's map AND rail since v1.0 (it only fired there via R-64's global layer); now the rail carries the full 13-key vocabulary and future types appear automatically. Honest re-anchor: r34's D-2 chord loop waits for `aside .fkey-chip` before pressing — the data-driven map is powered by the same state as the rail, so the wait IS the keyboard contract (the cold-load race pre-dated R-65 but was masked by the hardcoded map). Zero mapping changes, zero accounting surface, client-only.
+- **Verification:** typecheck server+client clean · build clean · `r65_ui.js` **12/12** (hint row text `F4Contra` + all 14 chips; F4/F10/Ctrl+F7 fire from the Gateway; Day Book rail = full 13 keys in class order with F10 → Manufacturing Journal; F10 opens MJ from Day Book; zero page errors) · r34 **20/20** ×2 after the re-anchor · r64 13 · r63 25 · r62 15 · r60 16 · r59 12 · r58 15 · r57 21 · r56 22 · r54 26 · r53 43 · r35 23 · r20 12 · r26 12 · r27 15 · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · `git diff --check` clean
+- **Immutability:** v1.56.0 and all prior tags are immutable
+
+---
+
 ## v1.55.0
 
 - **Released:** 2026-09-25
