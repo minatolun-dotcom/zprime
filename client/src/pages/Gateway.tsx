@@ -312,13 +312,17 @@ export default function Gateway() {
                       onMouseEnter={() => setHl(i)}
                       title={it.hint || undefined}
                     >
-                      {/* R-64 (D-3 dedup): the rail owns the visible F-key
-                          facts — pane rows keep names, letters/chords and the
-                          hover title (voucher types render the spacer chip). */}
+                      {/* R-64 (D-3 dedup) revised per operator feedback: the
+                          F-key hint chips are BACK on pane rows — they are
+                          discoverability, not duplication (the operator uses
+                          them to see which key fires which voucher). The rail
+                          remains the action list; the pane remains the map. */}
                       {it.letter ? (
                         <Kbd>{it.letter}</Kbd>
                       ) : it.chord ? (
                         <Kbd wide>{it.chord}</Kbd>
+                      ) : it.hint ? (
+                        <Kbd wide>{it.hint}</Kbd>
                       ) : (
                         <span className="w-[1.7rem] shrink-0" aria-hidden />
                       )}

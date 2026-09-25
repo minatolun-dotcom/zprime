@@ -55,6 +55,10 @@ const ok = (name, cond, detail) => {
   for (const [chord, label] of chordTargets) {
     await page.goto(`${D.BASE}/company/${cid}/daybook`);
     await page.waitForSelector('input[type="date"]');
+    // R-65 re-anchor: the Day Book voucher map is data-driven now (F10 fix);
+    // the rail chips render from the same state that powers the keys, so
+    // waiting for the advertised rail = waiting for the keyboard contract.
+    await page.waitForSelector("aside .fkey-chip");
     await page.keyboard.press(chord); // REAL key press — no button clicking
     let opened = false;
     try {

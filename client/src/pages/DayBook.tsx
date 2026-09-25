@@ -7,6 +7,7 @@ import { get, del, cancelVoucher, uncancelVoucher } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, today, fmtDate, fyStart, fyEnd, fyEndFromBegin, loadSessionPeriod } from "../lib/format";
 import { useCompanyPeriod } from "../lib/period";
+import { voucherKeyRank } from "../lib/gatewayMenu";
 import { useCompany } from "../store";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -101,38 +102,37 @@ export default function DayBook() {
     }
   };
 
+  // R-65: the voucher map + rail are DATA-DRIVEN from the seeded types
+  // (same pattern as the Gateway; R-64's global layer remains the floor).
+  // The old hand-maintained list had drifted: F10 (Manufacturing Journal)
+  // was missing — it only worked here via the global layer since v1.55.0,
+  // and the rail never showed it. Order = shortcut class (voucherKeyRank).
+  const fkeyMap = useMemo(() => {
+    const m: Record<string, () => void> = {};
+    const sorted = [...acctTypes].sort((a: any, b: any) => voucherKeyRank(a.functionKey) - voucherKeyRank(b.functionKey));
+    for (const v of sorted) {
+      const fk = (v.functionKey ?? "").trim();
+      if (!fk || m[fk]) continue; // first type wins; duplicates ignored
+      m[fk] = () => nav(`/company/${cid}/voucher/${v.id}/new`);
+    }
+    return m;
+  }, [acctTypes, cid, nav]);
+
   useHotkeys({
     // R-53c: F2 = date/period (Tally); Esc-back is owned by Shell.
     F2: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus(),
-    F5: () => open("Payment"),
-    F8: () => open("Sales"),
-    F9: () => open("Purchase"),
-    F4: () => open("Contra"),
-    F6: () => open("Receipt"),
-    F7: () => open("Journal"),
-    // R-34 (D-2): every advertised chord fires — the panel chips are the contract.
-    "Alt+F5": () => open("Debit Note"),
-    "Alt+F6": () => open("Credit Note"),
-    "Alt+F7": () => open("Stock Journal"),
-    "Alt+F8": () => open("Delivery Note"),
-    "Alt+F9": () => open("Receipt Note"),
-    "Ctrl+F7": () => open("Physical Stock"),
-  }, [byName, cid]);
+    ...fkeyMap,
+  }, [fkeyMap, byName, cid]);
 
-  const fkeys: FKeyButton[] = [
-    { key: "F4", label: "Contra", onClick: () => open("Contra") },
-    { key: "F5", label: "Payment", onClick: () => open("Payment") },
-    { key: "F6", label: "Receipt", onClick: () => open("Receipt") },
-    { key: "F7", label: "Journal", onClick: () => open("Journal") },
-    { key: "F8", label: "Sales", onClick: () => open("Sales") },
-    { key: "F9", label: "Purchase", onClick: () => open("Purchase") },
-    { key: "Alt+F5", label: "Debit Note", onClick: () => open("Debit Note") },
-    { key: "Alt+F6", label: "Credit Note", onClick: () => open("Credit Note") },
-    { key: "Alt+F7", label: "Stock Journal", onClick: () => open("Stock Journal") },
-    { key: "Alt+F8", label: "Delivery Note", onClick: () => open("Delivery Note") },
-    { key: "Alt+F9", label: "Receipt Note", onClick: () => open("Receipt Note") },
-    { key: "Ctrl+F7", label: "Physical Stock", onClick: () => open("Physical Stock") },
-  ];
+  const fkeys: FKeyButton[] = useMemo(
+    () =>
+      Object.entries(fkeyMap).map(([key, onClick]) => ({
+        key,
+        label: acctTypes.find((v: any) => (v.functionKey ?? "").trim() === key)?.name ?? "",
+        onClick,
+      })),
+    [fkeyMap, acctTypes]
+  );
 
   return (
     <Shell title="Day Book" breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Day Book" }]} fkeys={fkeys}>
