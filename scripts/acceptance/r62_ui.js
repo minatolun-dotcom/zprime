@@ -1,12 +1,16 @@
-// R-62 browser acceptance: Gateway ordering + common vouchers first + Alt+S.
-// 1) headings in workflow order: Day Book first, then Vouchers, Create,
-//    Alter, Reports, Utilities, Company Settings;
-// 2) the Vouchers pane floats the COMMON types to the top (Payment, Receipt,
-//    Sales, Purchase — ahead of Contra/Journal and the notes), Payroll last;
+// R-62 browser acceptance: Gateway ordering + shortcut-class voucher order +
+// Alt+S. Operator-specified arrangement:
+// 1) headings read Create, Alter, Vouchers, Day Book, Reports, Utilities,
+//    Company Settings;
+// 2) the Vouchers pane is ordered by shortcut class — plain F-keys first
+//    (F4…F10), then the Alt+ chords (Alt+F5…Alt+F9), then Ctrl+ (Ctrl+F7),
+//    keyless Payroll last — the same rule the Day Book rail already uses;
 // 3) Company Settings advertises Alt+S on its chip and the chord fires from
 //    the Gateway, Day Book, and a report (every screen, Tally's Stock-Query
 //    chord — unused in zprime before R-62); plain S still fires Sales
-//    Register (no collision), and the palette advertises the chord.
+//    Register (no collision), and the palette advertises the chord;
+// 4) single-letter chips keep the standard box — the Day Book K chip is NOT
+//    wider than the Create C chip (only chord chips like Alt+S stretch).
 // Prereqs: fresh-ish compose stack at localhost:3000 (admin/admin123) with
 // the built client.
 const D = require("./driver.js");
@@ -35,26 +39,24 @@ const ok = (name, cond, detail) => {
   };
   const pane = () => page.locator('[data-testid="gateway-contents"]');
 
-  // ---- 1) heading order: Day Book first, Vouchers second ----
+  // ---- 1) heading order: Create, Alter, Vouchers, Day Book, ... ----
   await gateway();
   const headings = await page.locator(".grid > div:nth-child(2) .fkey-item .flex-1").allTextContents();
   const names = headings.map((t) => t.trim());
-  ok("Day Book is the first Gateway heading (R-62 workflow order)", names[0] === "Day Book", names);
-  ok("Vouchers is the second heading", names[1] === "Vouchers", names);
-  ok("Company Settings is still last", names[names.length - 1] === "Company Settings", names);
-  ok("all seven headings present in order",
-    JSON.stringify(names) === JSON.stringify(["Day Book", "Vouchers", "Create", "Alter", "Reports", "Utilities", "Company Settings"]),
+  ok("all seven headings present in the operator-specified order",
+    JSON.stringify(names) === JSON.stringify(["Create", "Alter", "Vouchers", "Day Book", "Reports", "Utilities", "Company Settings"]),
     names);
 
-  // ---- 2) Vouchers pane: common types first ----
+  // ---- 2) Vouchers pane: shortcut-class order (F-keys, Alt+, Ctrl+) ----
   await gateway();
   await page.keyboard.press("V");
   await D.sleep(350);
   const items = (await pane().locator("a .flex-1").allTextContents()).map((t) => t.trim());
-  ok("Vouchers pane opens with the common four on top",
-    JSON.stringify(items.slice(0, 4)) === JSON.stringify(["Payment", "Receipt", "Sales", "Purchase"]), items.slice(0, 6));
-  ok("Contra and Journal now follow the common four", items[4] === "Contra" && items[5] === "Journal", items.slice(4, 6));
-  ok("Process Payroll is last", items[items.length - 1] === "Process Payroll", items.slice(-2));
+  ok("plain F-keys first, in numeric order",
+    JSON.stringify(items.slice(0, 7)) === JSON.stringify(["Contra", "Payment", "Receipt", "Journal", "Sales", "Purchase", "Manufacturing Journal"]), items);
+  ok("then the Alt+ chords in numeric order",
+    JSON.stringify(items.slice(7, 12)) === JSON.stringify(["Debit Note", "Credit Note", "Stock Journal", "Delivery Note", "Receipt Note"]), items.slice(7));
+  ok("then Ctrl+ chords, keyless Payroll last", items[12] === "Physical Stock" && items[items.length - 1] === "Process Payroll", items.slice(12));
   ok("every seeded type still listed (13 types + Payroll)", items.length === 14, items.length);
 
   // ---- 3) Company Settings = Alt+S ----
@@ -93,6 +95,16 @@ const ok = (name, cond, detail) => {
   const row = page.locator('[data-testid="goto-results"] li').filter({ hasText: "Company Settings" }).first();
   ok("Go To palette advertises Alt+S for Company Settings", (await row.textContent().catch(() => ""))?.includes("Alt+S") ?? false);
   await page.keyboard.press("Escape");
+
+  // ---- 4) single-letter chips keep the standard box (K not stretched) ----
+  await gateway();
+  const chipW = async (label) =>
+    (await page.locator(`.fkey-item:has-text("${label}") .fkey-chip`).first().boundingBox())?.width ?? 0;
+  const kWidth = await chipW("Day Book");
+  const cWidth = await chipW("Create");
+  const altSWidth = await chipW("Company Settings");
+  ok("Day Book K chip same width as Create C chip (standard letter box)", Math.abs(kWidth - cWidth) <= 1, { kWidth, cWidth });
+  ok("chord chip (Alt+S) is the only widened one", altSWidth > kWidth + 4, { altSWidth, kWidth });
 
   ok("no page errors during R-62 scenario", pageErrors.length === 0, pageErrors);
 

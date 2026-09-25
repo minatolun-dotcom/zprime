@@ -75,7 +75,7 @@ migrates cleanly instead of staying dead).
 | `Esc` | Back the way you came; closes modals; the Gateway is the last stop |
 | `Enter` | Drill down / add entry row · type-ahead ledger & item search |
 
-The Gateway carries Tally-style menu mnemonics (`K` `V` `C` `A` `R` `U` in workflow order — Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists the common types first: Payment, Receipt, Sales, Purchase. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
+The Gateway carries Tally-style menu mnemonics (`C` `A` `V` `K` `R` `U` in the operator's order — Create, Alter, Vouchers, Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists types by shortcut class: plain F-keys first (F4…F10), then Alt+ chords, then Ctrl+. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
 
 **Shortcut keys & the browser (R-51)**
 In a normal browser **tab**, some chords are reserved by the browser itself and never reach the page — notably `F5` (reload in some browsers), `F6` (address bar), `F11/F12` (fullscreen/DevTools), `Alt+1–9` (Firefox tab switch) and `Alt`-letter menu access (Firefox/Linux). zprime intercepts everything the browser forwards, but it cannot intercept what the browser consumes first.

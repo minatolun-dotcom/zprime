@@ -2,13 +2,14 @@
 // Gateway page (letter navigation) and the Go To palette (Alt+G, Tally's
 // universal navigator). Letters are globally unique per R-53c.
 //
-// R-62 order: headings follow workflow order — Day Book first (where the
-// day's work starts), then Vouchers/Create/Alter/Reports/Utilities/Company
-// Settings. The Vouchers pane floats the common types (Payment, Receipt,
-// Sales, Purchase, then the rest of the seed) to the top. Company Settings
-// carries a real Alt+S chord (Tally's Stock-Query slot, unused in zprime),
-// registered globally in Shell and advertised on its chip; the plain letter
-// S stays with Sales Register. R-59's unpressable · chip is retired.
+// R-62 (operator-specified arrangement): headings read Create, Alter,
+// Vouchers, Day Book, Reports, Utilities, Company Settings. The Vouchers
+// pane is ordered by shortcut class — F-keys first (F4…F10), then Alt+
+// chords, then Ctrl+ chords, keyless last (same rule as the Day Book rail).
+// Company Settings carries a real Alt+S chord (Tally's Stock-Query slot,
+// unused in zprime), registered globally in Shell and advertised on its
+// chip; the plain letter S stays with Sales Register. R-59's unpressable
+// · chip is retired.
 
 export interface MenuLeaf { label: string; to: string; letter?: string; hint?: string; }
 export interface MenuEntry {
@@ -24,17 +25,26 @@ export interface MenuEntry {
   chord?: string;
 }
 
+/** R-62: sort rank for voucher types by shortcut class — plain F-keys
+ *  (F4…F10, numeric order) first, then Alt+ chords, then Ctrl+ chords,
+ *  keyless types last. Shared by the Vouchers pane and the Gateway rail. */
+export function voucherKeyRank(functionKey: string | null | undefined): number {
+  const k = (functionKey ?? "").trim();
+  let m: RegExpMatchArray | null;
+  if ((m = k.match(/^F(\d+)$/i))) return parseInt(m[1], 10); // F4 → 4 … F10 → 10
+  if ((m = k.match(/^Alt\+F(\d+)$/i))) return 100 + parseInt(m[1], 10);
+  if ((m = k.match(/^Ctrl\+F(\d+)$/i))) return 200 + parseInt(m[1], 10);
+  return 999; // keyless (e.g. Payroll) last
+}
+
 export function buildGatewayMenu(cid: string, acct: { id: number; name: string; functionKey: string | null }[]): MenuEntry[] {
-  // R-62: the Vouchers pane lists the COMMON types first (Payment, Receipt,
-  // Sales, Purchase, then the rest of the seed in seed order), custom types
-  // after, Payroll last — the everyday vouchers are the first thing seen.
-  const COMMON_VOUCHERS = ["Payment", "Receipt", "Sales", "Purchase", "Contra", "Journal"];
-  const commonRank = (name: string) => {
-    const i = COMMON_VOUCHERS.indexOf(name);
-    return i === -1 ? COMMON_VOUCHERS.length : i;
-  };
+  // R-62 (operator-specified arrangement): the Vouchers pane is ordered by its
+  // shortcut class — plain F-keys first (F4, F5, … F10), then the Alt+ chords
+  // (Alt+F5 … Alt+F9), then the Ctrl+ chords (Ctrl+F7), keyless types last —
+  // the same order the Day Book's F-key rail already uses. Pure presentation:
+  // the seed order in the database is untouched.
   const voucherItems: MenuLeaf[] = [
-    ...[...acct].sort((a, b) => commonRank(a.name) - commonRank(b.name))
+    ...[...acct].sort((a, b) => voucherKeyRank(a.functionKey) - voucherKeyRank(b.functionKey))
       .map((v) => ({ label: v.name, to: `/company/${cid}/voucher/${v.id}/new`, hint: v.functionKey ?? "" })),
     { label: "Process Payroll", to: `/company/${cid}/payroll`, letter: "W", hint: "Monthly salary vouchers" },
   ];
@@ -51,17 +61,17 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
     { label: "Employees & Payroll", to: `/company/${cid}/masters/employees`, letter: "E" },
   ];
   return [
-    // R-62 order: workflow order, most-used first — Day Book opens the day's
-    // work, Vouchers posts, Create/Alter shape the books, then reports and
-    // utilities. (Was V/K/C/A/R/U — same headings, better order.)
-    { letter: "K", title: "Day Book", to: `/company/${cid}/daybook` },
+    // R-62 (operator-specified order): Create, Alter, Vouchers, Day Book,
+    // Reports, Utilities, Company Settings — masters first, then the
+    // transaction surfaces, then reports and utilities.
+    { letter: "C", title: "Create", items: masters },
+    { letter: "A", title: "Alter", items: masters },
     {
       letter: "V",
       title: "Vouchers",
       items: voucherItems,
     },
-    { letter: "C", title: "Create", items: masters },
-    { letter: "A", title: "Alter", items: masters },
+    { letter: "K", title: "Day Book", to: `/company/${cid}/daybook` },
     {
       letter: "R",
       title: "Reports",

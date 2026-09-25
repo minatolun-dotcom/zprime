@@ -6,7 +6,7 @@ import { useCompany } from "../store";
 import { get } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
 import { today, fyStart, fyEndFromBegin, fmtDate, loadSessionPeriod, saveSessionPeriod, clearSessionPeriod } from "../lib/format";
-import { buildGatewayMenu, MenuEntry } from "../lib/gatewayMenu";
+import { buildGatewayMenu, voucherKeyRank, MenuEntry } from "../lib/gatewayMenu";
 
 interface VoucherTypeRow { id: number; name: string; category: string; functionKey: string | null; }
 
@@ -186,7 +186,12 @@ export default function Gateway() {
     if (!fk || fkeyMap[fk]) continue; // first type wins; duplicates ignored
     fkeyMap[fk] = () => nav(`/company/${cid}/voucher/${v.id}/new`);
   }
-  const rail: FKeyButton[] = Object.entries(fkeyMap).map(([key, onClick]) => ({ key, label: "", onClick }));
+  // R-62: the rail follows the voucher list's shortcut-class order — F-keys,
+  // then Alt+ chords, then Ctrl+ (voucherKeyRank; Day Book's rail already
+  // follows this order by construction).
+  const rail: FKeyButton[] = Object.entries(fkeyMap)
+    .map(([key, onClick]) => ({ key, label: "", onClick }))
+    .sort((a, b) => voucherKeyRank(a.key) - voucherKeyRank(b.key));
 
   useHotkeys({ ...fkeyMap }, [cid, acct]);
 
@@ -265,7 +270,9 @@ export default function Gateway() {
                 title={s.chord ? `${s.title} (${s.chord})` : undefined}
                 className="fkey-item !min-h-[2.5rem]"
               >
-                <span className="fkey-chip shrink-0 !px-1.5">{s.chord ?? s.letter}</span>
+                {/* R-62: only chord chips widen — single-letter chips keep the
+                    standard 1.7rem box (the K chip must not stretch). */}
+                <span className={`fkey-chip shrink-0 ${s.chord ? "!px-1.5" : "!min-w-[1.7rem] !px-0"}`}>{s.chord ?? s.letter}</span>
                 <span className="flex-1 text-left font-medium">{s.title}</span>
               </Link>
             ) : (
