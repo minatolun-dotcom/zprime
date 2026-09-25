@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.55.0
+
+- **Released:** 2026-09-25
+- **R-item:** R-64 — keyboard correctness + shortcut display dedup + focus polish (Phases A+B+C of `R-64_INVESTIGATION.md`, operator-approved; investigation commit `469372c`)
+- **Commit:** `b37cc90bf9ee2ce954a556f1d9aac1dbf92fd58c` (annotated tag `33c76ad4756afe7e7818cfa38d8f0b0f27a8f48f`)
+- **Purpose:** **D-1** — physical F2 fixed on the voucher screen (the rail chip + header "Date (F2)" advertised it; only the chip's onClick worked — live-probed focus-stays-on-BODY defect; now focuses `#v-date` from the hotkey map). **D-2** — voucher F-keys (F4…F10, Alt+F5…F9, Ctrl+F7) are **global**: Shell registers a data-driven floor layer from the cached voucher-types query (zero extra requests), making the README's "from any screen" claim true; page maps (Gateway/Day Book) shadow it; `useHotkeys` skips `defaultPrevented` events so a keypress can never double-fire (duplicate history entries would break the Esc ladder); the global layer is **suppressed while a voucher is open in the editor** — a stray F-key mid-entry must never silently discard a half-filled voucher (Esc first, then the F-key). **D-4** — the undocumented **Alt+1…9 ≡ Alt+F1…F9** alias is documented in README. **D-3** — new `client/src/components/Kbd.tsx` unifies chip rendering (letter box vs wide chord variant; R-62's special-case class strings retired); the Gateway pane drops per-row F-key hint chips (the adjacent rail owns visible F-key facts; pane keeps names, letters/chords, hover titles); rail headers are screen-specific ("Voucher shortcuts"…); rail rows aria-labelled. **Phase C** — focus anchors after chord navigation (main h1, else `#main-content` with tabIndex=-1 — never BODY); **skip-to-content** link as the first tab stop; **GoTo focuses its input synchronously** (useLayoutEffect — the old 30ms setTimeout left a real race where a fast keystroke after Alt+G fired the Gateway's letter-nav behind the overlay; found by the new dialog-safety test). README truth pass: F10 row, Alt+digit row, chip-vs-key note (click-only chips like F12 Ref/Party are conveniences; everything tabulated fires from the keyboard). Zero mapping changes, zero accounting surface, client-only.
+- **Verification:** typecheck server+client clean · build clean · `r64_ui.js` **13/13** (D-1 F2-focus; D-2 F8-from-report + F5-from-masters + editor suppression; D-4 Alt+1 alias via the rail-chip flip; input safety — CAVKRUW+R/K in master search and "Ramesh" in narration land as text with no navigation; dialog safety — GoTo consumes K, Esc closes overlay then quick-create modal without history-back; focus anchor after Alt+O) · r63 **25/25** · r62 **15/15** · r60 **16/16** · r59 **12/12** · r53 **43/43** · r54 **26/26** · r58 15 · r57 21 · r56 22 · r34 20 · r35 23 · r20 12 · r26 12 · r27 15 · run.js **153/153** fresh volume · final_regression **948/948** · smoke **39/39** · `git diff --check` clean. En-route inventory corrections recorded: Day Book has no Alt+F1 (Voucher + Reports only); one-off r54 cold-cache flake 24/26 passed 26/26 ×3 (suite timing, not app).
+- **Immutability:** v1.55.0 and all prior tags are immutable
+
+---
+
 ## v1.54.0
 
 - **Released:** 2026-09-25
