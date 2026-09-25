@@ -115,6 +115,53 @@ function period(q: any, booksBegin?: string, financialYearStart?: string): { fro
   };
 }
 
+// ---- R-60: cross-FY comparison (Tally F12 "previous year" columns) ----
+/** The comparison window for a period: the SAME-LENGTH slice one year back
+ *  (a full-FY view compares against the full prior FY; an Apr–Jun slice
+ *  against the prior Apr–Jun — Tally's period-report semantics). Returns
+ *  null when the entire prior window precedes the books (no prior history —
+ *  the client renders an honest dash, never a fabricated zero). A partial
+ *  overlap is kept as-is: pre-books dates simply carry no vouchers, and the
+ *  engine already computes honest openings for any window (R-56 F2). */
+function prevWindow(from: string, to: string, booksBegin?: string): { from: string; to: string } | null {
+  const shiftYear = (ds: string) => {
+    const dt = new Date(ds + "T00:00:00Z");
+    const day = dt.getUTCDate();
+    dt.setUTCFullYear(dt.getUTCFullYear() - 1);
+    if (dt.getUTCDate() !== day) dt.setUTCDate(0); // Feb 29 → Feb 28, never Mar 1
+    return dt.toISOString().slice(0, 10);
+  };
+  const pFrom = shiftYear(from), pTo = shiftYear(to);
+  if (booksBegin && pTo < booksBegin) return null;
+  return { from: pFrom, to: pTo };
+}
+
+/** Attach `previous` + `previousWindow` + `compareLabels` to a report payload
+ *  when compare=1. The SAME service function runs over the derived prior
+ *  window — zero engine change; the payload shape is additive so the
+ *  off-state is byte-identical to the pre-R-60 response. */
+async function withCompare<T extends object>(
+  q: any, booksBegin: string | undefined, financialYearStart: string | undefined,
+  window: { from: string; to: string },
+  run: (w: { from: string; to: string }) => Promise<T>,
+  asOf = false,
+): Promise<T & { previous?: T | null; previousWindow?: { from: string; to: string } | null; compareLabels?: { current: string; previous: string | null } }> {
+  const result: any = await run(window);
+  if (q.compare !== "1") return result;
+  const pw = asOf
+    ? prevWindow(window.to, window.to, booksBegin)
+    : prevWindow(window.from, window.to, booksBegin);
+  const label = (w: { from: string }) => {
+    const s = fyStart(w.from, financialYearStart);
+    const y = parseInt(s.slice(0, 4), 10);
+    return `FY ${y}-${String((y + 1) % 100).padStart(2, "0")}`;
+  };
+  result.compareLabels = { current: label(window), previous: pw ? label(pw) : null };
+  result.previousWindow = pw;
+  result.previous = pw ? await run(pw) : null;
+  return result;
+}
+
 /** R-28: format IRP errors for a human-readable `error` message. */
 function irpErrorMessage(errs: unknown): string {
   if (Array.isArray(errs)) {
@@ -127,19 +174,25 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/trial-balance", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    return trialBalance(c, period(req.query as any, company?.booksBeginFrom, company?.financialYearStart));
+    return withCompare(req.query as any, company?.booksBeginFrom, company?.financialYearStart,
+      period(req.query as any, company?.booksBeginFrom, company?.financialYearStart),
+      (w) => trialBalance(c, w));
   });
 
   app.get("/profit-loss", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));
-    return profitAndLoss(c, period(req.query as any, company?.booksBeginFrom, company?.financialYearStart));
+    return withCompare(req.query as any, company?.booksBeginFrom, company?.financialYearStart,
+      period(req.query as any, company?.booksBeginFrom, company?.financialYearStart),
+      (w) => profitAndLoss(c, w));
   });
 
   app.get("/balance-sheet", async (req) => {
     const c = await cid(req);
-    const asOf = (req.query as any).to ?? today();
-    return balanceSheet(c, asOf);
+    const [company] = await db.select().from(companies).where(eq(companies.id, c));
+    return withCompare(req.query as any, company?.booksBeginFrom, company?.financialYearStart,
+      { from: (req.query as any).to ?? today(), to: (req.query as any).to ?? today() },
+      (w) => balanceSheet(c, w.to), true);
   });
 
   app.get("/day-book", async (req) => {

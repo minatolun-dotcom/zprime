@@ -22,6 +22,11 @@ export default function Reports() {
   // April). User changes (date inputs, +/− stepping) override for the page.
   const { from, to, setFrom, setTo } = useCompanyPeriod(company, loadSessionPeriod(cid));
   const [detailed, setDetailed] = useState(true);
+  // R-60: cross-FY comparison (Tally F12 "previous year") — one toggle for
+  // the three headline statements; the server composes the prior window.
+  const COMPARE_KEYS = new Set(["profit-loss", "balance-sheet", "trial-balance"]);
+  const [compare, setCompare] = useState(false);
+  const compareOn = compare && COMPARE_KEYS.has(key ?? "");
   const [ledgerId, setLedgerId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [itemId, setItemId] = useState("");
@@ -38,11 +43,12 @@ export default function Reports() {
     const p = new URLSearchParams();
     if (key !== "balance-sheet") { p.set("from", from); }
     p.set("to", to);
+    if (compareOn) p.set("compare", "1"); // R-60
     if (key === "register-sales") p.set("typeName", "Sales");
     if (key === "register-purchase") p.set("typeName", "Purchase");
     if (key === "stock-summary" && itemId) p.set("itemId", itemId);
     return p.toString();
-  }, [from, to, key, itemId]);
+  }, [from, to, key, itemId, compareOn]);
 
   const url = useMemo(() => {
     const endpoint = ENDPOINTS[key ?? ""] ?? "";
@@ -77,11 +83,14 @@ export default function Reports() {
     "Alt+F1": () => setDetailed(!detailed),
     "+": () => stepPeriod(1),
     "-": () => stepPeriod(-1),
-  }, [cid, from, to]);
+    // R-60: F12 = previous-year columns (Tally's own slot), on the big three only.
+    ...(COMPARE_KEYS.has(key ?? "") ? { F12: () => setCompare(!compare) } : {}),
+  }, [cid, from, to, key, compare]);
 
   const fkeys: FKeyButton[] = [
     { key: "Alt+F1", label: detailed ? "Condensed" : "Detailed", onClick: () => setDetailed(!detailed) },
     { key: "F2", label: "Date", onClick: () => (document.querySelector('input[type="date"]') as HTMLInputElement | null)?.focus() },
+    ...(COMPARE_KEYS.has(key ?? "") ? [{ key: "F12", label: compareOn ? "Hide Prev Year" : "Prev Year", onClick: () => setCompare(!compare) } as FKeyButton] : []),
   ];
 
   const title = TITLES[key ?? ""] ?? "Report";
@@ -113,6 +122,12 @@ export default function Reports() {
           </select>
         )}
         <span className="flex-1" />
+        {COMPARE_KEYS.has(key ?? "") && (
+          <label className="flex items-center gap-2 text-sm text-slate-700 select-none cursor-pointer" title="Tally F12: show the previous year beside this period (the same-length window one year back)">
+            <input type="checkbox" checked={compareOn} onChange={(e) => setCompare(e.target.checked)} />
+            Prev Year
+          </label>
+        )}
         {key === "register-sales" && <Link to={`/company/${cid}/reports/register-purchase`} className="text-sm text-indigo-600 hover:underline">Purchase Register →</Link>}
         {key === "register-purchase" && <Link to={`/company/${cid}/reports/register-sales`} className="text-sm text-indigo-600 hover:underline">Sales Register →</Link>}
       </div>
@@ -121,8 +136,8 @@ export default function Reports() {
       {isLoading && <div className="text-slate-400 text-sm">Computing…</div>}
 
       {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} />}
-      {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} />}
-      {key === "trial-balance" && data && <TrialBalanceView cid={cid!} data={data} onCsv={(h, r) => csvDownload("trial-balance", h, r)} />}
+      {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} compare={compareOn} />}
+      {key === "trial-balance" && data && <TrialBalanceView cid={cid!} data={data} compare={compareOn} onCsv={(h, r) => csvDownload("trial-balance", h, r)} />}
       {key === "ledger-vouchers" && data && <LedgerVouchersView data={data} />}
       {key === "group-summary" && data && <GroupSummaryView data={data} detailed={detailed} />}
       {key === "cash-bank" && data && <CashBankView cid={cid!} data={data} />}
@@ -155,11 +170,12 @@ function GroupPicker({ cid, value, onChange }: { cid: string; value: string; onC
   );
 }
 
-function TreeRows({ nodes, onClick, level = 0 }: { nodes: any[]; onClick?: (n: any) => void; level?: number }) {
+function TreeRows({ nodes, onClick, level = 0, prev = false }: { nodes: any[]; onClick?: (n: any) => void; level?: number; prev?: boolean }) {
   return (
     <>
       {nodes.map((n) => {
         const isLeafGroup = (n.children ?? []).length === 0;
+        const prevNode = prev ? (n.prevClosing ?? null) : null; // null = no prior data → dash
         return (
           <Fragment key={n.id}>
             <tr className={onClick ? "row-link" : ""} onClick={() => onClick?.(n)}>
@@ -168,8 +184,9 @@ function TreeRows({ nodes, onClick, level = 0 }: { nodes: any[]; onClick?: (n: a
               </td>
               <td className="num">{n.closing >= 0 ? n.closing.toLocaleString("en-IN") : ""}</td>
               <td className="num">{n.closing < 0 ? Math.abs(n.closing).toLocaleString("en-IN") : ""}</td>
+              {prev && <td className="num text-slate-500">{prevNode == null ? "—" : (prevNode !== 0 ? prevNode.toLocaleString("en-IN") : "")}</td>}
             </tr>
-            {!isLeafGroup && <TreeRows nodes={n.children} onClick={onClick} level={level + 1} />}
+            {!isLeafGroup && <TreeRows nodes={n.children} onClick={onClick} level={level + 1} prev={prev} />}
           </Fragment>
         );
       })}
@@ -179,17 +196,37 @@ function TreeRows({ nodes, onClick, level = 0 }: { nodes: any[]; onClick?: (n: a
 
 // ---------- Balance Sheet ----------
 
+/** R-60: flatten a balance-sheet tree for the prior-year index. */
+function collectNodes(nodes: any[], out: any[] = []): any[] {
+  for (const n of nodes) {
+    out.push(n);
+    if (n.children?.length) collectNodes(n.children, out);
+  }
+  return out;
+}
+
 function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; detailed: boolean }) {
   const nav = useNavigate();
   const openGroup = (id: number) => nav(`/company/${cid}/reports/group-summary`, { state: { groupId: id } });
+  // R-60: prior-year column — the server's `previous` payload re-shaped into
+  // the current tree by group id (a group that exists only in the current
+  // books has no prior node → dash, never a fabricated zero).
+  const prev = data.previous as any | null;
+  const prevIndex = new Map<number, any>(
+    prev ? [...collectNodes(prev.liabilities), ...collectNodes(prev.assets)].map((n: any) => [n.id, n]) : [],
+  );
+  const tagPrev = (nodes: any[]): any[] =>
+    nodes.map((n) => ({ ...n, prevClosing: prevIndex.get(n.id)?.closing ?? null, children: tagPrev(n.children ?? []) }));
+  const liabilities = prev ? tagPrev(data.liabilities) : data.liabilities;
+  const assets = prev ? tagPrev(data.assets) : data.assets;
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Liabilities</div>
         <table className="report-table">
-          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
+          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}<th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
           <tbody>
-            <TreeRows nodes={data.liabilities} onClick={detailed ? (n) => openGroup(n.id) : undefined} />
+            <TreeRows nodes={liabilities} onClick={detailed ? (n) => openGroup(n.id) : undefined} prev={!!prev} />
             {data.profitLine && (
               <tr className="bg-indigo-50/50">
                 <td className="font-medium text-indigo-700">Profit & Loss A/c</td>
@@ -206,9 +243,9 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Assets</div>
         <table className="report-table">
-          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
+          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}<th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
           <tbody>
-            <TreeRows nodes={data.assets} onClick={detailed ? (n) => openGroup(n.id) : undefined} />
+            <TreeRows nodes={assets} onClick={detailed ? (n) => openGroup(n.id) : undefined} prev={!!prev} />
             <tr className="font-bold border-t-2 border-slate-300">
               <td>Total</td><td className="num">{data.totalAssets.toLocaleString("en-IN")}</td><td className="num" />
             </tr>
@@ -226,80 +263,85 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
 
 // ---------- P&L ----------
 
-function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: boolean }) {
+function PnlView({ cid, data, detailed, compare }: { cid: string; data: any; detailed: boolean; compare: boolean }) {
   const nav = useNavigate();
+  // R-60: prior-year column (server-composed `previous`, same shape).
+  const p = compare ? (data.previous as any | null) : null;
+  const labels = data.compareLabels as { current: string; previous: string } | undefined;
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
-  const DrCr = ({ v }: { v: number }) => (
+  const DrCr = ({ v, pv }: { v: number; pv?: number | null }) => (
     <>
       <td className="num">{v > 0 ? money(v) : ""}</td>
       <td className="num">{v < 0 ? money(-v) : ""}</td>
+      {p && <td className="num text-slate-500">{pv == null ? "—" : pv !== 0 ? pv.toLocaleString("en-IN") : ""}</td>}
     </>
   );
-  const CrOnly = ({ v }: { v: number }) => (
+  const CrOnly = ({ v, pv }: { v: number; pv?: number | null }) => (
     <>
       <td className="num" />
       <td className="num">{v > 0 ? money(v) : ""}</td>
+      {p && <td className="num text-slate-500">{pv == null ? "—" : pv !== 0 ? pv.toLocaleString("en-IN") : ""}</td>}
     </>
   );
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Expenses (Dr)</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Expenses (Dr){p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
         <table className="report-table">
           <tbody>
-            <tr><td>Opening Stock</td><DrCr v={data.openingStock} /></tr>
-            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-purchase`)}><td>Purchase Accounts</td><DrCr v={data.purchases} /></tr>
+            <tr><td>Opening Stock</td><DrCr v={data.openingStock} pv={p?.openingStock} /></tr>
+            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-purchase`)}><td>Purchase Accounts</td><DrCr v={data.purchases} pv={p?.purchases} /></tr>
             {detailed && data.purchaseDetail.map((l: any) => (
-              <tr key={l.ledgerId} className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`, { state: { ledgerId: l.ledgerId } })}><td className="pl-6 text-slate-500">{l.name}</td><td /><td /></tr>
+              <tr key={l.ledgerId} className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`, { state: { ledgerId: l.ledgerId } })}><td className="pl-6 text-slate-500">{l.name}</td><td /><td />{p && <td className="num text-slate-500">—</td>}</tr>
             ))}
-            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`)}><td>Direct Expenses</td><DrCr v={data.directExpenses} /></tr>
+            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`)}><td>Direct Expenses</td><DrCr v={data.directExpenses} pv={p?.directExpenses} /></tr>
             {detailed && data.directExpensesDetail.map((l: any) => (
-              <tr key={l.ledgerId}><td className="pl-6 text-slate-500">{l.name}</td><td /><td /></tr>
+              <tr key={l.ledgerId}><td className="pl-6 text-slate-500">{l.name}</td><td /><td />{p && <td className="num text-slate-500">—</td>}</tr>
             ))}
-            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(r2(data.purchases + data.openingStock + data.directExpenses))}</td><td /></tr>
+            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(r2(data.purchases + data.openingStock + data.directExpenses))}</td><td />{p && <td className="num text-slate-500">{money(r2((p.purchases ?? 0) + (p.openingStock ?? 0) + (p.directExpenses ?? 0)))}</td>}</tr>
           </tbody>
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Income (Cr)</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Income (Cr){p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
         <table className="report-table">
           <tbody>
-            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-sales`, { state: {} })}><td>Sales Accounts</td><CrOnly v={data.sales} /></tr>
-            <tr><td>Closing Stock</td><CrOnly v={data.closingStock} /></tr>
-            <tr><td>Direct Incomes</td><CrOnly v={data.directIncome} /></tr>
+            <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-sales`, { state: {} })}><td>Sales Accounts</td><CrOnly v={data.sales} pv={p?.sales} /></tr>
+            <tr><td>Closing Stock</td><CrOnly v={data.closingStock} pv={p?.closingStock} /></tr>
+            <tr><td>Direct Incomes</td><CrOnly v={data.directIncome} pv={p?.directIncome} /></tr>
             {detailed && data.directIncomeDetail.map((l: any) => (
               <tr key={l.ledgerId}><td className="pl-6 text-slate-500">{l.name}</td><CrOnly v={l.amount} /></tr>
             ))}
-            {data.grossProfit > 0 && <tr className="font-semibold text-green-700"><td>Gross Profit c/d</td><DrCr v={data.grossProfit} /></tr>}
-            {data.grossProfit < 0 && <tr className="font-semibold text-red-700"><td>Gross Loss c/d</td><DrCr v={-data.grossProfit} /></tr>}
-            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(r2(data.sales + data.closingStock + data.directIncome + Math.max(data.grossProfit, 0)))}</td><td className="num">{money(Math.max(-data.grossProfit, 0))}</td></tr>
+            {data.grossProfit > 0 && <tr className="font-semibold text-green-700"><td>Gross Profit c/d</td><DrCr v={data.grossProfit} pv={p?.grossProfit} /></tr>}
+            {data.grossProfit < 0 && <tr className="font-semibold text-red-700"><td>Gross Loss c/d</td><DrCr v={-data.grossProfit} pv={p ? -(p.grossProfit ?? 0) : null} /></tr>}
+            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(r2(data.sales + data.closingStock + data.directIncome + Math.max(data.grossProfit, 0)))}</td><td className="num">{money(Math.max(-data.grossProfit, 0))}</td>{p && <td className="num text-slate-500">{money(r2((p.sales ?? 0) + (p.closingStock ?? 0) + (p.directIncome ?? 0) + Math.max(p.grossProfit ?? 0, 0)))}</td>}{p && <td className="num text-slate-500">{money(Math.max(-(p.grossProfit ?? 0), 0))}</td>}</tr>
           </tbody>
         </table>
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Expenses</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Expenses{p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
         <table className="report-table">
           <tbody>
             {detailed && data.indirectExpensesDetail.map((l: any) => (
               <tr key={l.ledgerId}><td>{l.name}</td><DrCr v={l.amount} /></tr>
             ))}
-            <tr><td>Indirect Expenses</td><DrCr v={data.indirectExpenses} /></tr>
-            {data.netProfit > 0 && <tr className="font-semibold text-green-700"><td>Net Profit</td><DrCr v={data.netProfit} /></tr>}
-            {data.netProfit < 0 && <tr className="font-semibold text-red-700"><td>Net Loss</td><DrCr v={-data.netProfit} /></tr>}
+            <tr><td>Indirect Expenses</td><DrCr v={data.indirectExpenses} pv={p?.indirectExpenses} /></tr>
+            {data.netProfit > 0 && <tr className="font-semibold text-green-700"><td>Net Profit</td><DrCr v={data.netProfit} pv={p?.netProfit} /></tr>}
+            {data.netProfit < 0 && <tr className="font-semibold text-red-700"><td>Net Loss</td><DrCr v={-data.netProfit} pv={p ? -(p.netProfit ?? 0) : null} /></tr>}
           </tbody>
         </table>
       </Card>
       <Card className="p-0 overflow-hidden">
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Incomes</div>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Indirect Incomes{p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
         <table className="report-table">
           <tbody>
             {detailed && data.indirectIncomeDetail.map((l: any) => (
               <tr key={l.ledgerId}><td>{l.name}</td><CrOnly v={l.amount} /></tr>
             ))}
-            <tr><td>Indirect Incomes</td><CrOnly v={data.indirectIncome} /></tr>
-            {data.grossProfit > 0 && <tr><td>Gross Profit b/f</td><CrOnly v={data.grossProfit} /></tr>}
-            {data.grossProfit < 0 && <tr><td>Gross Loss b/f</td><CrOnly v={-data.grossProfit} /></tr>}
+            <tr><td>Indirect Incomes</td><CrOnly v={data.indirectIncome} pv={p?.indirectIncome} /></tr>
+            {data.grossProfit > 0 && <tr><td>Gross Profit b/f</td><CrOnly v={data.grossProfit} pv={p?.grossProfit} /></tr>}
+            {data.grossProfit < 0 && <tr><td>Gross Loss b/f</td><CrOnly v={-data.grossProfit} pv={p ? -(p.grossProfit ?? 0) : null} /></tr>}
           </tbody>
         </table>
       </Card>
@@ -308,8 +350,19 @@ function PnlView({ cid, data, detailed }: { cid: string; data: any; detailed: bo
 }
 
 // ---------- Trial Balance ----------
-function TrialBalanceView({ cid, data, onCsv }: { cid: string; data: any; onCsv: (h: string[], r: (string | number)[][]) => void }) {
+function TrialBalanceView({ cid, data, compare, onCsv }: { cid: string; data: any; compare: boolean; onCsv: (h: string[], r: (string | number)[][]) => void }) {
   const nav = useNavigate();
+  // R-60: prior-year column — rows joined on ledgerId; a ledger that exists
+  // only today (no prior row, or a zero prior closing) renders a dash.
+  const p = compare ? (data.previous as any | null) : null;
+  const prevBy = new Map<number, any>((p?.rows ?? []).map((r: any) => [r.ledgerId, r]));
+  const prevOf = (r: any) => {
+    const pr = prevBy.get(r.ledgerId);
+    if (!pr) return null; // ledger did not exist in the prior window
+    const pc = r2((pr.openingDebit ?? 0) - (pr.openingCredit ?? 0) + (pr.debit ?? 0) - (pr.credit ?? 0));
+    return pc === 0 && (pr.debit ?? 0) === 0 && (pr.credit ?? 0) === 0 && (pr.openingDebit ?? 0) === 0 && (pr.openingCredit ?? 0) === 0 ? null : pc;
+  };
+  const prevLabel: string = data.compareLabels?.previous ?? "Prev";
   return (
     <Card>
       <table className="report-table">
@@ -318,6 +371,7 @@ function TrialBalanceView({ cid, data, onCsv }: { cid: string; data: any; onCsv:
             <th>Ledger</th><th>Group</th>
             <th className="w-28 text-right">Opening Dr</th><th className="w-28 text-right">Opening Cr</th>
             <th className="w-28 text-right">Debit</th><th className="w-28 text-right">Credit</th>
+            {p && <th className="w-28 text-right" title={data.previousWindow ? `${fmtDate(data.previousWindow.from)} → ${fmtDate(data.previousWindow.to)}` : undefined}>{`Prev ${prevLabel}`}</th>}
           </tr>
         </thead>
         <tbody>
@@ -329,17 +383,22 @@ function TrialBalanceView({ cid, data, onCsv }: { cid: string; data: any; onCsv:
               <td className="num">{r.openingCredit ? r.openingCredit.toLocaleString("en-IN") : ""}</td>
               <td className="num">{r.debit ? r.debit.toLocaleString("en-IN") : ""}</td>
               <td className="num">{r.credit ? r.credit.toLocaleString("en-IN") : ""}</td>
+              {p && (() => { const pv = prevOf(r); return <td className="num text-slate-500">{pv == null ? "—" : Math.abs(pv) < 0.005 ? "" : pv.toLocaleString("en-IN")}</td>; })()}
             </tr>
           ))}
           <tr className="font-bold bg-slate-50 border-t-2 border-slate-300">
             <td colSpan={4}>Totals</td>
             <td className="num">{data.totalDebit.toLocaleString("en-IN")}</td>
             <td className="num">{data.totalCredit.toLocaleString("en-IN")}</td>
+            {p && <td className="num text-slate-500">{r2((p.totalDebit ?? 0) - (p.totalCredit ?? 0)).toLocaleString("en-IN")}</td>}
           </tr>
         </tbody>
       </table>
       <div className="p-2">
-        <button className="btn-ghost text-sm" onClick={() => onCsv(["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"], data.rows.map((r: any) => [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit]))}>
+        <button className="btn-ghost text-sm" onClick={() => onCsv(
+          p ? ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit", "Prev Closing"] : ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"],
+          data.rows.map((r: any) => (p ? [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit, prevOf(r) ?? ""] : [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit])),
+        )}>
           Export CSV
         </button>
       </div>
