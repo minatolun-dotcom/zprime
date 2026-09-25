@@ -73,9 +73,9 @@ const ok = (name, cond, detail) => {
   // ---- 4) TCS Report through the Gateway ----
   await page.goto(`${D.BASE}/company/${cid}`);
   await page.waitForSelector("text=Gateway");
-  // R-61: the report tail lives behind "Display More Reports" — expand it.
-  await page.locator('[data-testid="gateway-more-toggle"]').click();
-  await page.locator('[data-testid="gateway-more-expanded"]').waitFor({ state: "visible", timeout: 5000 });
+  // R-53: item links live inside the section pane — open Reports first.
+  await page.keyboard.press("R");
+  await D.sleep(300);
   const tcsLink = page.locator('a:has-text("TCS Report"), button:has-text("TCS Report")').first();
   ok("Gateway TCS Report entry present", await tcsLink.isVisible().catch(() => false));
   await tcsLink.click().catch(async () => { await page.goto(`${D.BASE}/company/${cid}/reports/tcs`); });
