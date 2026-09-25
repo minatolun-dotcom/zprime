@@ -11,7 +11,7 @@
 // chip; the plain letter S stays with Sales Register. R-59's unpressable
 // · chip is retired.
 
-export interface MenuLeaf { label: string; to: string; letter?: string; hint?: string; }
+export interface MenuLeaf { label: string; to: string; letter?: string; chord?: string; hint?: string; }
 export interface MenuEntry {
   letter: string;
   title: string;
@@ -79,6 +79,10 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
         { label: "Balance Sheet", to: `/company/${cid}/reports/balance-sheet`, letter: "B" },
         { label: "Profit & Loss A/c", to: `/company/${cid}/reports/profit-loss`, letter: "F" },
         { label: "Trial Balance", to: `/company/${cid}/reports/trial-balance`, letter: "T" },
+        // R-63: the letters were saturated (all 26 + 10 digits — R-53c/R-59
+        // arithmetic), so the COA carries a CHORD like Company Settings:
+        // Alt+O — the O of "COA" — registered globally in Shell.
+        { label: "Chart of Accounts", to: `/company/${cid}/reports/chart-of-accounts`, chord: "Alt+O", hint: "Every group & ledger, with balances" },
         { label: "Cash / Bank Book", to: `/company/${cid}/reports/cash-bank`, letter: "H" },
         { label: "Sales Register", to: `/company/${cid}/reports/register-sales`, letter: "S" },
         { label: "Purchase Register", to: `/company/${cid}/reports/register-purchase`, letter: "P" },
@@ -129,7 +133,7 @@ export function flattenMenu(entries: MenuEntry[]): GoToItem[] {
       const key = `${it.label}\u0000${it.to}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ label: it.label, to: it.to, section: s.title, letter: it.letter });
+      out.push({ label: it.label, to: it.to, section: s.title, letter: it.chord ?? it.letter });
     }
   }
   return out;

@@ -314,6 +314,8 @@ export default function Gateway() {
                     >
                       {it.letter ? (
                         <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{it.letter}</span>
+                      ) : it.chord ? (
+                        <span className="fkey-chip !px-1.5 shrink-0" title={`${it.label} (${it.chord})`}>{it.chord}</span>
                       ) : it.hint ? (
                         <span className="fkey-chip shrink-0">{it.hint}</span>
                       ) : (

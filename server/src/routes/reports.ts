@@ -247,6 +247,21 @@ export default async function reportRoutes(app: FastifyInstance) {
     return { group, ledgers: balances, subtree, groups: buildGroupTree(subtree, balances, { includeZero: true }) };
   });
 
+  // R-63: Chart of Accounts explorer — the whole chart in one payload:
+  // every group node (full tree, includeZero — masters always visible) with
+  // rolled-up opening/debit/credit/closing, plus the ledger leaves with their
+  // own balances. Read-only; period-scoped like every report.
+  app.get("/chart-of-accounts", async (req) => {
+    const c = await cid(req);
+    const [company] = await db.select().from(companies).where(eq(companies.id, c));
+    const p = period(req.query as any, company?.booksBeginFrom, company?.financialYearStart);
+    const balances = await ledgerBalances(c, p.from, p.to);
+    const groupRows = await getGroupRows(c);
+    // `groups` carries rolled-up node totals; `ledgers` is the flat leaf list
+    // (every master, zero-activity included) the client grafts under groupId.
+    return { period: p, groups: buildGroupTree(groupRows, balances, { includeZero: true }), ledgers: balances };
+  });
+
   app.get("/cash-bank", async (req) => {
     const c = await cid(req);
     const [company] = await db.select().from(companies).where(eq(companies.id, c));

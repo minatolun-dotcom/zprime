@@ -8,7 +8,7 @@ import { Card, ErrorBanner } from "../components/ui";
 import { get, post } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
-import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel, loadSessionPeriod } from "../lib/format";
+import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel, loadSessionPeriod, drCr } from "../lib/format";
 import { useCompanyPeriod } from "../lib/period";
 import { csvDownload, textDownload } from "../lib/csv";
 
@@ -136,6 +136,7 @@ export default function Reports() {
       {isLoading && <div className="text-slate-400 text-sm">Computing…</div>}
 
       {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} />}
+      {key === "chart-of-accounts" && data && <ChartOfAccountsView cid={cid!} data={data} />}
       {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} compare={compareOn} />}
       {key === "trial-balance" && data && <TrialBalanceView cid={cid!} data={data} compare={compareOn} onCsv={(h, r) => csvDownload("trial-balance", h, r)} />}
       {key === "ledger-vouchers" && data && <LedgerVouchersView data={data} />}
@@ -1219,6 +1220,7 @@ function Gstr9View({ data }: { data: any }) {
 // ---------- registry ----------
 const ENDPOINTS: Record<string, string> = {
   "balance-sheet": "balance-sheet",
+  "chart-of-accounts": "chart-of-accounts",
   "profit-loss": "profit-loss",
   "trial-balance": "trial-balance",
   "ledger-vouchers": "ledger-vouchers",
@@ -1240,6 +1242,7 @@ const ENDPOINTS: Record<string, string> = {
 
 const TITLES: Record<string, string> = {
   "balance-sheet": "Balance Sheet",
+  "chart-of-accounts": "Chart of Accounts",
   "profit-loss": "Profit & Loss A/c",
   "trial-balance": "Trial Balance",
   "ledger-vouchers": "Ledger Vouchers",
@@ -1258,3 +1261,138 @@ const TITLES: Record<string, string> = {
   "salary-register": "Salary Register",
   "cheque-register": "Cheque Register",
 };
+
+// ---------- Chart of Accounts (R-63 — Tally's COA explorer) ----------
+
+/** The whole chart in one expandable tree: every group (full structure, even
+ *  zero-activity) and every ledger leaf — the click-through view of what the
+ *  Balance Sheet and P&L roll up. Read-only; click a ledger for its vouchers,
+ *  a group for Group Summary. Type-to-filter narrows the tree, keeping every
+ *  ancestor of a match. */
+function ChartOfAccountsView({ cid, data }: { cid: string; data: any }) {
+  const nav = useNavigate();
+  const [filter, setFilter] = useState("");
+  const q = filter.trim().toLowerCase();
+
+  // Expanded one level deep at rest (roots + their children); expansion state
+  // persists across refetches (ids are stable). While filtering, every branch
+  // with a match is forced open.
+  const [expanded, setExpanded] = useState<Set<number>>(() => {
+    const s = new Set<number>();
+    const walk = (nodes: any[], depth: number) => {
+      for (const n of nodes) {
+        s.add(n.id);
+        if (depth > 0 && n.children?.length) walk(n.children, depth - 1);
+      }
+    };
+    walk(data.groups ?? [], 1);
+    return s;
+  });
+
+  const byGroup = new Map<number, any[]>();
+  for (const l of data.ledgers ?? []) {
+    const list = byGroup.get(l.groupId) ?? [];
+    list.push(l);
+    byGroup.set(l.groupId, list);
+  }
+
+  const matches = (name: string) => !q || name.toLowerCase().includes(q);
+  const groupHasHit = (n: any): boolean =>
+    !q || matches(n.name) || (byGroup.get(n.id) ?? []).some((l) => matches(l.name)) || (n.children ?? []).some(groupHasHit);
+
+  const renderRows = (nodes: any[], depth: number) =>
+    nodes.map((n) => {
+      if (q && !groupHasHit(n)) return null;
+      const open = q.length > 0 || expanded.has(n.id);
+      const kids = (n.children ?? []).filter((c: any) => !q || groupHasHit(c));
+      const ledgers = (byGroup.get(n.id) ?? []).filter((l) => matches(l.name)).sort((a, b) => a.name.localeCompare(b.name));
+      const toggle = () =>
+        setExpanded((prev) => {
+          const s = new Set(prev);
+          if (s.has(n.id)) s.delete(n.id);
+          else s.add(n.id);
+          return s;
+        });
+      return (
+        <Fragment key={n.id}>
+          <tr data-testid="coa-group" className="row-link" onClick={() => nav(`/company/${cid}/reports/group-summary`, { state: { groupId: n.id } })}>
+            <td>
+              <span className="inline-flex items-center gap-1.5" style={{ paddingLeft: depth * 16 }}>
+                <button
+                  className={`w-4 shrink-0 text-slate-400 hover:text-slate-700 ${kids.length || ledgers.length ? "" : "invisible"}`}
+                  onClick={(e) => { e.stopPropagation(); toggle(); }}
+                  aria-label={open ? "Collapse" : "Expand"}
+                >
+                  {open ? "▾" : "▸"}
+                </button>
+                <span className={`font-medium ${depth === 0 ? "text-slate-800" : "text-slate-700"}`}>{n.name}</span>
+              </span>
+            </td>
+            <td className="num">{drCr(n.opening)}</td>
+            <td className="num">{drCr(n.debit)}</td>
+            <td className="num">{drCr(n.credit)}</td>
+            <td className="num font-medium">{drCr(n.closing)}</td>
+          </tr>
+          {open &&
+            ledgers.map((l) => (
+              <tr
+                key={`l${l.ledgerId}`}
+                data-testid="coa-ledger"
+                className="row-link text-slate-600"
+                onClick={() => nav(`/company/${cid}/reports/ledger-vouchers`, { state: { ledgerId: l.ledgerId } })}
+              >
+                <td>
+                  <span className="inline-flex items-center gap-1.5" style={{ paddingLeft: depth * 16 + 24 }}>
+                    <span className="w-4 shrink-0" aria-hidden />
+                    <span>{l.name}</span>
+                  </span>
+                </td>
+                <td className="num">{drCr(l.opening)}</td>
+                <td className="num">{drCr(l.debit)}</td>
+                <td className="num">{drCr(l.credit)}</td>
+                <td className="num">{drCr(l.closing)}</td>
+              </tr>
+            ))}
+          {open && renderRows(kids, depth + 1)}
+        </Fragment>
+      );
+    });
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <input
+          data-testid="coa-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Type to filter — ledgers & groups…"
+          className="min-w-[260px]"
+        />
+        {filter && (
+          <button data-testid="coa-clear" className="btn-ghost text-sm" onClick={() => setFilter("")}>
+            Clear
+          </button>
+        )}
+        <span className="text-xs text-slate-400">{q ? "filtered — every group and ledger matching" : "every group and ledger, with period balances"}</span>
+        <span className="flex-1" />
+        <span className="text-xs text-slate-400">
+          {fmtDate(data.period?.from)} → {fmtDate(data.period?.to)}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="report-table" data-testid="coa-tree">
+          <thead>
+            <tr>
+              <th className="text-left">Particulars</th>
+              <th className="w-28 text-right">Opening</th>
+              <th className="w-28 text-right">Debit</th>
+              <th className="w-28 text-right">Credit</th>
+              <th className="w-28 text-right">Closing</th>
+            </tr>
+          </thead>
+          <tbody>{renderRows(data.groups ?? [], 0)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

@@ -41,6 +41,7 @@ migrates cleanly instead of staying dead).
 **Reports** (all with period picker, Alt+F1 detailed/condensed, CSV export, drill-down)
 - Balance Sheet, Profit & Loss, Trial Balance, Day Book
 - Ledger Vouchers (running balance), Group Summary, Cash/Bank Book
+- **Chart of Accounts** — every group and ledger in one expandable tree with period balances, type-to-filter (Alt+O)
 - Sales/Purchase Registers, Stock Summary, Bills Receivable/Payable
 - GSTR-1 (B2B, B2C, HSN summary), GSTR-3B (outward, ITC, net payable)
 - TDS report (by section), Salary Register, Cheque Register
@@ -69,6 +70,7 @@ migrates cleanly instead of staying dead).
 | `Alt+D` / `Alt+X` | Delete / cancel the open voucher (edit mode, confirm-guarded) |
 | `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
 | `Alt+S` | Company Settings (Tally's Stock-Query chord, unused here) — from any screen |
+| `Alt+O` | Chart of Accounts explorer — every group & ledger, one tree |
 | `F3` | Change company (company select) |
 | `+` / `-` | Next / previous report day (period length kept) |
 | `Alt+F1` | Detailed / condensed report view |

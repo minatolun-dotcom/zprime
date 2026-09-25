@@ -97,9 +97,12 @@ export default function Shell({
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === "F3") { e.preventDefault(); nav("/companies"); }
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "s" || e.key === "S")) {
-        e.preventDefault();
-        nav(`/company/${cid}/settings`);
+      // R-62/R-63: Alt+S = Company Settings, Alt+O = Chart of Accounts —
+      // both Tally-vocabulary chords (Stock Query / the O of "COA"), free
+      // in zprime's chord space since the letter space is saturated.
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === "s" || e.key === "S") { e.preventDefault(); nav(`/company/${cid}/settings`); }
+        if (e.key === "o" || e.key === "O") { e.preventDefault(); nav(`/company/${cid}/reports/chart-of-accounts`); }
       }
     };
     window.addEventListener("keydown", handler);
