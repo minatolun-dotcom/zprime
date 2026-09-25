@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
+import Kbd from "../components/Kbd";
 import { useCompany } from "../store";
 import { get } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
@@ -270,9 +271,8 @@ export default function Gateway() {
                 title={s.chord ? `${s.title} (${s.chord})` : undefined}
                 className="fkey-item !min-h-[2.5rem]"
               >
-                {/* R-62: only chord chips widen — single-letter chips keep the
-                    standard 1.7rem box (the K chip must not stretch). */}
-                <span className={`fkey-chip shrink-0 ${s.chord ? "!px-1.5" : "!min-w-[1.7rem] !px-0"}`}>{s.chord ?? s.letter}</span>
+                {/* R-64: chord vs letter chip variants via the one Kbd component. */}
+                <Kbd wide={!!s.chord}>{s.chord ?? s.letter}</Kbd>
                 <span className="flex-1 text-left font-medium">{s.title}</span>
               </Link>
             ) : (
@@ -284,7 +284,7 @@ export default function Gateway() {
                 }}
                 className={`fkey-item !min-h-[2.5rem] ${open === s.title ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
               >
-                <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{s.letter}</span>
+                <Kbd>{s.letter}</Kbd>
                 <span className="flex-1 text-left font-medium">{s.title}</span>
               </button>
             )
@@ -310,21 +310,19 @@ export default function Gateway() {
                       to={it.to}
                       className={`fkey-item !min-h-[2.25rem] !px-2 !rounded-md ${i === hl ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
                       onMouseEnter={() => setHl(i)}
-                      title={it.letter && it.hint ? it.hint : undefined}
+                      title={it.hint || undefined}
                     >
+                      {/* R-64 (D-3 dedup): the rail owns the visible F-key
+                          facts — pane rows keep names, letters/chords and the
+                          hover title (voucher types render the spacer chip). */}
                       {it.letter ? (
-                        <span className="fkey-chip !min-w-[1.7rem] !px-0 shrink-0">{it.letter}</span>
+                        <Kbd>{it.letter}</Kbd>
                       ) : it.chord ? (
-                        <span className="fkey-chip !px-1.5 shrink-0" title={`${it.label} (${it.chord})`}>{it.chord}</span>
-                      ) : it.hint ? (
-                        <span className="fkey-chip shrink-0">{it.hint}</span>
+                        <Kbd wide>{it.chord}</Kbd>
                       ) : (
                         <span className="w-[1.7rem] shrink-0" aria-hidden />
                       )}
                       <span className="flex-1 truncate">{it.label}</span>
-                      {it.letter && it.hint && (
-                        <span className="text-xs text-slate-400 hidden xl:inline">{it.hint}</span>
-                      )}
                     </Link>
                   </li>
                 ))}

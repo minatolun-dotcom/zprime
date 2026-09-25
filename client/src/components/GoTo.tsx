@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoToItem } from "../lib/gatewayMenu";
 
@@ -40,12 +40,17 @@ export default function GoTo({ open, items, onClose }: {
   }, [q, items]);
 
   useEffect(() => {
-    if (open) {
+    if (!open) {
       setQ("");
       setHl(0);
-      const t = window.setTimeout(() => inputRef.current?.focus(), 30);
-      return () => window.clearTimeout(t);
     }
+  }, [open]);
+
+  // R-64: focus SYNCHRONOUSLY in a layout effect — the previous 30ms timeout
+  // left a real race window where a keystroke right after Alt+G landed on the
+  // page behind the overlay (the Gateway's letter-nav fired it).
+  useLayoutEffect(() => {
+    if (open) inputRef.current?.focus();
   }, [open]);
 
   useEffect(() => setHl(0), [q]);

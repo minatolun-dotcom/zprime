@@ -62,7 +62,9 @@ migrates cleanly instead of staying dead).
 | Key | Action |
 |---|---|
 | `F2` | Date / period (voucher date, Day Book + report date inputs) |
-| `F4` `F5` `F6` `F7` `F8` `F9` | Contra · Payment · Receipt · Journal · Sales · Purchase — from any screen |
+| `F4` `F5` `F6` `F7` `F8` `F9` | Contra · Payment · Receipt · Journal · Sales · Purchase — from any screen (suppressed while a voucher is open in the editor — Esc first) |
+| `F10` | Manufacturing Journal — from any screen (same editor suppression) |
+| `Alt+F1`…`Alt+F9` | Aliases of Alt+F1…F9 (also reachable as `Alt+1`…`Alt+9`) — Debit/Credit Note, Stock/Delivery/Receipt Note |
 | `Alt+F5`…`Alt+F9`, `Ctrl+F7` | Debit Note · Credit Note · Stock Journal · Delivery Note · Receipt Note · Physical Stock |
 | `Ctrl+A` | Accept / save voucher (accepts the on-the-fly ledger modal too) |
 | `Alt+J` | Apply GST on Sales/Purchase/CN/DN (Tally's statutory-adjustment slot) |
@@ -75,6 +77,7 @@ migrates cleanly instead of staying dead).
 | `+` / `-` | Next / previous report day (period length kept) |
 | `Alt+F1` | Detailed / condensed report view |
 | `Esc` | Back the way you came; closes modals; the Gateway is the last stop |
+| (chip) | A few chips are click-only conveniences, not keyboard keys — e.g. the voucher screen's `F12` Ref/Party chip (F12 is browser-reserved in tab view). Everything listed in the table above fires from the physical keyboard. |
 | `Enter` | Drill down / add entry row · type-ahead ledger & item search |
 
 The Gateway carries Tally-style menu mnemonics (`C` `A` `V` `K` `R` `U` in the operator's order — Create, Alter, Vouchers, Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists types by shortcut class: plain F-keys first (F4…F10), then Alt+ chords, then Ctrl+. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.

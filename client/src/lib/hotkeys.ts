@@ -12,6 +12,13 @@ export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
   ref.current = map;
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // R-64: multiple useHotkeys instances can be mounted at once (page maps
+      // + Shell's global voucher-F-key floor). Capture listeners fire in
+      // registration order (children before parents), so the first instance
+      // that matches preventDefaults — every later instance must skip the
+      // event or the same keypress would navigate twice (duplicate history
+      // entries break the Esc-back ladder).
+      if (e.defaultPrevented) return;
       const k = e.key;
       let combo: string | null = null;
       if (k.startsWith("F") && /^F\d{1,2}$/.test(k)) {

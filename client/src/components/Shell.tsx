@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { useQuery } from "@tanstack/react-query";
@@ -116,6 +116,44 @@ export default function Shell({
     queryFn: () => get<{ id: number; name: string; category: string; functionKey: string | null }[]>(`/api/c/${cid}/voucher-types`),
     enabled: !!cid,
   });
+
+  // R-64 (D-2): voucher F-keys are GLOBAL — the README always claimed
+  // "F4…F9 from any screen"; before R-64 only Gateway and Day Book registered
+  // them. Shell owns the floor layer from the same cached voucher-types query
+  // (zero extra requests); the Gateway/Day Book maps continue to shadow it
+  // (capture-phase per-page listeners run first) with identical targets.
+  const globalFkeyMap = useMemo(() => {
+    const m: Record<string, () => void> = {};
+    for (const v of goToVoucherTypes ?? []) {
+      const fk = (v.functionKey ?? "").trim();
+      if (!fk || m[fk]) continue; // first type wins; duplicates ignored
+      // Safety: suppressed while a voucher is open in the editor — a stray
+      // F-key mid-entry must never silently discard a half-filled voucher
+      // (Esc first, then the F-key; consistent with the Esc ladder).
+      m[fk] = () => {
+        if (window.location.pathname.includes("/voucher/")) return;
+        nav(`/company/${cid}/voucher/${v.id}/new`);
+      };
+    }
+    return m;
+  }, [goToVoucherTypes, cid, nav]);
+  useHotkeys(globalFkeyMap, [globalFkeyMap]);
+
+  // R-64 (Phase C): after chord navigation the focus used to stay on BODY —
+  // keyboard users had to Tab from the very top of the document. Anchor focus
+  // on the page heading when nothing is focused (never steals focus from a
+  // page that deliberately focused an input).
+  const location = useLocation();
+  useEffect(() => {
+    if (document.activeElement === document.body) {
+      // Page heading when the page has one (PageHead pages); otherwise the
+      // main region itself (tabindex=-1 makes it focusable) — either way a
+      // keyboard user continues from the top of the CONTENT, not the document.
+      const h1 = document.querySelector("main h1") as HTMLElement | null;
+      if (h1) h1.focus({ preventScroll: true });
+      else (document.getElementById("main-content") as HTMLElement | null)?.focus({ preventScroll: true });
+    }
+  }, [location.pathname]);
   const [goToOpen, setGoToOpen] = useState(false);
   const goToItems = useMemo(
     () => flattenMenu(buildGatewayMenu(cid ?? "", (goToVoucherTypes ?? []).filter((v) => v.category === "Accounting" || v.category === "Inventory"))),
@@ -130,6 +168,13 @@ export default function Shell({
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
+      {/* R-64 (Phase C): skip link — first tab stop for keyboard users. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-indigo-700 focus:px-3 focus:py-1.5 focus:rounded-md focus:shadow-raised focus:border focus:border-indigo-200"
+      >
+        Skip to content
+      </a>
       <GoTo open={goToOpen} items={goToItems} onClose={() => setGoToOpen(false)} />
       <header className="sticky top-0 z-30">
         <div className="bg-indigo-700 text-white shadow-card">
@@ -191,17 +236,17 @@ export default function Shell({
       </header>
 
       <div className="flex-1 flex min-h-0">
-        <main className={`flex-1 overflow-auto px-5 py-6 ${fkeys?.length ? "" : ""}`}>
+        <main id="main-content" tabIndex={-1} className={`flex-1 overflow-auto px-5 py-6 outline-none ${fkeys?.length ? "" : ""}`}>
           <div className={wide ? "w-full" : "max-w-7xl mx-auto"}>
             {children}
           </div>
         </main>
 
         {fkeys && fkeys.length > 0 && (
-          <aside className="w-64 shrink-0 p-3 overflow-auto hidden lg:block">
+          <aside aria-label={`${title} shortcuts`} className="w-64 shrink-0 p-3 overflow-auto hidden lg:block">
             <div className="sticky top-2 card p-2 space-y-1">
               <div className="px-2 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Shortcuts
+                {title} shortcuts
               </div>
               {fkeys.map((f, i) => (
                 <button key={i} onClick={f.onClick} className="fkey-item">

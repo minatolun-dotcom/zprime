@@ -608,6 +608,10 @@ export default function VoucherScreen() {
       "Ctrl+A": () => save(),
     }),
     "Alt+F1": () => setDetailed(!detailed),
+    // R-64 (D-1): physical F2 focuses the date field — the rail's "F2 Date"
+    // chip and the header's "Date (F2)" label advertise it; until now only
+    // the chip's onClick worked (live-probed defect, R-64_INVESTIGATION.md).
+    "F2": () => (document.getElementById("v-date") as HTMLInputElement | null)?.focus(),
     ...(vType && ["Purchase", "Debit Note"].includes(vType.name) && !cancelledView
       ? { "Alt+R": () => setIsRcm((x) => !x) } // R-23: reverse-charge toggle
       : {}),
@@ -627,7 +631,7 @@ export default function VoucherScreen() {
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
     { key: "F2", label: "Date", onClick: () => (document.getElementById("v-date") as HTMLInputElement)?.focus() },
-    ...(hasParty ? [{ key: "F12", label: "Ref / Party", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
+    ...(hasParty ? [{ key: "F12", label: "Ref / Party (click)", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+J", label: "Apply GST", onClick: applyGst }] : []),
     ...(isEdit && !cancelledView ? [
       { key: "Alt+D", label: "Delete Voucher", onClick: () => { if (window.confirm("Delete this voucher? This cannot be undone.")) doDelete(); } },
