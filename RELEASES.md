@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.60.0
+
+- **Released:** 2026-09-26
+- **R-item:** R-70 — Outstanding views render bill rows per bill: bill-name labels visible by default (Tally's bill-wise display)
+- **Commit:** `687b61b30abf887054934f978c8f48474d3e13c1` (annotated tag `8db1f4faf8c6269ec2edfa2d2211d7c68fe3f610`)
+- **Purpose:** R-69 put every party's bills (On Account / Opening Balance / named bills) in the API, but the Outstanding UI (Bills Receivable / Bills Payable) hid them behind a per-party click — bill labels were invisible until drilled and never printed. `OutstandingView` now expands each party card's bill table **by default** (collapse still available), so every bill row renders with its name, date, amount and due date; synthetic bills (On Account, Opening Balance) render italic-muted against named bills; the rows are the report body and stay visible in print media; the per-bill CSV contract is unchanged. New `r70_ui.js` **19 checks** (default-open rows for all three bill kinds, amounts + due date, collapse/expand, print visibility, CSV one-row-per-bill with the bill names).
+- **Verification:** typecheck server+client clean · build clean (bundle 414.53 kB / 117.66 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r68 **17**, r46_drill **42**, r69 **17**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, **new** r70 **19/19**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean
+- **Immutability:** v1.60.0 and all prior tags are immutable
+
+---
+
 ## v1.59.0
 
 - **Released:** 2026-09-26
