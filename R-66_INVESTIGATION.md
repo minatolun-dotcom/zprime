@@ -94,8 +94,8 @@ From `TALLYPRIME_SHORTCUTS_REFERENCE.md` §12 and the R-64 investigation's resea
 - **G-B — no print stylesheet:** no report is print-friendly. Effort: small-medium — one `@media print` block (hide Shell/rail/toolbars, black-on-white tables, repeat `<thead>`) + an explicit "Print" button on report toolbars (window.print()). Browser-reserved Ctrl+P stays untouched (R-51 posture).
 - **G-C — no invoice/voucher printing:** the largest true feature (template, GST line rendering, party block, amount-in-words reuse from ChequePrint, print CSS). Would reuse `words()` (currently local to ChequePrint).
 - **G-D — no statutory return-file export:** GSTR-1 in a portal-shape (JSON or the portal's B2B/B2C CSV templates). Needs a chosen target shape (the portal's formats are specific and versioned) — a real spec question for the operator.
-- **G-E — no PDF:** PDF via server headless render or a JS lib (jspdf etc.) would add a dependency + attack-surface for marginal gain over G-B (browser "Save as PDF" from a print stylesheet covers the need honestly). Not recommended now.
-- **G-F — no XLSX:** same class as G-E; CSV-with-BOM already opens cleanly in Excel. Not recommended now.
+- **G-E — no PDF:** PDF via server headless render or a JS lib (jspdf etc.) would add a dependency + attack-surface for marginal gain over G-B (browser "Save as PDF" from a print stylesheet covers the need honestly). Not recommended now. *(Studied in depth post-v1.57.0 as R-67 — `R-67_INVESTIGATION.md` — recommendation unchanged, now evidenced.)*
+- **G-F — no XLSX:** same class as G-E; CSV-with-BOM already opens cleanly in Excel. Not recommended now. *(Studied in depth post-v1.57.0 as R-67 — `R-67_INVESTIGATION.md` — SheetJS-on-npm disqualifying (frozen 0.18.5, no-fix CVEs), ExcelJS viable only client-side.)*
 
 ## 8. Options for the operator
 
