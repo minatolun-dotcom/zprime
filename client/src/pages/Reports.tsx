@@ -740,7 +740,16 @@ function StockSummaryView({ data, single, meta }: { data: any; single: boolean; 
 
 // ---------- Outstanding ----------
 function OutstandingView({ data, title, meta }: { data: any; title: string; meta: string[][] }) {
-  const [open, setOpen] = useState<string | null>(null);
+  // R-70: bills render PER BILL by default (Tally's bill-wise Outstanding) —
+  // party rows are expanded unless the operator collapses them. Previously the
+  // bill table only appeared after clicking each party, so "On Account" /
+  // named-bill labels were invisible until drilled (and never printed).
+  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => {
+    const next = new Set(closed);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setClosed(next);
+  };
   return (
     <>
     <ReportActions
@@ -752,17 +761,20 @@ function OutstandingView({ data, title, meta }: { data: any; title: string; meta
     <div className="space-y-3">
       {data.parties.map((p: any) => (
         <Card key={p.ledgerId} className="p-0 overflow-hidden">
-          <button className="print-keep w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => setOpen(open === String(p.ledgerId) ? null : String(p.ledgerId))}>
+          <button className="print-keep w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => toggle(String(p.ledgerId))} title={closed.has(String(p.ledgerId)) ? "Show bills" : "Hide bills"}>
             <span className="text-base font-semibold">{p.ledgerName}</span>
             <span className={`num text-base ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
           </button>
-          {open === String(p.ledgerId) && (
+          {!closed.has(String(p.ledgerId)) && (
             <table className="report-table">
               <thead><tr><th className="w-24">Date</th><th>Bill</th><th className="w-28 text-right">Amount</th><th className="w-24">Due</th></tr></thead>
               <tbody>
                 {p.bills.map((b: any, i: number) => (
                   <tr key={i}>
-                    <td className="cell-nowrap">{fmtDate(b.date)}</td><td>{b.billName}</td>
+                    <td className="cell-nowrap">{fmtDate(b.date)}</td>
+                    <td>{b.billType === "on_account" || b.billType === "opening"
+                      ? <span className="italic text-slate-500">{b.billName}</span>
+                      : b.billName}</td>
                     <td className={`num ${b.amount < 0 ? "text-amber-600" : ""}`}>{b.amount.toLocaleString("en-IN")}</td>
                     <td className="cell-nowrap">{b.dueDate ? fmtDate(b.dueDate) : "—"}</td>
                   </tr>
