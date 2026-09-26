@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.59.0
+
+- **Released:** 2026-09-26
+- **R-item:** Post-release audit fixes (login 401 feedback, `vouchers?type=` hardening, three persona suites) + R-69 — non-bill-wise parties surface in Outstanding reports as an On Account bill (Tally parity)
+- **Commits:** `6dbddd8` (audit: api.ts login-401 fix, vouchers NaN guard, persona suites) + `765948d3267bf9ce00d299655c93a8e01f47d8f6` (R-69) (annotated tag `16b2c0cebc67e04a6e23a2da735fd34776f6d608`)
+- **Purpose:** a three-persona audit (beginner / professional accountant / hostile user) of the released v1.58.0 found two defects and confirmed the audit's third finding worth fixing. **(1) Login 401 feedback** — the shared `api()` helper treated every 401 as session-expiry and hard-redirected, so the Login form's own bad-credentials 401 reloaded the page and blanked the form with zero feedback (found by the beginner persona's very first interaction); the login endpoint is now exempt so the form renders the server's message. **(2) Hardening** — `GET /vouchers?type=<non-numeric>` parsed NaN into the SQL condition and 500'd; now a clean 400 (hostile-caller probe). **(3) R-69** — a party ledger without bill-wise tracking (a non-bill-wise master, or postings without allocations) never produced `bill_allocations` rows, so its outstanding was invisible in Bills Receivable/Payable; `billWiseOutstanding` now computes each party ledger's net balance from entries and merges the residual not covered by entry-derived bills as an **On Account** bill (Tally parity), with the covered base excluding "opening" bills so the R-07 master-field merge can never double-count. New `r69_ui.js` **17 checks** (AR+AP appearance, single On Account bill, receipt application, bill-wise named bills neither duplicated nor phantom-merged, R-07 opening shown once, asOf honesty, UI render); the beginner persona re-anchored to assert the On Account bill on a non-bill-wise customer; `final_regression`'s Cust A expectation honestly re-anchored — its Apr/May/Jun P&L fixtures (8000 total) were posted without allocations and were invisible pre-R-69 (5660 → 13660).
+- **Verification:** typecheck server+client clean · build clean (bundle 414.31 kB / 117.56 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952** (re-anchored), attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r68 **17**, r46_drill **42**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, **new** r69 **17/17**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · post-abuse integrity: Σ signed voucher amounts = 0.00, zero orphaned entries, seeded books balanced · `git diff --check` clean
+- **Immutability:** v1.59.0 and all prior tags are immutable
+
+---
+
 ## v1.58.0
 
 - **Released:** 2026-09-26
