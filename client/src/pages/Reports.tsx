@@ -159,8 +159,8 @@ export default function Reports() {
         <RegisterView cid={cid!} data={data} meta={meta} />
       )}
       {key === "stock-summary" && data && <StockSummaryView data={data} single={Boolean(itemId)} meta={meta} />}
-      {key === "receivables" && data && <OutstandingView data={data} title="Bills Receivable" meta={meta} />}
-      {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" meta={meta} />}
+      {key === "receivables" && data && <OutstandingView data={data} title="Bills Receivable" meta={meta} debtSign={1} />}
+      {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" meta={meta} debtSign={-1} />}
       {key === "gstr1" && data && <Gstr1View data={data} cid={cid} meta={meta} />}
       {key === "gstr3b" && data && <Gstr3bView data={data} meta={meta} />}
       {key === "gstr9" && data && <Gstr9View data={data} meta={meta} />}
@@ -739,16 +739,31 @@ function StockSummaryView({ data, single, meta }: { data: any; single: boolean; 
 }
 
 // ---------- Outstanding ----------
-function OutstandingView({ data, title, meta }: { data: any; title: string; meta: string[][] }) {
+function OutstandingView({ data, title, meta, debtSign }: { data: any; title: string; meta: string[][]; debtSign: 1 | -1 }) {
   // R-70: bills render PER BILL by default (Tally's bill-wise Outstanding) —
   // party rows are expanded unless the operator collapses them. Previously the
   // bill table only appeared after clicking each party, so "On Account" /
   // named-bill labels were invisible until drilled (and never printed).
+  // R-71: a bill past its due date AND open in the debt direction (Dr+ in
+  // receivables, Cr− in payables — an advance must never flag red) renders
+  // with a red row tint + an "overdue Nd" text marker that survives print.
+  // Days are measured against the report's asOf date, so an as-of view of the
+  // past shows exactly what was overdue then.
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const toggle = (id: string) => {
     const next = new Set(closed);
     if (next.has(id)) next.delete(id); else next.add(id);
     setClosed(next);
+  };
+  const asOf = String(data.asOf ?? "").slice(0, 10);
+  const daysOverdue = (b: any) => {
+    if (!b.dueDate) return 0;
+    const openDebt = debtSign === 1 ? b.amount > 0.004 : b.amount < -0.004;
+    if (!openDebt) return 0;
+    const due = String(b.dueDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return 0;
+    const d = Math.round((Date.parse(asOf) - Date.parse(due)) / 86400000);
+    return d > 0 ? d : 0;
   };
   return (
     <>
@@ -763,22 +778,30 @@ function OutstandingView({ data, title, meta }: { data: any; title: string; meta
         <Card key={p.ledgerId} className="p-0 overflow-hidden">
           <button className="print-keep w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => toggle(String(p.ledgerId))} title={closed.has(String(p.ledgerId)) ? "Show bills" : "Hide bills"}>
             <span className="text-base font-semibold">{p.ledgerName}</span>
-            <span className={`num text-base ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
+            <span className="flex items-center gap-2">
+              {p.bills.some((b: any) => daysOverdue(b) > 0) && (
+                <span className="print-keep text-xs text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">overdue</span>
+              )}
+              <span className={`num text-base ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
+            </span>
           </button>
           {!closed.has(String(p.ledgerId)) && (
             <table className="report-table">
               <thead><tr><th className="w-24">Date</th><th>Bill</th><th className="w-28 text-right">Amount</th><th className="w-24">Due</th></tr></thead>
               <tbody>
-                {p.bills.map((b: any, i: number) => (
-                  <tr key={i}>
-                    <td className="cell-nowrap">{fmtDate(b.date)}</td>
-                    <td>{b.billType === "on_account" || b.billType === "opening"
-                      ? <span className="italic text-slate-500">{b.billName}</span>
-                      : b.billName}</td>
-                    <td className={`num ${b.amount < 0 ? "text-amber-600" : ""}`}>{b.amount.toLocaleString("en-IN")}</td>
-                    <td className="cell-nowrap">{b.dueDate ? fmtDate(b.dueDate) : "—"}</td>
-                  </tr>
-                ))}
+                {p.bills.map((b: any, i: number) => {
+                  const od = daysOverdue(b);
+                  return (
+                    <tr key={i} className={od > 0 ? "bg-red-50" : ""}>
+                      <td className="cell-nowrap">{fmtDate(b.date)}</td>
+                      <td>{b.billType === "on_account" || b.billType === "opening"
+                        ? <span className={`italic ${od > 0 ? "text-red-700" : "text-slate-500"}`}>{b.billName}</span>
+                        : <span className={od > 0 ? "text-red-700 font-medium" : ""}>{b.billName}</span>}</td>
+                      <td className={`num ${od > 0 ? "text-red-700 font-medium" : b.amount < 0 ? "text-amber-600" : ""}`}>{b.amount.toLocaleString("en-IN")}</td>
+                      <td className={`cell-nowrap ${od > 0 ? "text-red-700 font-medium" : ""}`}>{b.dueDate ? fmtDate(b.dueDate) : "—"}{od > 0 ? ` · overdue ${od}d` : ""}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
