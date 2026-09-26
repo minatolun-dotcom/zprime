@@ -100,7 +100,8 @@ For the **full keyboard**, run zprime in an app/standalone window (it ships as a
 
 ```bash
 npm install
-# terminal 1 (needs a Postgres; use docker compose up db, or any):
+# terminal 1 (needs a Postgres on localhost:5432 — the compose `db` service
+# publishes no ports, so run a throwaway one or publish 5432 in an override):
 DATABASE_URL=postgres://zprime:zprime@localhost:5432/zprime npm run dev:server
 # terminal 2:
 npm run dev:client        # http://localhost:5173, proxies /api to :3000
