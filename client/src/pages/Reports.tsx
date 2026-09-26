@@ -1617,7 +1617,7 @@ function ChartOfAccountsView({ cid, data, meta }: { cid: string; data: any; meta
         headers={["Level", "Particulars", "Opening", "Debit", "Credit", "Closing"]}
         rows={coaCsv}
       />
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
+      <div className="flex items-center gap-3 mb-3 flex-wrap print:hidden">
         <input
           data-testid="coa-filter"
           value={filter}
