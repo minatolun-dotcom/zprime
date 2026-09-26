@@ -1,6 +1,6 @@
 # PROJECT.md — What zprime Is
 
-The permanent technical/product description of zprime. Every claim here is verifiable against the v1.30.0 repository. Status vocabulary: **IMPLEMENTED** (working and verified), **PARTIALLY IMPLEMENTED**, **PLANNED** (roadmap, not built), **OUT OF SCOPE** (deliberately not built).
+The permanent technical/product description of zprime. Every claim here is verifiable against the repository at the current tagged release (see `RELEASES.md`). Status vocabulary: **IMPLEMENTED** (working and verified), **PARTIALLY IMPLEMENTED**, **PLANNED** (roadmap, not built), **OUT OF SCOPE** (deliberately not built).
 
 ## Identity & purpose
 
@@ -46,7 +46,7 @@ The permanent technical/product description of zprime. Every claim here is verif
 
 - **Payload generation (stateless, always available):** NIC v1.01 e-invoice JSON (R-24) and EWB-01 e-way bill JSON (R-25) per voucher — download for manual portal upload; strict all-at-once validation; no credentials required.
 - **Live submission (opt-in, per company + environment):** `irp_credentials` (AES-256-GCM at rest, `IRP_ENC_KEY`, boot fail-fast) + NIC sandbox/production environments (R-28): B2B e-invoice → IRN, EWB from IRN (R-28), **direct EWBs for B2C via the separate EWB-API v1.03** (R-30), and the full EWB lifecycle — vehicle update, once-ever validity extension (8-h window), 24-h cancellation — with **birth-path routing** to the system the EWB was born on (R-31). Hard idempotency (repeat submit returns the stored result with zero network calls); every submission/op recorded verbatim as the legal record (`irp_submissions`/`irp_ewb_ops`); masked credential read-back; honest 422/409/502 banners; wire-faithful mock for CI. Operator runbook: `ONBOARDING_IRP_EWB.md`.
-- **Not implemented:** e-invoice cancellation, consolidated EWB, multi-vehicle split, EWB closure, GSP-intermediary flows beyond endpoint config, QR/signature rendering, auto-retry queues.
+- **Not implemented:** e-invoice cancellation, consolidated EWB, multi-vehicle split, EWB closure, GSP-intermediary flows beyond endpoint config, signed-invoice display/verification (the IRN QR itself renders on the invoice face — R-68), auto-retry queues.
 
 ## Payroll & TDS/TCS
 
@@ -57,7 +57,7 @@ The permanent technical/product description of zprime. Every claim here is verif
 
 ## Reports
 
-All with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV (every view, R-66) and Print (print stylesheet)**: Balance Sheet, P&L (sub-period = period movements; FY view = cumulative), Trial Balance (with out-of-balance difference surface — R-14), Day Book (incl. RCM badge — R-23), Ledger Vouchers (running balance), Group Summary, Cash/Bank Book (O-1 period semantics: future vouchers never contaminate historical windows), Sales/Purchase Registers, Stock Summary, Bills Receivable/Payable (incl. display-only party opening bills — R-07), GSTR-1 (with e-invoice/EWB submit + lifecycle actions), GSTR-3B, GSTR-9, TDS report, TCS report, Salary Register, Cheque Register, Audit Trail (company chronology + per-voucher history — R-18/R-20).
+All with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV (every view, R-66) and Print (print stylesheet)**: Balance Sheet, P&L (sub-period = period movements; FY view = cumulative), Trial Balance (with out-of-balance difference surface — R-14), Chart of Accounts (R-63 single-tree explorer), Day Book (incl. RCM badge — R-23), Ledger Vouchers (running balance), Group Summary, Cash/Bank Book (O-1 period semantics: future vouchers never contaminate historical windows), Sales/Purchase Registers, Stock Summary, Bills Receivable/Payable (incl. display-only party opening bills — R-07), GSTR-1 (with e-invoice/EWB submit + lifecycle actions), GSTR-3B, GSTR-9, TDS report, TCS report, Salary Register, Cheque Register, Audit Trail (company chronology + per-voucher history — R-18/R-20).
 
 ## XML import
 
@@ -67,7 +67,7 @@ All with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV (eve
 ## Utilities & UI philosophy
 
 - Cheque printing with amount-in-words; cheque register; company settings; CSV report export on every report view (R-66) + report print stylesheet + **invoice printing** for Sales/Delivery Note vouchers (GST-ready face, party master details, amount in words).
-- **Keyboard-first:** F2 date · F4–F9/Alt+F-keys quick vouchers · Ctrl+A accept · Alt+F1 detailed/condensed · Esc back · Enter adds entry row · type-ahead ledger & item search. The UI is compact and minimal by design — no ERP clutter.
+- **Keyboard-first:** F2 date · F4–F9/Alt+F-keys quick vouchers · Ctrl+A accept (vouchers and, since R-72, the master editor — Ctrl+S aliases it there) · Alt+F1 detailed/condensed · Esc back · Enter adds entry row · type-ahead ledger & item search. The UI is compact and minimal by design — no ERP clutter.
 - **Quick-create (Tally Alt+C analogue):** typing an unknown ledger/item in a voucher and pressing Enter opens inline creation; while a freshly mounted screen's options are on their initial fetch the create path is suppressed with a "Loading options…" hint (R-43 F-42-1 guard). Fresh companies seed accounting ledgers plus starter units (Nos, Pieces) and godown Main — ordinary masters, edit/delete freely (R-44 F-42-2).
 
 ## Financial year model
@@ -88,5 +88,5 @@ All with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV (eve
 
 ## Verification capability (what proves it works)
 
-- 1171 Python checks across 6 suites (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 889, attack-the-fixes 29) + 386 real-browser checks (baseline 153 + 15 R-scenario suites) — see `STATE.md` for exact commands; `RELEASES.md` for release-time totals.
+- 1,234 Python checks across 6 suites (smoke 39, adversarial 88, bug-fix 65, reconciliation 61, final regression 952, attack-the-fixes 29) + 725 real-browser checks (run.js baseline 153 + 23 R-scenario suites + 3 persona suites: beginner/pro/hacker) — see `STATE.md` for exact commands; `RELEASES.md` for release-time totals.
 - Independent expectation engine (`scripts/acceptance/engine.py`, pure Python, zero shared code with the app) reconciles TB/BS/P&L/FIFO stock/bills/GSTR-1/GSTR-3B/TDS/cash-bank/salary to the paisa.
