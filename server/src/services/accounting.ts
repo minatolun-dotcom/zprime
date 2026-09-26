@@ -500,6 +500,54 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     grp.total = r2(grp.total + amt);
   }
 
+  // R-69 (Tally parity): a party ledger with NO bill-wise tracking (a
+  // non-bill-wise master, or postings made before bill-wise was enabled)
+  // never produces bill_allocations rows, so its outstanding was invisible
+  // here — it surfaced only through an opening balance or on-account
+  // allocations (R-07 / A-05). Tally shows a non-bill-wise party's whole
+  // balance as "On Account". Compute each party ledger's net balance from
+  // its entries and merge the UNREPRESENTED residual as an "On Account"
+  // bill. The covered base deliberately EXCLUDES "opening" bills: the
+  // opening lives in ledgers.openingBalance (a master field, not an entry),
+  // so counting it in covered would double-count it and fabricate a
+  // negative residual for migrated books.
+  const netRows = await db
+    .select({
+      ledgerId: voucherEntries.ledgerId,
+      name: ledgers.name,
+      net: sql<string>`sum(${voucherEntries.amount})`,
+      firstDate: sql<string>`min(${vouchers.date})`,
+    })
+    .from(voucherEntries)
+    .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+    .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
+    .innerJoin(groups, eq(groups.id, ledgers.groupId))
+    .where(and(
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(groups.name, partyGroup), lte(vouchers.date, asOf),
+    ))
+    .groupBy(voucherEntries.ledgerId, ledgers.name);
+  for (const n of netRows) {
+    const grp = result.find((g) => g.ledgerId === n.ledgerId);
+    const covered = grp
+      ? r2(grp.bills.filter((b) => b.billType !== "opening").reduce((s, b) => s + b.amount, 0))
+      : 0;
+    const residual = r2(num(n.net) - covered);
+    if (Math.abs(residual) <= 0.004) continue;
+    const ledgerName = ledgerFilter.get(n.ledgerId) ?? n.name;
+    let g2 = grp;
+    if (!g2) {
+      g2 = { ledgerId: n.ledgerId, ledgerName, total: 0, bills: [] };
+      result.push(g2);
+      result.sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+    }
+    const merged = g2.bills.find((b) => b.billType === "on_account");
+    if (merged) merged.amount = r2(merged.amount + residual);
+    else g2.bills.push({ ledgerId: n.ledgerId, ledgerName, billName: "On Account", billType: "on_account", amount: residual, dueDate: null, date: String(n.firstDate ?? "") });
+    g2.bills.sort((a, b) => cmpDate(a.date, b.date));
+    g2.total = r2(g2.total + residual);
+  }
+
   const total = r2(result.reduce((s, g) => s + g.total, 0));
   return { parties: result, total, asOf };
 }

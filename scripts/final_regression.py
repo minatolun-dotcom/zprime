@@ -365,7 +365,11 @@ pa = next((p for p in rec.get("parties", []) if p["ledgerName"] == "Cust A"), No
 if pa:
     b1 = next((x for x in pa["bills"] if x["billName"] == "1"), None)
     eq("bill '1' still exactly 6160 (no netting)", b1["amount"] if b1 else None, 6160)
-    eq("Cust A total = 6160+500-1000(adv) = 5660", pa["total"], 5660)
+    # R-69: the Apr/May/Jun sales fixtures (5000+3000+2000) were posted WITHOUT
+    # bill allocations — pre-R-69 they were invisible in outstanding (the
+    # bill-wise edition of the non-bill-wise blind spot); now they surface as
+    # the honest On Account residual: 6160+500-1000(adv) + 8000 = 13660.
+    eq("Cust A total = 6160+500-1000(adv)+8000(R-69 residual) = 13660", pa["total"], 13660)
 # settlement flow intact
 s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Receipt"], "date": "2026-05-25",
     "entries": [{"ledgerId": cust["id"], "amount": -6160, "bills": [{"billType": "against_ref", "billName": "1", "amount": -6160}]},
