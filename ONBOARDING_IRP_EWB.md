@@ -65,9 +65,9 @@ Prove the whole setup before touching real books:
 1. Create a test company (e.g. "Sandbox Test Co") with your sandbox GSTIN, address, and pincode — e-invoice/EWB payloads validate seller address+pincode all-at-once.
 2. Add a B2B buyer ledger (GSTIN + address + state + pincode) and an item with HSN + GST rate.
 3. Post an inter-state Sales voucher (e.g. ₹1,000 + IGST 18%).
-4. Reports → GSTR-1 → the B2B row → **submit** → expect the green banner *"e-invoice accepted — IRN …"*. Failures surface verbatim NIC errors in an amber banner (see §5).
-5. **ewb-gen** on the same row → *"e-way bill accepted — EWB …"* (the e-way bill born from the IRN — no Part-B needed; add vehicle via **ewb-veh**).
-6. For direct EWB (B2C): create a B2C party (no GSTIN, but address + state + pincode), post a Sales voucher, and use the **ewb** action on the B2C row → *"e-way bill (direct) accepted"*.
+4. Reports → GSTR-1 → the B2B row → **submit** → expect the green banner *"e-invoice accepted for <voucher no> — IRN …"*. Failures surface verbatim NIC errors in an amber banner (see §5).
+5. **ewb-gen** on the same row → *"e-way bill accepted for <voucher no> — EWB …"* (the e-way bill born from the IRN — no Part-B needed; add vehicle via **ewb-veh**).
+6. For direct EWB (B2C): create a B2C party (no GSTIN, but address + state + pincode), post a Sales voucher, and use the **ewb** action on the B2C row → *"e-way bill (direct) accepted for <voucher no> — EWB …"*.
 7. Lifecycle drill: **ewb-veh** (vehicle update) → **ewb-ext** (validity extension — once per EWB ever, 8-h window) → **ewb-can** (cancel — 24-h window, remark required). After a cancel the birth action returns (the EWB is honestly retired; the record is kept verbatim).
 8. Every attempt (success AND failure) is recorded verbatim: voucher-level history in the GSTR-1 row/Audit trail, ops rows in the `irp_ewb_ops` ledger.
 
@@ -96,7 +96,7 @@ A rejected submit (Status 0 with error details) marks the row `rejected` — fix
 ## 6. Credential rotation & revocation
 
 - **Rotate any secret** via the retype rule: type the new value over the masked field and Save. Stored-but-unchanged pairs (left blank) are preserved — no churn.
-- **Revoke a compromised environment:** Settings → the environment tab → Remove credentials. The row is deleted immediately; previously submitted IRN/EWB records are retained (they are legal records and are never deleted).
+- **Revoke a compromised environment:** Settings → the environment tab → **Remove (sandbox)** / **Remove (production)**. The row is deleted immediately; previously submitted IRN/EWB records are retained (they are legal records and are never deleted).
 - **Rotate `IRP_ENC_KEY`:** delete all stored credential rows first, rotate the key in `.env`, recreate the app, re-enter credentials. (A key change with stored rows makes them undecryptable by design — authenticated encryption refuses wrong keys rather than failing silently.)
 
 ---
