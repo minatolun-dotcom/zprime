@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.58.0
+
+- **Released:** 2026-09-26
+- **R-item:** R-68 — IRP SignedQRCode/SignedInvoice storage + IRN QR on the invoice face (approved from the R-67 investigation's top compliance finding, Option D; investigation commit `37b529d`, `R-68_INVESTIGATION.md`)
+- **Commit:** `39ffa28073dcfa6a6e18ebb21541bbc71b36a6bf` (annotated tag `faebcb1abc0f3539f28b93de71d8d804d3624af8`)
+- **Purpose:** R-67's study surfaced the strongest gap in the e-invoice surface: the submission ledger discarded NIC's `SignedQRCode`/`SignedInvoice` from the GENIRN response, so printed e-invoices could not carry the legally expected IRN QR. **(1) Migration 0017** — additive-only, generated via the new `server/scripts/gen-0017.ts` (drizzle-kit programmatic API, the gen-0013 pattern; journal 17→18, verified applied on a fresh volume): `irp_submissions.signed_qr_code` + `signed_invoice` nullable text columns. **(2) Server** — `submitEInvoice`'s GENIRN accept branch persists `resp.SignedQRCode`/`resp.SignedInvoice` (rejected rows stay NULL); the verbatim `response` jsonb contract is unchanged and every EWB path is untouched; `maskSubmission()` (documented passthrough) keeps the stored row safe to return. **(3) Mock fidelity** — `scripts/mock_irp.js` genirn now emits deterministic `SignedQRCode` (base64 of `mock-signed-qr:<irn>`) + `SignedInvoice`. **(4) Client** — `qrcode.react@^4.2.0` (zero runtime deps, SVG output); `InvoicePrint.tsx` owns the submissions query (queryKey `["einvoice-submissions", cid, voucherId]`, staleTime 60s) and renders `IrnQrStrip` (`data-testid="irn-qr-strip"`: QRCodeSVG size 84 + IRN + Ack No/date) on the invoice face only when an accepted e-invoice with a `signedQrCode` exists — VoucherScreen untouched, zero accounting surface.
+- **Verification:** typecheck server+client clean · build clean (client bundle 414.27 kB / 117.55 kB gzip from qrcode.react) · new `r68_ui.js` **17/17** (mock accept → signed artifacts on the submission → QR strip on the Sales alter face: IRN text, Ack No, SVG present, visible in print media via emulateMedia; honest no-IRN negative on a second sale; zero page errors) · `r46_drill.js` **42/42** (+3 R-68 checks: signed QR+invoice on the accepted row; history exposes signedQrCode; duplicate 409 re-surfaces the stored QR) · `final_regression.py` **952/952** (+4 R-68 checks: SignedQRCode/SignedInvoice on the submission payload; DB columns persisted; rejected submission carries NULL signed QR) · full estate green on a fresh volume, every suite exactly once: r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, run.js **153/153**, smoke **39/39** · `git diff --check` clean
+- **Immutability:** v1.58.0 and all prior tags are immutable
+
+---
+
 ## v1.57.0
 
 - **Released:** 2026-09-26
