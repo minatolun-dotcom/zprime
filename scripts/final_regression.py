@@ -3175,6 +3175,11 @@ check("R28: happy-path submit -> 200 accepted", s == 200 and sub1.get("ok") is T
 s28 = sub1.get("submission") or {}
 check("R28: IRN + ack persisted from mock response", (s28.get("irn") or "") != "" and (s28.get("ackNo") or "") != "", s28)
 check("R28: IRN is the mock's deterministic SHA-256", len(str(s28.get("irn"))) == 64, s28.get("irn"))
+# R-68: the IRP-signed artifacts are now first-class columns on the row
+check("R68: SignedQRCode stored on the accepted submission", (s28.get("signedQrCode") or "") != "", (s28.get("signedQrCode") or "")[:40])
+check("R68: SignedInvoice stored on the accepted submission", (s28.get("signedInvoice") or "") != "", (s28.get("signedInvoice") or "")[:40])
+row68 = docker_exec("SELECT signed_qr_code IS NOT NULL AND signed_invoice IS NOT NULL FROM irp_submissions WHERE company_id = " + str(C24) + " AND kind = 'e-invoice' ORDER BY id DESC LIMIT 1;")
+check("R68: signed columns persisted in DB (t)", row68 == "t", row68)
 
 # 7) verbatim response stored in DB + status accepted
 row2 = docker_exec("SELECT status, response->>'Irn' IS NOT NULL FROM irp_submissions WHERE company_id = " + str(C24) + " AND kind = 'e-invoice' ORDER BY id DESC LIMIT 1;")
@@ -3207,6 +3212,8 @@ s, sub3 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale28['id']}/submit")
 check("R28: IRP rejection surfaces with verbatim errors", s == 502 and sub3.get("irpErrors"), (s, str(sub3)[:150]))
 row3 = docker_exec("SELECT status FROM irp_submissions WHERE company_id = " + str(C24) + " AND voucher_id = " + str(sale28["id"]) + " AND kind = 'e-invoice' ORDER BY id DESC LIMIT 1;")
 check("R28: rejection recorded as 'rejected'", row3 == "rejected", row3)
+row3q = docker_exec("SELECT signed_qr_code IS NULL FROM irp_submissions WHERE company_id = " + str(C24) + " AND voucher_id = " + str(sale28["id"]) + " AND kind = 'e-invoice' AND status = 'rejected' ORDER BY id DESC LIMIT 1;")
+check("R68: rejected submission carries NO signed QR (honest null)", row3q == "t", row3q)
 s, sub4 = r03(sA, "POST", f"{R24}/reports/einvoice/{sale28['id']}/submit")
 check("R28: retry after rejection allowed (not a duplicate)", s == 200 and sub4.get("ok") is True, (s, str(sub4)[:150]))
 

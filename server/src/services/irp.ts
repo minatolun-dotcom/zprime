@@ -330,6 +330,12 @@ export async function submitEInvoice(companyId: number, voucherId: number, reque
       irn: resp.Irn ?? null,
       ackNo: resp.AckNo != null ? String(resp.AckNo) : null,
       ackDate: resp.AckDt ?? null,
+      // R-68: NIC's IRP-signed artifacts (QR payload for the invoice face +
+      // the offline-verifiable signed invoice JSON). Seeded only on accept —
+      // a rejected IRP issued nothing. Previously buried in the verbatim
+      // response jsonb; now first-class, queryable, renderable.
+      signedQrCode: accepted ? (resp.SignedQRCode ?? null) : null,
+      signedInvoice: accepted ? (resp.SignedInvoice ?? null) : null,
       response: resp,
       error: accepted ? null : (resp.ErrorDetails ?? [{ ErrorMessage: "IRP did not return an IRN" }]),
     }).where(eq(irpSubmissions.id, rowId)).returning();

@@ -120,6 +120,13 @@
 			"when": 1790265911535,
 			"tag": "0016_r57_numbering_periodicity",
 			"breakpoints": true
+		},
+		{
+			"idx": 17,
+			"version": "7",
+			"when": 1790403436198,
+			"tag": "0017_r68_signed_qr",
+			"breakpoints": true
 		}
 	]
 }

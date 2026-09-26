@@ -177,9 +177,16 @@ function client(jar) {
   // ---------- 4) e-invoice: accept / duplicate / reject+retry ----------
   r = await admin("POST", `${R}/reports/einvoice/${sale1.id}/submit`);
   ok("e-invoice accepted (IRN returned)", r.status === 200 && r.data?.ok === true && r.data?.submission?.irn, r);
+  ok("R68: IRP-signed QR + invoice stored on the accepted row", !!r.data?.submission?.signedQrCode && !!r.data?.submission?.signedInvoice,
+    { qr: (r.data?.submission?.signedQrCode || "").slice(0, 30), inv: (r.data?.submission?.signedInvoice || "").slice(0, 30) });
+
+  r = await admin("GET", `${R}/reports/submissions?voucherId=${sale1.id}`);
+  ok("R68: history exposes the signed QR for the voucher", r.status === 200
+    && (r.data || []).some((h) => h.kind === "e-invoice" && h.status === "accepted" && !!h.signedQrCode), (r.data || []).map((h) => [h.kind, h.status]));
 
   r = await admin("POST", `${R}/reports/einvoice/${sale1.id}/submit`);
   ok("duplicate submit refused 409 w/o network", r.status === 409 && JSON.stringify(r.data).includes("Already submitted"), r);
+  ok("R68: duplicate 409 re-surfaces the stored signed QR (idempotent re-read)", !!r.data?.submission?.signedQrCode, Object.keys(r.data?.submission || {}));
 
   await fetch(`${MOCK_HOST}/__reject`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ invoiceNo: sale2.number }) });

@@ -127,7 +127,13 @@ const server = http.createServer(async (req, res) => {
       return send(200, { Status: 0, ErrorDetails: [{ ErrorCode: "3095", ErrorMessage: `mock rejection for ${invNo}` }] });
     }
     const irn = crypto.createHash("sha256").update(invNo + payload?.SellerDtls?.Gstin).digest("hex");
-    return send(200, { Status: 1, Data: ecbEnc(sess.sek, { Irn: irn, AckNo: Math.floor(Math.random() * 1e12), AckDt: new Date().toISOString().slice(0, 19) }) });
+    // R-68: mirror the real NIC response shape — GENIRN carries the IRP-signed
+    // artifacts. The mock emits DETERMINISTIC test strings derived from the
+    // IRN (not real cryptographic payloads — the mock makes no such claim);
+    // zprime stores them verbatim and renders the QR.
+    const signedQr = Buffer.from("mock-signed-qr:" + irn).toString("base64");
+    const signedInv = Buffer.from(JSON.stringify({ data: { irn }, sig: "mock-signature:" + irn.slice(0, 16) })).toString("base64");
+    return send(200, { Status: 1, Data: ecbEnc(sess.sek, { Irn: irn, AckNo: Math.floor(Math.random() * 1e12), AckDt: new Date().toISOString().slice(0, 19), SignedQRCode: signedQr, SignedInvoice: signedInv }) });
   }
 
   if (req.url === "/eivital/v1.10/genewb") {

@@ -468,6 +468,14 @@ export const irpSubmissions = pgTable("irp_submissions", {
   irn: text("irn"),
   ackNo: text("ack_no"),
   ackDate: text("ack_date"),
+  // R-68: NIC's GENIRN response carries SignedQRCode (the IRP-signed QR
+  // payload printed on the B2B e-invoice face) and SignedInvoice (the
+  // offline-verifiable signed invoice JSON). First-class columns (not just
+  // the verbatim response blob) so the invoice face can render the IRN QR.
+  // Nullable, seeded only on the accepted GENIRN path; pre-R-68 rows stay
+  // null and render no QR — honest. EWB rows never carry these.
+  signedQrCode: text("signed_qr_code"),
+  signedInvoice: text("signed_invoice"),
   ewbNo: text("ewb_no"),
   ewbValidUntil: text("ewb_valid_until"),
   response: jsonb("response"), // decrypted IRP response, verbatim

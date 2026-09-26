@@ -1,4 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
+import { QRCodeSVG } from "qrcode.react";
 import { useCompany } from "../store";
+import { get } from "../lib/api";
 import { num, r2, fmtDate } from "../lib/format";
 import { amountWords } from "../lib/amountWords";
 
@@ -11,6 +14,12 @@ import { amountWords } from "../lib/amountWords";
  * (Input/Output CGST/SGST/IGST rate split as posted); inventory rows carry
  * HSN from the entry snapshot when present. Amount in words is the shared
  * Indian-system helper (same text as cheque printing).
+ *
+ * R-68: when the voucher has an ACCEPTED e-invoice with an IRP-signed QR
+ * (stored from NIC's GENIRN response), the face renders the IRN QR strip —
+ * IRN, QR (SVG, crisp on paper), acknowledgement number + date. Pre-R-68
+ * submissions, cancelled/rejected rows, and vouchers never submitted render
+ * no strip — honest.
  *
  * Zero accounting surface: this only renders what the books already hold.
  */
@@ -55,10 +64,18 @@ function ScreenPreview({ cid, voucherId, voucher }: { cid: string; voucherId: st
 }
 
 function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: string; voucher: any }) {
-  void cid; void voucherId;
   const isSales = voucher.type?.name === "Sales";
   const isDN = voucher.type?.name === "Delivery Note";
   const docTitle = isSales ? "INVOICE" : "DELIVERY NOTE";
+  // R-68: the accepted e-invoice for this voucher (if any) — carries the
+  // IRP-signed QR stored at GENIRN-accept time.
+  const { data: submissions } = useQuery({
+    queryKey: ["einvoice-submissions", cid, voucherId],
+    queryFn: () => get<any[]>(`/api/c/${cid}/reports/submissions?voucherId=${voucherId}`),
+    enabled: !!cid && !!voucherId,
+    staleTime: 60_000,
+  });
+  const einv = (submissions ?? []).find((s: any) => s.kind === "e-invoice" && s.status === "accepted" && s.signedQrCode);
   const amt = Math.abs(num(voucher.total ?? voucher.entries?.reduce((s: number, e: any) => s + Math.max(num(e.amount), 0), 0)));
   const partyRows = voucher.entries?.filter((e: any) => e.ledgerId === voucher.partyLedgerId) ?? [];
   const partyAmt = partyRows.reduce((s: number, e: any) => s + Math.abs(num(e.amount)), 0);
@@ -180,6 +197,18 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
           <b>Rupees {amountWords(Math.floor(amt))}{amt % 1 ? ` and ${Math.round((amt % 1) * 100)} Paise` : ""} Only</b>
         </div>
       </div>
+
+      {/* R-68: IRN QR strip — present only with an accepted, QR-bearing e-invoice */}
+      {einv && (
+        <div className="border-t border-slate-400 px-6 py-3 text-xs flex items-center gap-4" data-testid="irn-qr-strip">
+          <QRCodeSVG value={einv.signedQrCode} size={84} includeMargin={true} className="shrink-0" />
+          <div className="leading-relaxed">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">e-invoice registered (IRP)</div>
+            <div>IRN: <b className="break-all font-mono text-[10px]">{einv.irn}</b></div>
+            {einv.ackNo ? <div className="text-slate-600">Ack No: {einv.ackNo}{einv.ackDate ? ` · ${einv.ackDate}` : ""}</div> : null}
+          </div>
+        </div>
+      )}
 
       {/* narration + signature */}
       <div className="border-t border-slate-400 px-6 py-3 text-xs flex justify-between items-end">
