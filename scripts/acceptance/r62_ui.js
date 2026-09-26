@@ -57,7 +57,9 @@ const ok = (name, cond, detail) => {
   ok("then the Alt+ chords in numeric order",
     JSON.stringify(items.slice(7, 12)) === JSON.stringify(["Debit Note", "Credit Note", "Stock Journal", "Delivery Note", "Receipt Note"]), items.slice(7));
   ok("then Ctrl+ chords, keyless Payroll last", items[12] === "Physical Stock" && items[items.length - 1] === "Process Payroll", items.slice(12));
-  ok("every seeded type still listed (13 types + Payroll)", items.length === 14, items.length);
+  // R-73: the seeded vocabulary grows by the order pair (Sale Order, Purchase
+  // Order — keyless, reachable via Gateway/Day Book/palette). 15 types + Payroll.
+  ok("every seeded type still listed (15 types incl. the R-73 order pair + Payroll)", items.length === 16, items.length);
 
   // ---- 3) Company Settings = Alt+S ----
   await gateway();

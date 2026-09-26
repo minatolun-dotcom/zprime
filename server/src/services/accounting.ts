@@ -43,7 +43,7 @@ export async function ledgerBalances(companyId: number, from: string, to: string
     })
     .from(voucherEntries)
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
-    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), gte(vouchers.date, from), lte(vouchers.date, to)))
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), gte(vouchers.date, from), lte(vouchers.date, to)))
     .groupBy(voucherEntries.ledgerId);
 
   const priorMovements = await db
@@ -54,7 +54,7 @@ export async function ledgerBalances(companyId: number, from: string, to: string
     })
     .from(voucherEntries)
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
-    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), lt(vouchers.date, from)))
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), lt(vouchers.date, from)))
     .groupBy(voucherEntries.ledgerId);
 
   const mv = new Map(movements.map((m) => [m.ledgerId, { dr: num(m.debit), cr: num(m.credit) }]));
@@ -286,7 +286,7 @@ export async function ledgerVouchers(companyId: number, ledgerId: number, period
     .from(voucherEntries)
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(voucherEntries.ledgerId, ledgerId),
       lt(vouchers.date, period.from),
     ));
@@ -304,7 +304,7 @@ export async function ledgerVouchers(companyId: number, ledgerId: number, period
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(voucherEntries.ledgerId, ledgerId),
       gte(vouchers.date, period.from), lte(vouchers.date, period.to),
     ))
@@ -354,7 +354,7 @@ export async function register(companyId: number, period: Period, voucherTypeNam
     .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
     .leftJoin(ledgers, eq(ledgers.id, vouchers.partyLedgerId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(voucherTypes.name, voucherTypeName),
       gte(vouchers.date, period.from), lte(vouchers.date, period.to),
     ))
@@ -390,7 +390,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       lte(vouchers.date, asOf),
     ));
 
@@ -432,7 +432,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(billAllocations.billType, "on_account"), lte(vouchers.date, asOf),
     ))
     .groupBy(voucherEntries.ledgerId);
@@ -523,7 +523,7 @@ export async function billWiseOutstanding(companyId: number, partyGroup: "Sundry
     .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
     .innerJoin(groups, eq(groups.id, ledgers.groupId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(groups.name, partyGroup), lte(vouchers.date, asOf),
     ))
     .groupBy(voucherEntries.ledgerId, ledgers.name);

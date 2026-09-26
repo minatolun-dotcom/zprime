@@ -67,6 +67,8 @@ export default async function masterRoutes(app: FastifyInstance) {
   crud(app, "voucher-types", voucherTypes, {
     orderBy: byName,
     beforeSave: async (data: any, companyId: number) => {
+      // R-73 (F-73-7): normalize the zero-value opt-in to a real boolean.
+      if (data.allowZeroValueEntries !== undefined) data.allowZeroValueEntries = data.allowZeroValueEntries === true || data.allowZeroValueEntries === "true";
       if (data.numberingPeriodicity === undefined || data.id === undefined) return data;
       const typeId = typeof data.id === "string" ? parseInt(data.id, 10) : data.id;
       if (!Number.isFinite(typeId) || typeId <= 0) return data; // create path — no history

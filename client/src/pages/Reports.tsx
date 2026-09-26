@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Fragment } from "react";
 import { useLocation } from "react-router-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner } from "../components/ui";
-import { get, post } from "../lib/api";
+import { get, post, patch as apiPatch } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel, loadSessionPeriod, drCr } from "../lib/format";
@@ -39,6 +39,12 @@ export default function Reports() {
     if (st.itemId) setItemId(String(st.itemId));
   }, [location.state]);
 
+  // R-73 (F-73-5): BRS bank-ledger picker state (server defaults to the first
+  // bank/cash ledger when the query param is absent).
+  const [brsLedgerId, setBrsLedgerId] = useState<number | null>(null);
+  const { data: brsLedgers } = useQuery({ queryKey: ["all-ledgers", cid], queryFn: () => get<any[]>(`/api/c/${cid}/ledgers`), enabled: key === "bank-reconciliation" });
+  const brsBankLedgers = (brsLedgers ?? []).filter((l: any) => l.isBankCash);
+
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (key !== "balance-sheet") { p.set("from", from); }
@@ -47,8 +53,10 @@ export default function Reports() {
     if (key === "register-sales") p.set("typeName", "Sales");
     if (key === "register-purchase") p.set("typeName", "Purchase");
     if (key === "stock-summary" && itemId) p.set("itemId", itemId);
+    // R-73: BRS scopes by bank ledger and as-of; the Order Book is period-bound.
+    if (key === "bank-reconciliation") { p.set("asOf", to); p.delete("from"); if (brsLedgerId) p.set("ledgerId", String(brsLedgerId)); }
     return p.toString();
-  }, [from, to, key, itemId, compareOn]);
+  }, [from, to, key, itemId, compareOn, brsLedgerId]);
 
   const url = useMemo(() => {
     const endpoint = ENDPOINTS[key ?? ""] ?? "";
@@ -60,6 +68,8 @@ export default function Reports() {
     // where the registry's generic prefix was sending it (the view could never
     // render its data).
     if (key === "cheque-register") return `/api/c/${cid}/cheque-register?${qs}`;
+    // R-73 (F-73-5): BRS lives on the banking surface like the Cheque Register.
+    if (key === "bank-reconciliation") return `/api/c/${cid}/bank-reconciliation?${qs}`;
     return `/api/c/${cid}/reports/${endpoint}?${qs}`;
   }, [key, cid, qs, ledgerId, groupId]);
 
@@ -168,6 +178,16 @@ export default function Reports() {
       {key === "tcs" && data && <TcsView data={data} meta={meta} />}
       {key === "salary-register" && data && <SalaryRegisterView data={data} meta={meta} />}
       {key === "cheque-register" && data && <ChequeRegisterView data={data} meta={meta} />}
+      {key === "bank-reconciliation" && (
+        <div className="mb-3">
+          <label className="text-sm text-slate-500 mr-2">Bank account</label>
+          <select className="w-64" value={brsLedgerId ?? ""} onChange={(e) => setBrsLedgerId(e.target.value ? parseInt(e.target.value, 10) : null)}>
+            {(brsBankLedgers ?? []).map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
+      {key === "bank-reconciliation" && data && <BankReconciliationView data={data} meta={meta} />}
+      {key === "order-book" && data && <OrderBookView data={data} meta={meta} />}
     </Shell>
   );
 }
@@ -1346,23 +1366,120 @@ function ChequeRegisterView({ data, meta }: { data: any; meta: string[][] }) {
     <ReportActions
       name="cheque-register"
       meta={meta}
-      headers={["Date", "Cheque No.", "Bank", "Party / Narration", "Amount", "Direction"]}
-      rows={() => data.map((c: any) => [fmtDate(c.date), c.chequeNumber, c.bankLedger, c.narration ?? "", c.amount, c.direction])}
+      headers={["Date", "Txn Type", "Cheque No.", "Bank", "Party / Narration", "Amount", "Direction"]}
+      rows={() => data.map((c: any) => [fmtDate(c.date), (c.txnType ?? "cheque").toUpperCase(), c.chequeNumber, c.bankLedger, c.narration ?? "", c.amount, c.direction])}
     />
     <Card>
       <table className="report-table">
-        <thead><tr><th className="w-24">Date</th><th className="w-24">Cheque No.</th><th>Bank</th><th>Party / Narration</th>
+        <thead><tr><th className="w-24">Date</th><th className="w-20">Txn Type</th><th className="w-24">Cheque No.</th><th>Bank</th><th>Party / Narration</th>
           <th className="w-28 text-right">Amount</th><th className="w-24">Direction</th></tr></thead>
         <tbody>
           {data.map((c: any, i: number) => (
             <tr key={i}>
-              <td className="cell-nowrap">{fmtDate(c.date)}</td><td className="font-mono cell-nowrap">{c.chequeNumber}</td>
+              <td className="cell-nowrap">{fmtDate(c.date)}</td>
+              <td className="cell-nowrap text-slate-500">{c.txnType ? c.txnType.toUpperCase() : "—"}</td>
+              <td className="font-mono cell-nowrap">{c.chequeNumber}</td>
               <td>{c.bankLedger}</td><td className="text-slate-500 min-w-[180px] line-clamp-2 leading-snug">{c.narration}</td>
               <td className="num">{c.amount.toLocaleString("en-IN")}</td>
               <td>{c.direction}</td>
             </tr>
           ))}
-          {data.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-4">No cheques recorded — enter cheque numbers on Payment/Receipt vouchers</td></tr>}
+          {data.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-4">No cheques recorded — enter cheque numbers on Payment/Receipt vouchers</td></tr>}
+        </tbody>
+      </table>
+    </Card>
+    </>
+  );
+}
+
+// ---------- R-73 (F-73-5): Bank Reconciliation ----------
+function BankReconciliationView({ data, meta }: { data: any; meta: string[][] }) {
+  const { cid } = useParams();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState<number | null>(null);
+  const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  const toggle = async (voucherId: number, reconciled: boolean) => {
+    setBusy(voucherId);
+    try {
+      await apiPatch(`/api/c/${cid}/vouchers/${voucherId}/reconcile`, { reconciled });
+      qc.invalidateQueries({ queryKey: ["report"] });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+    <ReportActions
+      name="bank-reconciliation"
+      meta={meta}
+      headers={["Date", "Voucher", "Narration", "Deposit", "Withdrawal", "Reconciled On"]}
+      rows={() => data.items.map((i: any) => [fmtDate(i.date), `${i.typeName} ${i.number}`, i.narration ?? "", i.amount > 0 ? i.amount : "", i.amount < 0 ? -i.amount : "", i.reconciledAt ? fmtDate(i.reconciledAt) : ""])}
+    />
+    <Card>
+      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm flex flex-wrap gap-x-6 gap-y-1">
+        <span><b>{data.ledgerName}</b> as on {fmtDate(data.asOf)}</span>
+        <span className="text-slate-500">Book closing: <b className="num text-slate-700">{data.bookClosing.toLocaleString("en-IN")}</b></span>
+        <span className="text-emerald-700">Cleared: <b className="num">{data.reconciledTotal.toLocaleString("en-IN")}</b></span>
+        <span className="text-amber-700">Uncleared: <b className="num">{data.outstandingTotal.toLocaleString("en-IN")}</b></span>
+        <span>Balance as per statement (derived): <b className="num">{data.balanceAsPerStatement.toLocaleString("en-IN")}</b></span>
+      </div>
+      <table className="report-table">
+        <thead><tr><th className="w-24">Date</th><th className="w-32">Voucher</th><th>Narration</th>
+          <th className="w-28 text-right">Deposit</th><th className="w-28 text-right">Withdrawal</th><th className="w-36">Reconciled</th></tr></thead>
+        <tbody>
+          {data.items.map((i: any) => (
+            <tr key={i.voucherId}>
+              <td className="cell-nowrap">{fmtDate(i.date)}</td>
+              <td>{i.typeName} {i.number}</td>
+              <td className="text-slate-500 min-w-[160px] line-clamp-2 leading-snug">{i.narration}</td>
+              <td className="num text-emerald-700">{i.amount > 0 ? money(i.amount) : ""}</td>
+              <td className="num text-red-700">{i.amount < 0 ? money(-i.amount) : ""}</td>
+              <td>
+                {i.reconciled
+                  ? <span className="text-emerald-700 text-sm">✓ {i.reconciledAt ? fmtDate(i.reconciledAt) : ""}</span>
+                  : <button className="btn-ghost text-xs" disabled={busy === i.voucherId} data-testid={`reconcile-${i.voucherId}`} onClick={() => toggle(i.voucherId, true)}>Mark cleared</button>}
+              </td>
+            </tr>
+          ))}
+          {data.items.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-4">No bank transactions up to this date</td></tr>}
+        </tbody>
+      </table>
+      <div className="px-4 py-2.5 text-xs text-slate-400 leading-relaxed border-t border-slate-100">
+        Classical BRS identity — books' closing adjusted for un-cleared legs. A leg is cleared only when YOU mark it against your statement; zprime never fabricates bank facts.
+      </div>
+    </Card>
+    </>
+  );
+}
+
+// ---------- R-73 (F-73-4): Order Book (pending quantities) ----------
+function OrderBookView({ data, meta }: { data: any; meta: string[][] }) {
+  const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  return (
+    <>
+    <ReportActions
+      name="order-book"
+      meta={meta}
+      headers={["Order", "Date", "Party", "Item", "Ordered", "Fulfilled", "Pending"]}
+      rows={() => data.orders.flatMap((o: any) => o.lines.map((l: any) => [`${o.typeName} ${o.number}`, fmtDate(o.date), o.partyName ?? "", l.itemName, l.orderedQty, l.fulfilledQty, l.pendingQty]))}
+    />
+    <Card>
+      <table className="report-table">
+        <thead><tr><th>Order</th><th className="w-24">Date</th><th>Party</th><th>Item</th>
+          <th className="w-24 text-right">Ordered</th><th className="w-24 text-right">Fulfilled</th><th className="w-24 text-right">Pending</th></tr></thead>
+        <tbody>
+          {data.orders.map((o: any) => o.lines.map((l: any, j: number) => (
+            <tr key={`${o.id}-${j}`}>
+              {j === 0 && <td rowSpan={o.lines.length} className="font-medium align-top">{o.typeName} {o.number}</td>}
+              {j === 0 && <td rowSpan={o.lines.length} className="cell-nowrap align-top">{fmtDate(o.date)}</td>}
+              {j === 0 && <td rowSpan={o.lines.length} className="align-top">{o.partyName ?? ""}</td>}
+              <td>{l.itemName}</td>
+              <td className="num">{l.orderedQty}</td>
+              <td className="num">{l.fulfilledQty}</td>
+              <td className={l.pendingQty > 0.0001 ? "num font-semibold text-amber-700" : "num text-slate-400"}>{l.pendingQty > 0.0001 ? l.pendingQty : "✓"}</td>
+            </tr>
+          )))}
+          {data.orders.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-4">No orders in this period</td></tr>}
         </tbody>
       </table>
     </Card>
@@ -1507,6 +1624,8 @@ const ENDPOINTS: Record<string, string> = {
   tcs: "tcs",
   "salary-register": "salary-register",
   "cheque-register": "cheque-register",
+  "bank-reconciliation": "bank-reconciliation", // R-73 (F-73-5) — banking surface
+  "order-book": "order-book", // R-73 (F-73-4)
 };
 
 const TITLES: Record<string, string> = {
@@ -1529,6 +1648,8 @@ const TITLES: Record<string, string> = {
   tcs: "TCS Report",
   "salary-register": "Salary Register",
   "cheque-register": "Cheque Register",
+  "bank-reconciliation": "Bank Reconciliation",
+  "order-book": "Order Book",
 };
 
 // ---------- Chart of Accounts (R-63 — Tally's COA explorer) ----------

@@ -26,6 +26,9 @@ export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
       }      else if (e.ctrlKey && (k === "a" || k === "A")) combo = "Ctrl+A";
       else if (e.ctrlKey && (k === "s" || k === "S")) combo = "Ctrl+S";
       else if (e.ctrlKey && (k === "h" || k === "H")) combo = "Ctrl+H";
+      // R-73: Ctrl+L = save-as-optional (Tally), Ctrl+D = duplicate voucher.
+      else if (e.ctrlKey && (k === "l" || k === "L")) combo = "Ctrl+L";
+      else if (e.ctrlKey && (k === "d" || k === "D")) combo = "Ctrl+D";
       else if (e.altKey && /^[0-9]$/.test(k)) combo = `Alt+F${k}`;
       else if (k === "Escape") combo = "Escape";
       // R-54 (Tally reports): +/- next/previous artifact/report date.

@@ -29,7 +29,7 @@ migrates cleanly instead of staying dead).
 **Accounting**
 - Multi-company, Indian financial year (1 Apr – 31 Mar), ₹ Indian number format
 - 28 pre-defined account groups + unlimited custom groups & ledgers (GSTIN, taxability, bill-wise, bank, TDS)
-- All accounting vouchers: Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9), Credit Note (Alt+F6), Debit Note (Alt+F5)
+- All accounting vouchers: Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9), Credit Note (Alt+F6), Debit Note (Alt+F5), Sale Order, Purchase Order
 - Double-entry validation, automatic voucher numbering with prefix/suffix
 - Narration, cheque numbers, bill references (New Ref / Against Ref / Advance / On Account)
 
@@ -73,6 +73,8 @@ Vouchers accept with `Ctrl+A` — and since R-72 masters accept the same way: in
 | `Alt+J` | Apply GST on Sales/Purchase/CN/DN (Tally's statutory-adjustment slot) |
 | `Alt+C` | Create ledger on the fly |
 | `Alt+D` / `Alt+X` | Delete / cancel the open voucher (edit mode, confirm-guarded) |
+| `Ctrl+L` | Save the half-entered voucher as an **Optional** draft (Tally's optional class) — excluded from all reports, no serial number consumed; Accept from the Day Book to post |
+| `Alt+2` | Duplicate the open voucher into a new one (Tally) — body copied, number re-peeks |
 | `Ctrl+S` | Save the open master (Create/Alter slide-over) — an alias of Ctrl+A there; claimed so the browser's Save dialog never interrupts master editing |
 | `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
 | `Alt+S` | Company Settings (Tally's Stock-Query chord, unused here) — from any screen |

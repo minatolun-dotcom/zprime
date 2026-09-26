@@ -134,6 +134,11 @@ export const voucherTypes = pgTable("voucher_types", {
   // each financial year (counter is per company + type + FY of the voucher
   // date, FY-begin month from the company's stored financialYearStart).
   numberingPeriodicity: text("numbering_periodicity").notNull().default("never"), // never | fiscal
+  // R-73 (F-73-7): Tally F12 "allow zero-value entries" — per-type opt-in.
+  // Default false keeps zprime's strict byte-honest rejection everywhere;
+  // when true, the type accepts zero-amount ledger lines (postage stamps,
+  // 0-rated service lines) as long as the voucher balances.
+  allowZeroValueEntries: boolean("allow_zero_value_entries").notNull().default(false),
   functionKey: text("function_key"),
 }, (t) => [uniqueIndex("vt_company_name_uq").on(t.companyId, t.name)]);
 
@@ -250,6 +255,21 @@ export const vouchers = pgTable("vouchers", {
   refDate: date("ref_date"),
   narration: text("narration").notNull().default(""),
   partyLedgerId: integer("party_ledger_id"),
+  // R-73 (F-73-1): Tally's optional-voucher class — a parked draft. Excluded
+  // from every report/ledger balance/outstanding/stock valuation exactly like
+  // isCancelled, numbered WITHOUT consuming the type's serial counter (the
+  // number is stamped when the voucher is Accepted), cancellable only after
+  // acceptance, and deletable freely. Server truth only — the client sends
+  // isOptional at save; there is no draft->posted intermediate state.
+  isOptional: boolean("is_optional").notNull().default(false),
+  // R-73 (F-73-5): banking transaction taxonomy on the banking overlay's
+  // cheque/payment instrument (cheque | rtgs | neft | upi | other). Advisory
+  // metadata + Cheque Register / CSV facets; no BRS semantics on its own.
+  bankTxnType: text("bank_txn_type"),
+  // R-73 (F-73-5): when the bank statement confirmed this voucher's bank leg.
+  // Null = unreconciled. Set via the Bank Reconciliation view; the BRS report
+  // splits the bank book into cleared vs outstanding-for-statement items.
+  reconciledAt: date("reconciled_at"),
   // R-23: reverse charge — the RECIPIENT self-accounts the GST on this inward
   // (s. 9(3)/9(4)). Marked per-transaction, not per-supplier (one supplier can
   // mix regular goods and RCM services). Default false: every existing voucher
@@ -272,6 +292,11 @@ export const vouchers = pgTable("vouchers", {
   chequeNumber: text("cheque_number"),
   chequeDate: date("cheque_date"),
   placeOfSupply: text("place_of_supply"),
+  // R-73 (F-73-4): order linkage. orderVoucherId = the Sale/Purchase Order
+  // this invoice/credit note fulfils (nullable; NOT a hard FK — orders can be
+  // deleted without stranding invoices; pending-qty queries validate
+  // company/type themselves).
+  orderVoucherId: integer("order_voucher_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("vouchers_company_date_idx").on(t.companyId, t.date),
@@ -280,7 +305,18 @@ export const vouchers = pgTable("vouchers", {
   // type are impossible (across concurrent writes, manual or automatic numbering).
   // R-57: uniqueness gains the fy dimension — two FYs can each restart at 1.
   // NULL-fy (legacy) rows are exempt from unique enforcement by SQL rule.
-  uniqueIndex("vouchers_company_type_fy_number_uq").on(t.companyId, t.voucherTypeId, t.fy, t.number),
+  // R-73 (F-73-1): uniqueness now scopes by class — POSTED vouchers
+  // (is_optional = false) keep the exact prior uniqueness (byte-identical
+  // semantics); OPTIONAL drafts carry their own provisional numbers (OPT-n,
+  // never drawn from the counter) unique among themselves. Tally parity: a
+  // draft may provisionally display a number a posted voucher already holds;
+  // the real number is stamped on Accept.
+  uniqueIndex("vouchers_company_type_fy_number_uq")
+    .on(t.companyId, t.voucherTypeId, t.fy, t.number)
+    .where(sql`is_optional = false`),
+  uniqueIndex("vouchers_company_type_fy_number_opt_uq")
+    .on(t.companyId, t.voucherTypeId, t.fy, t.number)
+    .where(sql`is_optional = true`),
 ]);
 
 // R-18: full audit feature — append-only voucher event log. One row per
@@ -329,6 +365,8 @@ export const voucherEntries = pgTable("voucher_entries", {
   hsnSac: text("hsn_sac"), // snapshot for service lines
   tdsSectionId: integer("tds_section_id"), // snapshot for TDS reporting
   tcsSectionId: integer("tcs_section_id"), // snapshot for TCS reporting (R-27)
+  // R-73 (F-73-6): per-line narration (Tally F12 "use different narrations")
+  narration: text("narration"),
   order: integer("order").notNull().default(0),
 }, (t) => [index("entries_voucher_idx").on(t.voucherId), index("entries_ledger_idx").on(t.ledgerId)]);
 
@@ -352,6 +390,10 @@ export const inventoryEntries = pgTable("inventory_entries", {
   kind: text("kind").notNull().default("stock"), // stock | source (consumption) | target (production)
   hsnSac: text("hsn_sac"),
   gstRate: numeric("gst_rate", { precision: 5, scale: 2 }),
+  // R-73 (F-73-3): trade discount % applied at line level — amount is booked
+  // NET of discount (GST applies to the discounted value, Tally parity).
+  // Display/migration fidelity only; valuation never re-adds it.
+  discountPct: numeric("discount_pct", { precision: 6, scale: 3 }),
   order: integer("order").notNull().default(0),
 }, (t) => [index("inv_voucher_idx").on(t.voucherId), index("inv_item_idx").on(t.itemId)]);
 

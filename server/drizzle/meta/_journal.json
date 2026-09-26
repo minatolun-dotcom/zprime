@@ -127,6 +127,13 @@
 			"when": 1790403436198,
 			"tag": "0017_r68_signed_qr",
 			"breakpoints": true
+		},
+		{
+			"idx": 18,
+			"version": "7",
+			"when": 1790444428235,
+			"tag": "0018_r73_voucher_features",
+			"breakpoints": true
 		}
 	]
 }

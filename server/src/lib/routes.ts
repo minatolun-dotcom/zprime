@@ -97,7 +97,8 @@ export const inventoryEntrySchema = z.object({
   rate: z.number().finite().default(0),
   amount: z.number().finite().default(0),
   // "physical" = Physical Stock counted-qty row (stock.ts computes the diff at running avg)
-  kind: z.enum(["stock", "source", "target", "physical"]).default("stock"),
+  // R-73 (F-73-4): "order" = stock-neutral commitment row (Sale/Purchase Order).
+  kind: z.enum(["stock", "source", "target", "physical", "order"]).default("stock"),
   hsnSac: z.string().max(50).nullable().optional(),
   gstRate: z.number().finite().min(0).max(100).nullable().optional(),
 });
@@ -117,6 +118,16 @@ export const voucherSchema = z.object({
   // (s. 9(3)/9(4)). Server truth only; client-supplied values beyond the
   // boolean are meaningless. Import path does not set it (later scope).
   isRcm: z.boolean().optional().default(false),
+  // R-73 (F-73-1): Tally's optional-voucher class — parked draft. Excluded from
+  // every balance/report/stock/outstanding surface exactly like isCancelled;
+  // numbering does NOT consume the serial counter (stamped on Accept).
+  // Deliberately NOT defaulted: on PUT, an omitted flag means "unchanged" so a
+  // client that does not model drafts cannot silently post a parked voucher.
+  isOptional: z.boolean().optional(),
+  // R-73 (F-73-5): banking instrument taxonomy (cheque|rtgs|neft|upi|other).
+  bankTxnType: shortText(20).nullable().optional(),
+  // R-73 (F-73-4): the order this invoice/credit note fulfils.
+  orderVoucherId: z.number().int().positive().nullable().optional(),
   // R-10 (B-10): optional client-generated idempotency key. One key = one
   // business event; replaying it returns the original voucher. Also accepted
   // via the X-Idempotency-Key header (header wins). Server caps length and
@@ -125,10 +136,19 @@ export const voucherSchema = z.object({
   entries: z.array(
     z.object({
       ...voucherEntrySchema.shape,
+      // R-73 (F-73-6): per-line narration (Tally F12 "use different narrations").
+      narration: shortText(300).nullable().optional(),
       bills: z.array(billSchema).optional().default([]),
     })
   ),
-  inventoryEntries: z.array(inventoryEntrySchema).optional().default([]),
+  inventoryEntries: z.array(
+    z.object({
+      ...inventoryEntrySchema.shape,
+      // R-73 (F-73-3): trade discount % — amount is booked NET of discount
+      // (Tally parity); the pct is snapshot/migration fidelity.
+      discountPct: z.preprocess((v) => (typeof v === "string" && v.trim() !== "" ? Number(v) : v), z.number().min(0).max(100).nullable().optional()),
+    })
+  ).optional().default([]),
 });
 
 export type VoucherInput = z.infer<typeof voucherSchema>;

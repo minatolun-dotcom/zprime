@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import TypeAhead, { Option } from "../components/TypeAhead";
@@ -10,12 +10,18 @@ import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate } from "../lib/format";
 import InvoicePrint from "../components/InvoicePrint";
 
-interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
-interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; amount: number; kind: string; }
-interface VoucherType { id: number; name: string; category: string; affectsStock: boolean; shortCode: string; }
+interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; narration?: string; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
+interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; discountPct: number; amount: number; kind: string; }
+interface VoucherType { id: number; name: string; category: string; affectsStock: boolean; shortCode: string; allowZeroValueEntries?: boolean; }
 
 const PARTY_TYPES = ["Sales", "Purchase", "Credit Note", "Debit Note"];
 const STOCK_FLOW: Record<string, 1 | -1> = { Sales: -1, "Delivery Note": -1, "Credit Note": 1, Purchase: 1, "Receipt Note": 1, "Debit Note": -1 };
+// R-73 (F-73-4): order vouchers carry party + inventory lines but move NO stock
+// (rows are stored with kind "order", skipped by valuation and the availability
+// guard). Tally's order flow: the order records the commitment; the invoice
+// against it moves the stock. Invoices/notes may reference their order.
+const ORDER_TYPES = ["Sale Order", "Purchase Order"];
+const BANK_TXN_TYPES = ["cheque", "rtgs", "neft", "upi", "other"];
 
 export default function VoucherScreen() {
   const { cid, typeId, voucherId } = useParams();
@@ -25,6 +31,12 @@ export default function VoucherScreen() {
   const isEdit = Boolean(voucherId);
 
   const [vType, setVType] = useState<VoucherType | null>(null);
+  // Type-derived gates (declared before the queries that read them).
+  const hasParty = vType ? PARTY_TYPES.includes(vType.name) : false;
+  const isStockJournal = vType ? ["Stock Journal", "Manufacturing Journal"].includes(vType.name) : false;
+  const isPhysical = vType?.name === "Physical Stock";
+  const isOrder = vType ? ORDER_TYPES.includes(vType.name) : false;
+  const sign = vType ? (STOCK_FLOW[vType.name] ?? 0) : 0;
   const [date, setDate] = useState(today());
   const [number, setNumber] = useState("");
   const [numberLocked, setNumberLocked] = useState(false);
@@ -34,6 +46,13 @@ export default function VoucherScreen() {
   // R-23: reverse charge (s. 9(3)/9(4)) — recipient self-accounts the GST.
   // Offered only on inward voucher types (Purchase / Debit Note).
   const [isRcm, setIsRcm] = useState(false);
+  // R-73 (F-73-1): Ctrl+L parks a NEW voucher as an optional draft (Tally's
+  // optional class). Cleared on Accept; the server preserves the flag on edit.
+  const [isOptional, setIsOptional] = useState(false);
+  // R-73 (F-73-5): banking instrument (Payment/Receipt/Contra).
+  const [bankTxnType, setBankTxnType] = useState("");
+  // R-73 (F-73-4): the order this invoice/note fulfils.
+  const [orderVoucherId, setOrderVoucherId] = useState<number | null>(null);
   const [party, setParty] = useState<{ id: number | null; name: string }>({ id: null, name: "" });
   const [entries, setEntries] = useState<LedgerRow[]>([{ ledgerId: null, ledgerName: "", amount: 0 }]);
   const [inv, setInv] = useState<InvRow[]>([]);
@@ -91,6 +110,8 @@ export default function VoucherScreen() {
   const partyInputRef = useRef<HTMLInputElement | null>(null);
   // R-02: a cancelled voucher opened from Day Book is displayed read-only.
   const [cancelledView, setCancelledView] = useState(false);
+  // R-73 (F-73-2): duplicate prefill rides router state into the create path.
+  const location = useLocation();
   // R-18: compact audit history (edit mode only). Silent-degrade on fetch
   // failure — the viewer is convenience, never a security or workflow surface.
   const { data: auditTrail } = useQuery({
@@ -128,6 +149,21 @@ export default function VoucherScreen() {
   const { data: tcsSections } = useQuery({ queryKey: ["tcs-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`) });
   // R-35: groups for the quick-create "Under" select (cache shared with Reports).
   const { data: allGroups } = useQuery({ queryKey: ["groups", cid], queryFn: () => get<any[]>(`/api/c/${cid}/groups`) });
+  // R-73 (F-73-4): voucher types (Against-Order picker) + open orders per type.
+  const { data: allVoucherTypes } = useQuery({ queryKey: ["voucher-types", cid], queryFn: () => get<any[]>(`/api/c/${cid}/voucher-types`), enabled: hasParty });
+  const { data: orderRows } = useQuery({
+    queryKey: ["order-rows", cid],
+    queryFn: async () => {
+      const types = (allVoucherTypes ?? []).filter((t: any) => ORDER_TYPES.includes(t.name));
+      const byType: Record<number, any[]> = {};
+      for (const t of types) {
+        const rows = await get<any[]>(`/api/c/${cid}/vouchers?type=${t.id}`);
+        byType[t.id] = rows.filter((r) => !r.isCancelled && !r.isOptional);
+      }
+      return byType;
+    },
+    enabled: hasParty && isEdit,
+  });
   // R-66: party master details for the printable invoice face (address, GSTIN,
   // state) — only fetched for Sales / Delivery Note vouchers, where the print
   // surface exists. Silent-degrade: the face renders dashes when the ledger
@@ -170,8 +206,12 @@ export default function VoucherScreen() {
           setRefDate(v.refDate ? v.refDate.slice(0, 10) : "");
           setNarration(v.narration ?? "");
           setIsRcm(!!v.isRcm); // R-23: restore the reverse-charge flag on alter
+          setIsOptional(!!v.isOptional); // R-73: draft flag on alter (Accept endpoint flips it)
+          setBankTxnType(v.bankTxnType ?? ""); // R-73 (F-73-5)
+          setOrderVoucherId(v.orderVoucherId ?? null); // R-73 (F-73-4)
           const rows: LedgerRow[] = v.entries.map((e: any) => ({
             ledgerId: e.ledgerId, ledgerName: e.ledgerName, amount: num(e.amount),
+            narration: e.narration ?? "", // R-73 (F-73-6)
             tdsSectionId: e.tdsSectionId,
             tcsSectionId: e.tcsSectionId, // R-27: preserve the snapshot on alter
             againstBill: e.bills?.find((b: any) => b.billType === "against_ref")?.billName ?? "",
@@ -183,7 +223,7 @@ export default function VoucherScreen() {
           }
           const items: InvRow[] = (v.inventoryEntries ?? []).map((e: any) => ({
             itemId: e.itemId, itemName: itemOptions.find((i) => i.id === e.itemId)?.name ?? `#${e.itemId}`,
-            godownId: e.godownId, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount), kind: e.kind,
+            godownId: e.godownId, qty: num(e.qty), rate: num(e.rate), discountPct: e.discountPct != null ? num(e.discountPct) : 0, amount: num(e.amount), kind: e.kind,
           }));
           setInv(items);
           // R-66: keep the saved shape for the invoice print face
@@ -194,6 +234,31 @@ export default function VoucherScreen() {
           const next = await get<{ number: string }>(`/api/c/${cid}/vouchers/next-number?voucherTypeId=${t.id}&date=${today()}`);
           setNumber(next.number);
           if (t.affectsStock) setInv([newInvRow()]);
+          // R-73 (F-73-2): duplicate prefill — same type, body copied, identity fresh.
+          const dup = (location.state as any)?.duplicate;
+          if (dup && dup.voucherTypeId === t.id) {
+            setDate(dup.date?.slice(0, 10) ?? today());
+            setReference(dup.reference ?? "");
+            setRefDate(dup.refDate?.slice(0, 10) ?? "");
+            setNarration(dup.narration ?? "");
+            setBankTxnType(dup.bankTxnType ?? "");
+            if (dup.partyLedgerId) {
+              const pl = (dup.entries ?? []).find((e: any) => e.ledgerId === dup.partyLedgerId);
+              setParty({ id: dup.partyLedgerId, name: pl?.ledgerName ?? "" });
+            }
+            const drows: LedgerRow[] = (dup.entries ?? []).map((e: any) => ({
+              ledgerId: e.ledgerId, ledgerName: e.ledgerName, amount: num(e.amount), narration: e.narration ?? "",
+              tdsSectionId: e.tdsSectionId, tcsSectionId: e.tcsSectionId,
+              againstBill: e.bills?.find((b: any) => b.billType === "against_ref")?.billName ?? "",
+            }));
+            setEntries(drows.length ? drows : [{ ledgerId: null, ledgerName: "", amount: 0 }]);
+            const ditems: InvRow[] = (dup.inventoryEntries ?? []).map((e: any) => ({
+              itemId: e.itemId, itemName: itemOptions.find((i) => i.id === e.itemId)?.name ?? `#${e.itemId}`,
+              godownId: e.godownId, qty: num(e.qty), rate: num(e.rate),
+              discountPct: e.discountPct != null ? num(e.discountPct) : 0, amount: num(e.amount), kind: e.kind,
+            }));
+            if (ditems.length) setInv(ditems);
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Load failed");
@@ -203,13 +268,8 @@ export default function VoucherScreen() {
   }, [cid, typeId, voucherId]);
 
   function newInvRow(): InvRow {
-    return { itemId: null, itemName: "", godownId: null, qty: 0, rate: 0, amount: 0, kind: "stock" };
+    return { itemId: null, itemName: "", godownId: null, qty: 0, rate: 0, discountPct: 0, amount: 0, kind: "stock" };
   }
-
-  const hasParty = vType ? PARTY_TYPES.includes(vType.name) : false;
-  const isStockJournal = vType ? ["Stock Journal", "Manufacturing Journal"].includes(vType.name) : false;
-  const isPhysical = vType?.name === "Physical Stock";
-  const sign = vType ? (STOCK_FLOW[vType.name] ?? 0) : 0;
 
   const totalDr = r2(entries.reduce((s, e) => s + Math.max(e.amount, 0), 0));
   const totalCr = r2(entries.reduce((s, e) => s + Math.max(-e.amount, 0), 0));
@@ -500,14 +560,16 @@ export default function VoucherScreen() {
     // rows — when at least one real stock movement (item + non-zero qty) exists.
     // All other voucher types still require ledger entries. The server enforces
     // the same rule (validateEntries) — this is UX, not the trust boundary.
-    const validInv = vType?.category === "Inventory"
+    // R-73 (F-73-4): ORDER vouchers are commitment-only (no ledger rows) — the
+    // inventory lines carry the commitment, mirroring inventory-category rules.
+    const validInv = vType?.category === "Inventory" || isOrder
       ? inv.filter((r) => r.itemId && Math.abs(num(r.qty)) > 1e-9)
       : [];
     if (validEntries.length === 0 && validInv.length === 0) {
       setError("Add at least one ledger entry");
       return;
     }
-    if (vType?.category === "Inventory" && inv.some((r) => r.itemId && Math.abs(num(r.qty)) <= 1e-9)) {
+    if ((vType?.category === "Inventory" || isOrder) && inv.some((r) => r.itemId && Math.abs(num(r.qty)) <= 1e-9)) {
       setError("Inventory rows need a quantity");
       return;
     }
@@ -521,11 +583,21 @@ export default function VoucherScreen() {
       narration,
       isRcm: vType && ["Purchase", "Debit Note"].includes(vType.name) ? isRcm : false, // R-23
       partyLedgerId: hasParty && party.id ? party.id : null,
+      // R-73: Ctrl+L parks the voucher as an optional draft (create); on edit
+      // the flag is preserved server-side when omitted.
+      ...(isEdit ? {} : { isOptional: pendingOptionalRef.current }),
+      // R-73 (F-73-5): banking instrument on Payment/Receipt/Contra.
+      bankTxnType: bankTxnType || null,
+      // R-73 (F-73-4): order linkage for invoices/notes.
+      orderVoucherId: orderVoucherId || null,
       entries: validEntries.map((e, i) => {
         const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
         const isPartyRow = hasParty && e.ledgerId === party.id;
         const bills: any[] = [];
-        if (l?.billWise) {
+        // R-73 (F-73-4): ORDER vouchers never create bill rows — they record a
+        // commitment, not a receivable/payable; the invoice against the order
+        // books the bills (Tally parity: orders stay out of outstanding).
+        if (l?.billWise && !isOrder) {
           if (isPartyRow && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType!.name)) {
             // A-02 fix: auto bill names carry the voucher-type shortCode so two
             // types numbering from 1 (Sales #1 and Credit Note #1) can no longer
@@ -543,6 +615,7 @@ export default function VoucherScreen() {
           hsnSac: l?.hsnSac ?? null,
           tdsSectionId: e.tdsSectionId ?? null,
           tcsSectionId: e.tcsSectionId ?? null, // R-27: persist the collection-section snapshot
+          narration: e.narration || null, // R-73 (F-73-6)
           bills,
         };
       }),
@@ -551,9 +624,10 @@ export default function VoucherScreen() {
         .map((r) => ({
           itemId: r.itemId, godownId: r.godownId,
           qty: isPhysical ? Math.abs(r.qty) : r.kind === "source" ? -Math.abs(r.qty) : r.kind === "target" ? Math.abs(r.qty) : sign ? Math.abs(r.qty) * sign : r.qty,
-          rate: r.rate, amount: r2(Math.abs(r.qty) * r.rate),
-          kind: isPhysical ? "physical" : isStockJournal ? r.kind : "stock",
+          rate: r.rate,          amount: r2(Math.abs(r.qty) * r.rate * (1 - Math.min(Math.max(r.discountPct, 0), 100) / 100)), // R-73 (F-73-3): NET of discount
+          kind: isPhysical ? "physical" : isStockJournal ? r.kind : isOrder ? "order" : "stock",
           hsnSac: null, gstRate: null,
+          discountPct: r.discountPct > 0 ? r.discountPct : null,
         })),
     };
 
@@ -580,6 +654,7 @@ export default function VoucherScreen() {
     } finally {
       setSaving(false);
       savingRef.current = false;
+      pendingOptionalRef.current = false;
     }
   };
 
@@ -599,6 +674,29 @@ export default function VoucherScreen() {
 
   // R-54 Option A (Tally voucher actions): keyboard delete/cancel use the
   // same server contracts as the Day Book buttons. Edit mode only.
+  // R-73 (F-73-1): Ctrl+L — park the half-entered voucher as an OPTIONAL draft
+  // (Tally's optional class). Drafts are excluded from every report and never
+  // consume a serial number; Accept (Day Book action) posts them. Create mode only.
+  const pendingOptionalRef = useRef(false);
+  const saveOptional = async () => {
+    pendingOptionalRef.current = true;
+    setIsOptional(true);
+    await save();
+  };
+
+  // R-73 (F-73-2): Duplicate — load this voucher into a NEW voucher form of
+  // the same type, minus identity fields (number re-peeks, audit history and
+  // print face start fresh). Chord: Ctrl+D (Tally's Alt+2 collides with
+  // zprime's documented Alt-digit→F-key alias, R-64 D-4).
+  const duplicateIntoNew = async () => {
+    try {
+      const v = await get<any>(`/api/c/${cid}/vouchers/${voucherId}`);
+      nav(`/company/${cid}/voucher/${v.voucherTypeId}/new`, { state: { duplicate: { ...v } } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Duplicate failed");
+    }
+  };
+
   const doDelete = async () => {
     try {
       await del(`/api/c/${cid}/vouchers/${voucherId}`);
@@ -619,6 +717,21 @@ export default function VoucherScreen() {
     }
   };
 
+  // R-73 (F-73-1): Accept a draft — posts it and stamps the real number
+  // (server endpoint; body validators re-run at accept time).
+  const acceptDraft = async () => {
+    setSaving(true);
+    try {
+      await post(`/api/c/${cid}/vouchers/${voucherId}/accept`, {});
+      qc.invalidateQueries({ queryKey: ["daybook", cid] });
+      nav(`/company/${cid}/daybook`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Accept failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useHotkeys({
     // R-35: ledger-on-the-fly — Alt+C from anywhere on the voucher screen.
     // Prefill comes from the focused input's typed text when it is a ledger or
@@ -636,6 +749,8 @@ export default function VoucherScreen() {
       Escape: (e) => { e.preventDefault(); setQuickOpen(false); refocusTrigger(); },
     } : {
       "Ctrl+A": () => save(),
+      // R-73 (F-73-1): Ctrl+L parks the voucher as an optional draft (create only).
+      "Ctrl+L": () => { if (!isEdit && !quickOpen) saveOptional(); },
     }),
     "Alt+F1": () => setDetailed(!detailed),
     // R-64 (D-1): physical F2 focuses the date field — the rail's "F2 Date"
@@ -650,6 +765,8 @@ export default function VoucherScreen() {
       ? { "Alt+J": () => applyGst() } // R-54: Tally's statutory-adjustment slot; Alt+G is now Go To
       : {}),
     ...(vType?.category === "Accounting" ? { "Alt+T": () => applyTds() } : {}),
+    // R-73 (F-73-2): Alt+2 = duplicate into a new voucher (Tally), edit mode only.
+    ...(isEdit && !cancelledView && !quickOpen ? { "Ctrl+D": () => { duplicateIntoNew(); } } : {}),
     // R-54 Option A (Tally voucher actions): Alt+D delete, Alt+X cancel —
     // edit mode only, never while the quick-create modal is up, confirm-guarded.
     ...(isEdit && !cancelledView && !quickOpen ? {
@@ -664,6 +781,7 @@ export default function VoucherScreen() {
     ...(hasParty ? [{ key: "F12", label: "Ref / Party (click)", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+J", label: "Apply GST", onClick: applyGst }] : []),
     ...(isEdit && !cancelledView ? [
+      { key: "Ctrl+D", label: "Duplicate", onClick: duplicateIntoNew },
       { key: "Alt+D", label: "Delete Voucher", onClick: () => { if (window.confirm("Delete this voucher? This cannot be undone.")) doDelete(); } },
       { key: "Alt+X", label: "Cancel Voucher", onClick: () => { if (window.confirm("Cancel this voucher? It stays in the books but is excluded; Uncancel restores it.")) doCancel(); } },
     ] : []),
@@ -690,6 +808,18 @@ export default function VoucherScreen() {
         <div className="text-slate-400 text-sm">Loading…</div>
       ) : (
         <div className="card max-w-5xl">
+          {/* R-73 (F-73-1): draft banner — the voucher is parked */}
+          {isOptional && !cancelledView && (
+            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-100 text-amber-800 text-sm font-medium rounded-t-xl">
+              Optional (draft) voucher — excluded from all reports and outstanding until Accepted. Number {number} is provisional; the real number is stamped on Accept. Delete freely, or Accept to post.
+            </div>
+          )}
+          {/* R-73 (F-73-4): order-type hint */}
+          {isOrder && (
+            <div className="px-5 py-2.5 bg-indigo-50 border-b border-indigo-100 text-indigo-800 text-xs leading-relaxed rounded-t-xl">
+              Order voucher — records the commitment only: no stock moves and nothing hits outstanding until an invoice/delivery note is booked against it (use "Against Order" on the invoice).
+            </div>
+          )}
           {/* R-02: cancelled banner — the voucher is shown read-only */}
           {cancelledView && (
             <div className="px-5 py-2.5 bg-red-50 border-b border-red-100 text-red-700 text-sm font-medium rounded-t-xl">
@@ -758,8 +888,25 @@ export default function VoucherScreen() {
               </div>
             )}
 
+            {/* R-73 (F-73-4): order linkage on invoice/credit-note types */}
+            {hasParty && (
+              <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                <span className="text-sm font-medium text-slate-600">Against Order</span>
+                <select value={orderVoucherId ?? ""} onChange={(e) => setOrderVoucherId(e.target.value ? parseInt(e.target.value, 10) : null)}>
+                  <option value="">— none —</option>
+                  {(allVoucherTypes ?? []).filter((t: any) => ORDER_TYPES.includes(t.name)).map((t: any) => (
+                    <optgroup key={t.id} label={t.name}>
+                      {((orderRows as any)?.[t.id] ?? []).map((o: any) => (
+                        <option key={o.id} value={o.id}>{o.number} · {fmtDate(o.date)}{o.partyName ? ` · ${o.partyName}` : ""}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* inventory grid */}
-            {(vType.affectsStock || isStockJournal || isPhysical) && (
+            {(vType.affectsStock || isStockJournal || isPhysical || isOrder) && (
               <div>
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                   {isPhysical ? "Physical Stock (counted qty)" : isStockJournal ? "Stock Journal (consumption / production)" : "Inventory"}
@@ -772,6 +919,7 @@ export default function VoucherScreen() {
                       {isStockJournal && <th className="w-24">Type</th>}
                       <th className="w-24 text-right">Qty</th>
                       <th className="w-24 text-right">Rate</th>
+                      {detailed && !isOrder && <th className="w-20 text-right">Disc %</th>}
                       <th className="w-28 text-right">Amount</th>
                       <th className="w-8"></th>
                     </tr>
@@ -811,8 +959,15 @@ export default function VoucherScreen() {
                         <td><input className="w-full text-right" type="number" step="any" data-col="rate" value={row.rate || ""} onChange={(e) => setInv(inv.map((r, j) => {
                           if (j !== i) return r;
                           const rate = num(e.target.value);
-                          return { ...r, rate, amount: r2(Math.abs(r.qty) * rate) };
+                          return { ...r, rate, amount: r2(Math.abs(r.qty) * rate * (1 - Math.min(Math.max(r.discountPct, 0), 100) / 100)) };
                         }))} /></td>
+                        {detailed && !isOrder && (
+                          <td><input className="w-full text-right" type="number" step="any" data-col="disc" value={row.discountPct || ""} onChange={(e) => setInv(inv.map((r, j) => {
+                            if (j !== i) return r;
+                            const pct = Math.min(Math.max(num(e.target.value), 0), 100);
+                            return { ...r, discountPct: pct, amount: r2(Math.abs(r.qty) * r.rate * (1 - pct / 100)) };
+                          }))} /></td>
+                        )}
                         <td className="num">{row.amount.toLocaleString("en-IN")}</td>
                         <td><button className="text-slate-400 hover:text-red-500" onClick={() => setInv(inv.filter((_, j) => j !== i))}>✕</button></td>
                       </tr>
@@ -837,14 +992,14 @@ export default function VoucherScreen() {
                 )}
               </div>
               <table className="report-table">
-                <thead>
-                  <tr>
-                    <th>Ledger</th>
-                    {detailed && <th className="w-36">Against Bill</th>}
-                    <th className="w-32 text-right">Debit</th>
-                    <th className="w-32 text-right">Credit</th>
-                    <th className="w-8"></th>
-                  </tr>
+                <thead>                    <tr>
+                      <th>Ledger</th>
+                      {detailed && <th className="w-36">Against Bill</th>}
+                      {detailed && !isOrder && <th className="w-40">Line Narration</th>}
+                      <th className="w-32 text-right">Debit</th>
+                      <th className="w-32 text-right">Credit</th>
+                      <th className="w-8"></th>
+                    </tr>
                 </thead>
                 <tbody onKeyDown={gridArrowNav}>
                   {entries.map((row, i) => {
@@ -875,6 +1030,17 @@ export default function VoucherScreen() {
                               disabled={!l?.billWise}
                               value={row.againstBill ?? ""}
                               onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, againstBill: e.target.value } : r)))}
+                            />
+                          </td>
+                        )}
+                        {detailed && !isOrder && (
+                          <td>
+                            <input
+                              className="w-full"
+                              data-col="linenote"
+                              placeholder="line narration (optional)"
+                              value={row.narration ?? ""}
+                              onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, narration: e.target.value } : r)))}
                             />
                           </td>
                         )}
@@ -909,6 +1075,7 @@ export default function VoucherScreen() {
                   <tr className="font-semibold bg-slate-50/80 border-t-2 border-slate-200">
                     <td className="text-right pr-3 text-base">Total</td>
                     {detailed && <td />}
+                    {detailed && !isOrder && <td />}
                     <td className="num">{totalDr.toLocaleString("en-IN")}</td>
                     <td className="num">{totalCr.toLocaleString("en-IN")}</td>
                     <td className={Math.abs(diff) > 0.004 ? "num text-red-600" : "num text-green-600"}>
@@ -937,8 +1104,25 @@ export default function VoucherScreen() {
               <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being…" />
             </div>
 
+            {/* R-73 (F-73-5): banking instrument on Payment/Receipt/Contra */}
+            {vType && ["Payment", "Receipt", "Contra"].includes(vType.name) && (
+              <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                <span className="text-sm font-medium text-slate-600">Transaction Type</span>
+                <select value={bankTxnType} onChange={(e) => setBankTxnType(e.target.value)}>
+                  <option value="">— not specified —</option>
+                  {BANK_TXN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                </select>
+              </div>
+            )}
+
             <div className="flex gap-2.5 pt-2 flex-wrap items-center">
               <button className="btn-primary" disabled={saving || cancelledView} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
+              {!isEdit && !cancelledView && (
+                <button className="btn-ghost" disabled={saving} data-testid="save-optional" onClick={saveOptional}>Save as Optional (Ctrl+L)</button>
+              )}
+              {isEdit && isOptional && !cancelledView && (
+                <button className="btn-primary" disabled={saving} data-testid="accept-draft" onClick={acceptDraft}>Accept Draft (posts it)</button>
+              )}
               <button className="btn-ghost" onClick={() => nav(-1)}>Cancel (Esc)</button>
               {isInvoicePrintable && isEdit && !saving && (
                 <button className="btn-ghost" data-testid="print-invoice" onClick={() => window.print()}>Print Invoice</button>

@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
-import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, stockItems, units, payslips, employees, irpEwbOps } from "../db/schema.js";
-import { and, eq, gte, lte, lt, gt, asc, inArray, desc } from "drizzle-orm";
+import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, inventoryEntries, stockItems, units, payslips, employees, irpEwbOps } from "../db/schema.js";
+import { and, eq, gte, lte, lt, gt, asc, inArray, desc, isNull } from "drizzle-orm";
 import { cid, bad } from "../lib/routes.js";
 import { num, r2, today, fyStart, d } from "../lib/util.js";
 import {
@@ -57,7 +57,7 @@ async function tdsTcsFyAggregates(companyId: number, dutyHead: "TDS" | "TCS") {
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       // Defense-in-depth: the ledger itself must belong to this company.
       eq(ledgers.companyId, companyId),
       gte(vouchers.date, from), lte(vouchers.date, to),
@@ -524,7 +524,7 @@ export default async function reportRoutes(app: FastifyInstance) {
       .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
       .where(and(
-        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
         eq(ledgers.dutyHead, "TCS"),
         gte(vouchers.date, p.from), lte(vouchers.date, p.to),
         lt(voucherEntries.amount, "0"),
@@ -552,7 +552,7 @@ export default async function reportRoutes(app: FastifyInstance) {
       .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
       .where(and(
-        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
         eq(ledgers.dutyHead, "TCS"),
         gte(vouchers.date, p.from), lte(vouchers.date, p.to),
         gt(voucherEntries.amount, "0"),
@@ -601,7 +601,7 @@ export default async function reportRoutes(app: FastifyInstance) {
       .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
       .where(and(
-        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
         eq(ledgers.dutyHead, "TDS"),
         gte(vouchers.date, p.from), lte(vouchers.date, p.to),
         lt(voucherEntries.amount, "0"),
@@ -631,7 +631,7 @@ export default async function reportRoutes(app: FastifyInstance) {
       .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
       .where(and(
-        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false),
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
         eq(ledgers.dutyHead, "TDS"),
         gte(vouchers.date, p.from), lte(vouchers.date, p.to),
         gt(voucherEntries.amount, "0"),
@@ -723,7 +723,7 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get("/salary-register", async (req) => {
     const c = await cid(req);
     const q = req.query as any;
-    const conds = [eq(payslips.companyId, c), eq(vouchers.isCancelled, false)];
+    const conds = [eq(payslips.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false)];
     if (q.month) conds.push(eq(payslips.month, q.month));
     const rows = await db
       .select({
@@ -737,5 +737,83 @@ export default async function reportRoutes(app: FastifyInstance) {
       .where(and(...conds))
       .orderBy(asc(payslips.month), asc(employees.name));
     return rows;
+  });
+
+  // ---- R-73 (F-73-4): Order Book — ordered vs fulfilled vs pending per line ----
+  // Fulfilled qty = the NET of every non-cancelled invoice/stock movement
+  // referencing the order: Sales/Delivery Note rows arrive negative
+  // (STOCK_FLOW out) and Credit Notes/Receipt Notes positive — so fulfilment
+  // is measured against the order's signed direction (Sale Order ⇒ |out|,
+  // Purchase Order ⇒ |in|). Free-standing invoices (no order) are NOT
+  // counted here — an order's pending number only reflects ITS OWN documents.
+  app.get("/order-book", async (req) => {
+    const c = await cid(req);
+    const q = req.query as any;
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(q.from ?? "")) ? String(q.from) : "0001-01-02";
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(q.to ?? "")) ? String(q.to) : today();
+    const orderTypes = await db.select().from(voucherTypes).where(and(eq(voucherTypes.companyId, c), inArray(voucherTypes.name, ["Sale Order", "Purchase Order"])));
+    if (orderTypes.length === 0) return { orders: [] };
+    const typeById = new Map(orderTypes.map((t) => [t.id, t]));
+    const orders = await db
+      .select({
+        id: vouchers.id, date: vouchers.date, number: vouchers.number,
+        typeId: vouchers.voucherTypeId, typeName: voucherTypes.name,
+        partyName: ledgers.name,
+      })
+      .from(vouchers)
+      .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
+      .leftJoin(ledgers, eq(ledgers.id, vouchers.partyLedgerId))
+      .where(and(
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
+        inArray(vouchers.voucherTypeId, [...typeById.keys()]),
+        gte(vouchers.date, from), lte(vouchers.date, to),
+      ))
+      .orderBy(asc(vouchers.date), asc(vouchers.id));
+    if (orders.length === 0) return { orders: [] };
+    const orderIds = orders.map((o) => o.id);
+    const lines = await db
+      .select({
+        voucherId: inventoryEntries.voucherId, itemId: inventoryEntries.itemId,
+        orderedQty: inventoryEntries.qty, itemName: stockItems.name,
+      })
+      .from(inventoryEntries)
+      .innerJoin(stockItems, eq(stockItems.id, inventoryEntries.itemId))
+      .where(and(inArray(inventoryEntries.voucherId, orderIds), eq(inventoryEntries.kind, "order")));
+    // Fulfilment rows: every non-cancelled, non-draft voucher referencing one
+    // of these orders, with its signed stock movement per item.
+    const fulfilments = await db
+      .select({
+        orderVoucherId: vouchers.orderVoucherId, itemId: inventoryEntries.itemId, qty: inventoryEntries.qty,
+      })
+      .from(vouchers)
+      .innerJoin(inventoryEntries, eq(inventoryEntries.voucherId, vouchers.id))
+      .where(and(
+        eq(vouchers.companyId, c), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
+        inArray(vouchers.orderVoucherId, orderIds),
+      ));
+    // Per order+item: signed ordered qty and signed fulfilled qty. An order
+    // line's sign follows the type's flow (Sale Order records +qty rows and
+    // expects −qty fulfilment; Purchase Order the mirror) — compare absolute
+    // values against the order's own direction.
+    const result = [];
+    for (const o of orders) {
+      const isSale = typeById.get(o.typeId)?.name === "Sale Order";
+      const oLines = lines.filter((l) => l.voucherId === o.id);
+      result.push({
+        id: o.id, date: o.date, number: o.number, typeName: o.typeName, partyName: o.partyName,
+        lines: oLines.map((l) => {
+          const ordered = Math.abs(num(l.orderedQty));
+          let fulfilled = 0;
+          for (const f of fulfilments) {
+            if (f.orderVoucherId !== o.id || f.itemId !== l.itemId) continue;
+            const q = num(f.qty);
+            // Count movement in the fulfilment direction of this order type.
+            fulfilled += isSale ? Math.max(-q, 0) : Math.max(q, 0);
+          }
+          return { itemName: l.itemName, orderedQty: ordered, fulfilledQty: r2(fulfilled), pendingQty: r2(Math.max(ordered - fulfilled, 0)) };
+        }),
+      });
+    }
+    return { orders: result };
   });
 }

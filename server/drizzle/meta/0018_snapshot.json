@@ -1,0 +1,3742 @@
+{
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.audit_events": {
+			"name": "audit_events",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"actor_id": {
+					"name": "actor_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"action": {
+					"name": "action",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"detail": {
+					"name": "detail",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"audit_events_company_voucher_idx": {
+					"name": "audit_events_company_voucher_idx",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "voucher_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"audit_events_company_created_idx": {
+					"name": "audit_events_company_created_idx",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "created_at",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"audit_events_company_id_companies_id_fk": {
+					"name": "audit_events_company_id_companies_id_fk",
+					"tableFrom": "audit_events",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"audit_events_voucher_id_vouchers_id_fk": {
+					"name": "audit_events_voucher_id_vouchers_id_fk",
+					"tableFrom": "audit_events",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"audit_events_actor_id_users_id_fk": {
+					"name": "audit_events_actor_id_users_id_fk",
+					"tableFrom": "audit_events",
+					"tableTo": "users",
+					"columnsFrom": [
+						"actor_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.bill_allocations": {
+			"name": "bill_allocations",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"entry_id": {
+					"name": "entry_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"bill_type": {
+					"name": "bill_type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"bill_name": {
+					"name": "bill_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"amount": {
+					"name": "amount",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"due_date": {
+					"name": "due_date",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"bills_entry_idx": {
+					"name": "bills_entry_idx",
+					"columns": [
+						{
+							"expression": "entry_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"bill_allocations_entry_id_voucher_entries_id_fk": {
+					"name": "bill_allocations_entry_id_voucher_entries_id_fk",
+					"tableFrom": "bill_allocations",
+					"tableTo": "voucher_entries",
+					"columnsFrom": [
+						"entry_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.companies": {
+			"name": "companies",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"mailing_name": {
+					"name": "mailing_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"address": {
+					"name": "address",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"city": {
+					"name": "city",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"state": {
+					"name": "state",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"state_code": {
+					"name": "state_code",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"pincode": {
+					"name": "pincode",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"phone": {
+					"name": "phone",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"email": {
+					"name": "email",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"gstin": {
+					"name": "gstin",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"financial_year_start": {
+					"name": "financial_year_start",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"books_begin_from": {
+					"name": "books_begin_from",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"allow_negative_stock": {
+					"name": "allow_negative_stock",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.employees": {
+			"name": "employees",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"designation": {
+					"name": "designation",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"join_date": {
+					"name": "join_date",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"pan": {
+					"name": "pan",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"bank_name": {
+					"name": "bank_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"bank_account": {
+					"name": "bank_account",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_active": {
+					"name": "is_active",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"emp_company_name_uq": {
+					"name": "emp_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"employees_company_id_companies_id_fk": {
+					"name": "employees_company_id_companies_id_fk",
+					"tableFrom": "employees",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"employees_created_by_users_id_fk": {
+					"name": "employees_created_by_users_id_fk",
+					"tableFrom": "employees",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"employees_updated_by_users_id_fk": {
+					"name": "employees_updated_by_users_id_fk",
+					"tableFrom": "employees",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.godowns": {
+			"name": "godowns",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"godown_company_name_uq": {
+					"name": "godown_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"godowns_company_id_companies_id_fk": {
+					"name": "godowns_company_id_companies_id_fk",
+					"tableFrom": "godowns",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"godowns_created_by_users_id_fk": {
+					"name": "godowns_created_by_users_id_fk",
+					"tableFrom": "godowns",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"godowns_updated_by_users_id_fk": {
+					"name": "godowns_updated_by_users_id_fk",
+					"tableFrom": "godowns",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.groups": {
+			"name": "groups",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"parent_id": {
+					"name": "parent_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"nature": {
+					"name": "nature",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"is_reserved": {
+					"name": "is_reserved",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"affects_gross": {
+					"name": "affects_gross",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"groups_company_name_uq": {
+					"name": "groups_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"groups_company_id_companies_id_fk": {
+					"name": "groups_company_id_companies_id_fk",
+					"tableFrom": "groups",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"groups_created_by_users_id_fk": {
+					"name": "groups_created_by_users_id_fk",
+					"tableFrom": "groups",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"groups_updated_by_users_id_fk": {
+					"name": "groups_updated_by_users_id_fk",
+					"tableFrom": "groups",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.idempotency_keys": {
+			"name": "idempotency_keys",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"key": {
+					"name": "key",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"idempotency_keys_company_key_uq": {
+					"name": "idempotency_keys_company_key_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "key",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"idempotency_keys_company_id_companies_id_fk": {
+					"name": "idempotency_keys_company_id_companies_id_fk",
+					"tableFrom": "idempotency_keys",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"idempotency_keys_voucher_id_vouchers_id_fk": {
+					"name": "idempotency_keys_voucher_id_vouchers_id_fk",
+					"tableFrom": "idempotency_keys",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.inventory_entries": {
+			"name": "inventory_entries",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"item_id": {
+					"name": "item_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"godown_id": {
+					"name": "godown_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"qty": {
+					"name": "qty",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"rate": {
+					"name": "rate",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"amount": {
+					"name": "amount",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"kind": {
+					"name": "kind",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'stock'"
+				},
+				"hsn_sac": {
+					"name": "hsn_sac",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"gst_rate": {
+					"name": "gst_rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"discount_pct": {
+					"name": "discount_pct",
+					"type": "numeric(6, 3)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"order": {
+					"name": "order",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				}
+			},
+			"indexes": {
+				"inv_voucher_idx": {
+					"name": "inv_voucher_idx",
+					"columns": [
+						{
+							"expression": "voucher_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"inv_item_idx": {
+					"name": "inv_item_idx",
+					"columns": [
+						{
+							"expression": "item_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"inventory_entries_voucher_id_vouchers_id_fk": {
+					"name": "inventory_entries_voucher_id_vouchers_id_fk",
+					"tableFrom": "inventory_entries",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"inventory_entries_item_id_stock_items_id_fk": {
+					"name": "inventory_entries_item_id_stock_items_id_fk",
+					"tableFrom": "inventory_entries",
+					"tableTo": "stock_items",
+					"columnsFrom": [
+						"item_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.irp_credentials": {
+			"name": "irp_credentials",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"environment": {
+					"name": "environment",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'sandbox'"
+				},
+				"client_id": {
+					"name": "client_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"client_secret_enc": {
+					"name": "client_secret_enc",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"gstin": {
+					"name": "gstin",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"username": {
+					"name": "username",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"password_enc": {
+					"name": "password_enc",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"ewb_username": {
+					"name": "ewb_username",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ewb_password_enc": {
+					"name": "ewb_password_enc",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"public_key_pem": {
+					"name": "public_key_pem",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"endpoint_override": {
+					"name": "endpoint_override",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"irp_creds_company_env_uq": {
+					"name": "irp_creds_company_env_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "environment",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"irp_credentials_company_id_companies_id_fk": {
+					"name": "irp_credentials_company_id_companies_id_fk",
+					"tableFrom": "irp_credentials",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"irp_credentials_created_by_users_id_fk": {
+					"name": "irp_credentials_created_by_users_id_fk",
+					"tableFrom": "irp_credentials",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"irp_credentials_updated_by_users_id_fk": {
+					"name": "irp_credentials_updated_by_users_id_fk",
+					"tableFrom": "irp_credentials",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.irp_ewb_ops": {
+			"name": "irp_ewb_ops",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"submission_id": {
+					"name": "submission_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"op": {
+					"name": "op",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"request": {
+					"name": "request",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"response": {
+					"name": "response",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"error": {
+					"name": "error",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"requested_by": {
+					"name": "requested_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"irp_ewb_ops_submission_idx": {
+					"name": "irp_ewb_ops_submission_idx",
+					"columns": [
+						{
+							"expression": "submission_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "created_at",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"irp_ewb_ops_company_id_companies_id_fk": {
+					"name": "irp_ewb_ops_company_id_companies_id_fk",
+					"tableFrom": "irp_ewb_ops",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"irp_ewb_ops_submission_id_irp_submissions_id_fk": {
+					"name": "irp_ewb_ops_submission_id_irp_submissions_id_fk",
+					"tableFrom": "irp_ewb_ops",
+					"tableTo": "irp_submissions",
+					"columnsFrom": [
+						"submission_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"irp_ewb_ops_requested_by_users_id_fk": {
+					"name": "irp_ewb_ops_requested_by_users_id_fk",
+					"tableFrom": "irp_ewb_ops",
+					"tableTo": "users",
+					"columnsFrom": [
+						"requested_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.irp_submissions": {
+			"name": "irp_submissions",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"kind": {
+					"name": "kind",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"status": {
+					"name": "status",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"irn": {
+					"name": "irn",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ack_no": {
+					"name": "ack_no",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ack_date": {
+					"name": "ack_date",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"signed_qr_code": {
+					"name": "signed_qr_code",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"signed_invoice": {
+					"name": "signed_invoice",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ewb_no": {
+					"name": "ewb_no",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ewb_valid_until": {
+					"name": "ewb_valid_until",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"response": {
+					"name": "response",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"error": {
+					"name": "error",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"requested_by": {
+					"name": "requested_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"irp_subs_company_created_idx": {
+					"name": "irp_subs_company_created_idx",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "created_at",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"irp_subs_accepted_uq": {
+					"name": "irp_subs_accepted_uq",
+					"columns": [
+						{
+							"expression": "voucher_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "kind",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"where": "status = 'accepted'",
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"irp_subs_pending_uq": {
+					"name": "irp_subs_pending_uq",
+					"columns": [
+						{
+							"expression": "voucher_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "kind",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"where": "status = 'pending'",
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"irp_submissions_company_id_companies_id_fk": {
+					"name": "irp_submissions_company_id_companies_id_fk",
+					"tableFrom": "irp_submissions",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"irp_submissions_voucher_id_vouchers_id_fk": {
+					"name": "irp_submissions_voucher_id_vouchers_id_fk",
+					"tableFrom": "irp_submissions",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"irp_submissions_requested_by_users_id_fk": {
+					"name": "irp_submissions_requested_by_users_id_fk",
+					"tableFrom": "irp_submissions",
+					"tableTo": "users",
+					"columnsFrom": [
+						"requested_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.ledgers": {
+			"name": "ledgers",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"group_id": {
+					"name": "group_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"opening_balance": {
+					"name": "opening_balance",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"gstin": {
+					"name": "gstin",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"gst_registration_type": {
+					"name": "gst_registration_type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'none'"
+				},
+				"taxability": {
+					"name": "taxability",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'none'"
+				},
+				"hsn_sac": {
+					"name": "hsn_sac",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"gst_rate": {
+					"name": "gst_rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"duty_head": {
+					"name": "duty_head",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_bank_cash": {
+					"name": "is_bank_cash",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"bank_account_number": {
+					"name": "bank_account_number",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cheque_enabled": {
+					"name": "cheque_enabled",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"cheque_payer_name": {
+					"name": "cheque_payer_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"tds_section_id": {
+					"name": "tds_section_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"tcs_section_id": {
+					"name": "tcs_section_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"bill_wise": {
+					"name": "bill_wise",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"party_address": {
+					"name": "party_address",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"party_state": {
+					"name": "party_state",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"party_pincode": {
+					"name": "party_pincode",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"party_phone": {
+					"name": "party_phone",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"party_email": {
+					"name": "party_email",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_active": {
+					"name": "is_active",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"ledgers_company_name_uq": {
+					"name": "ledgers_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"ledgers_company_id_companies_id_fk": {
+					"name": "ledgers_company_id_companies_id_fk",
+					"tableFrom": "ledgers",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"ledgers_group_id_groups_id_fk": {
+					"name": "ledgers_group_id_groups_id_fk",
+					"tableFrom": "ledgers",
+					"tableTo": "groups",
+					"columnsFrom": [
+						"group_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"ledgers_created_by_users_id_fk": {
+					"name": "ledgers_created_by_users_id_fk",
+					"tableFrom": "ledgers",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"ledgers_updated_by_users_id_fk": {
+					"name": "ledgers_updated_by_users_id_fk",
+					"tableFrom": "ledgers",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.pay_heads": {
+			"name": "pay_heads",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"type": {
+					"name": "type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"ledger_id": {
+					"name": "ledger_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"affects_gross": {
+					"name": "affects_gross",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"ph_company_name_uq": {
+					"name": "ph_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"pay_heads_company_id_companies_id_fk": {
+					"name": "pay_heads_company_id_companies_id_fk",
+					"tableFrom": "pay_heads",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"pay_heads_ledger_id_ledgers_id_fk": {
+					"name": "pay_heads_ledger_id_ledgers_id_fk",
+					"tableFrom": "pay_heads",
+					"tableTo": "ledgers",
+					"columnsFrom": [
+						"ledger_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"pay_heads_created_by_users_id_fk": {
+					"name": "pay_heads_created_by_users_id_fk",
+					"tableFrom": "pay_heads",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"pay_heads_updated_by_users_id_fk": {
+					"name": "pay_heads_updated_by_users_id_fk",
+					"tableFrom": "pay_heads",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.payslips": {
+			"name": "payslips",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"employee_id": {
+					"name": "employee_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"month": {
+					"name": "month",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"lines": {
+					"name": "lines",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"gross": {
+					"name": "gross",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"deductions": {
+					"name": "deductions",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"net": {
+					"name": "net",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {
+				"pslip_emp_month_uq": {
+					"name": "pslip_emp_month_uq",
+					"columns": [
+						{
+							"expression": "employee_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "month",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"payslips_company_id_companies_id_fk": {
+					"name": "payslips_company_id_companies_id_fk",
+					"tableFrom": "payslips",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"payslips_voucher_id_vouchers_id_fk": {
+					"name": "payslips_voucher_id_vouchers_id_fk",
+					"tableFrom": "payslips",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"payslips_employee_id_employees_id_fk": {
+					"name": "payslips_employee_id_employees_id_fk",
+					"tableFrom": "payslips",
+					"tableTo": "employees",
+					"columnsFrom": [
+						"employee_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.salary_structures": {
+			"name": "salary_structures",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"employee_id": {
+					"name": "employee_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"head_id": {
+					"name": "head_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"monthly_amount": {
+					"name": "monthly_amount",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				}
+			},
+			"indexes": {
+				"ss_emp_head_uq": {
+					"name": "ss_emp_head_uq",
+					"columns": [
+						{
+							"expression": "employee_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "head_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"salary_structures_company_id_companies_id_fk": {
+					"name": "salary_structures_company_id_companies_id_fk",
+					"tableFrom": "salary_structures",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"salary_structures_employee_id_employees_id_fk": {
+					"name": "salary_structures_employee_id_employees_id_fk",
+					"tableFrom": "salary_structures",
+					"tableTo": "employees",
+					"columnsFrom": [
+						"employee_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"salary_structures_head_id_pay_heads_id_fk": {
+					"name": "salary_structures_head_id_pay_heads_id_fk",
+					"tableFrom": "salary_structures",
+					"tableTo": "pay_heads",
+					"columnsFrom": [
+						"head_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.stock_categories": {
+			"name": "stock_categories",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"sc_company_name_uq": {
+					"name": "sc_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"stock_categories_company_id_companies_id_fk": {
+					"name": "stock_categories_company_id_companies_id_fk",
+					"tableFrom": "stock_categories",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"stock_categories_created_by_users_id_fk": {
+					"name": "stock_categories_created_by_users_id_fk",
+					"tableFrom": "stock_categories",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"stock_categories_updated_by_users_id_fk": {
+					"name": "stock_categories_updated_by_users_id_fk",
+					"tableFrom": "stock_categories",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.stock_groups": {
+			"name": "stock_groups",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"sg_company_name_uq": {
+					"name": "sg_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"stock_groups_company_id_companies_id_fk": {
+					"name": "stock_groups_company_id_companies_id_fk",
+					"tableFrom": "stock_groups",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"stock_groups_created_by_users_id_fk": {
+					"name": "stock_groups_created_by_users_id_fk",
+					"tableFrom": "stock_groups",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"stock_groups_updated_by_users_id_fk": {
+					"name": "stock_groups_updated_by_users_id_fk",
+					"tableFrom": "stock_groups",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.stock_items": {
+			"name": "stock_items",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"group_id": {
+					"name": "group_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"category_id": {
+					"name": "category_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"unit_id": {
+					"name": "unit_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"hsn_sac": {
+					"name": "hsn_sac",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"gst_rate": {
+					"name": "gst_rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'18'"
+				},
+				"taxability": {
+					"name": "taxability",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'taxable'"
+				},
+				"costing_method": {
+					"name": "costing_method",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'weighted_avg'"
+				},
+				"opening_qty": {
+					"name": "opening_qty",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"opening_rate": {
+					"name": "opening_rate",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"opening_value": {
+					"name": "opening_value",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"standard_sale_price": {
+					"name": "standard_sale_price",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"standard_cost": {
+					"name": "standard_cost",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"min_qty": {
+					"name": "min_qty",
+					"type": "numeric(18, 4)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"item_company_name_uq": {
+					"name": "item_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"stock_items_company_id_companies_id_fk": {
+					"name": "stock_items_company_id_companies_id_fk",
+					"tableFrom": "stock_items",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"stock_items_unit_id_units_id_fk": {
+					"name": "stock_items_unit_id_units_id_fk",
+					"tableFrom": "stock_items",
+					"tableTo": "units",
+					"columnsFrom": [
+						"unit_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"stock_items_created_by_users_id_fk": {
+					"name": "stock_items_created_by_users_id_fk",
+					"tableFrom": "stock_items",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"stock_items_updated_by_users_id_fk": {
+					"name": "stock_items_updated_by_users_id_fk",
+					"tableFrom": "stock_items",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.tcs_sections": {
+			"name": "tcs_sections",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"section": {
+					"name": "section",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"description": {
+					"name": "description",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rate": {
+					"name": "rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"threshold": {
+					"name": "threshold",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"threshold_mode": {
+					"name": "threshold_mode",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"tcs_company_section_uq": {
+					"name": "tcs_company_section_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "section",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"tcs_sections_company_id_companies_id_fk": {
+					"name": "tcs_sections_company_id_companies_id_fk",
+					"tableFrom": "tcs_sections",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.tds_sections": {
+			"name": "tds_sections",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"section": {
+					"name": "section",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"description": {
+					"name": "description",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rate": {
+					"name": "rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"threshold": {
+					"name": "threshold",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'0'"
+				},
+				"threshold_mode": {
+					"name": "threshold_mode",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"tds_company_section_uq": {
+					"name": "tds_company_section_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "section",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"tds_sections_company_id_companies_id_fk": {
+					"name": "tds_sections_company_id_companies_id_fk",
+					"tableFrom": "tds_sections",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.units": {
+			"name": "units",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"symbol": {
+					"name": "symbol",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"decimal_places": {
+					"name": "decimal_places",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"units_company_symbol_uq": {
+					"name": "units_company_symbol_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "symbol",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"units_company_id_companies_id_fk": {
+					"name": "units_company_id_companies_id_fk",
+					"tableFrom": "units",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"units_created_by_users_id_fk": {
+					"name": "units_created_by_users_id_fk",
+					"tableFrom": "units",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"units_updated_by_users_id_fk": {
+					"name": "units_updated_by_users_id_fk",
+					"tableFrom": "units",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.user_companies": {
+			"name": "user_companies",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"role": {
+					"name": "role",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'owner'"
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"user_companies_user_company_uq": {
+					"name": "user_companies_user_company_uq",
+					"columns": [
+						{
+							"expression": "user_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"user_companies_company_id_idx": {
+					"name": "user_companies_company_id_idx",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"user_companies_user_id_users_id_fk": {
+					"name": "user_companies_user_id_users_id_fk",
+					"tableFrom": "user_companies",
+					"tableTo": "users",
+					"columnsFrom": [
+						"user_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"user_companies_company_id_companies_id_fk": {
+					"name": "user_companies_company_id_companies_id_fk",
+					"tableFrom": "user_companies",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.users": {
+			"name": "users",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"username": {
+					"name": "username",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"password_hash": {
+					"name": "password_hash",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"users_username_unique": {
+					"name": "users_username_unique",
+					"nullsNotDistinct": false,
+					"columns": [
+						"username"
+					]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.voucher_counters": {
+			"name": "voucher_counters",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_type_id": {
+					"name": "voucher_type_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"last_number": {
+					"name": "last_number",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"fy": {
+					"name": "fy",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "''"
+				}
+			},
+			"indexes": {
+				"counter_company_type_fy_uq": {
+					"name": "counter_company_type_fy_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "voucher_type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "fy",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"voucher_counters_company_id_companies_id_fk": {
+					"name": "voucher_counters_company_id_companies_id_fk",
+					"tableFrom": "voucher_counters",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"voucher_counters_voucher_type_id_voucher_types_id_fk": {
+					"name": "voucher_counters_voucher_type_id_voucher_types_id_fk",
+					"tableFrom": "voucher_counters",
+					"tableTo": "voucher_types",
+					"columnsFrom": [
+						"voucher_type_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.voucher_entries": {
+			"name": "voucher_entries",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"voucher_id": {
+					"name": "voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"ledger_id": {
+					"name": "ledger_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"amount": {
+					"name": "amount",
+					"type": "numeric(18, 2)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"gst_rate": {
+					"name": "gst_rate",
+					"type": "numeric(5, 2)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"hsn_sac": {
+					"name": "hsn_sac",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"tds_section_id": {
+					"name": "tds_section_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"tcs_section_id": {
+					"name": "tcs_section_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"narration": {
+					"name": "narration",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"order": {
+					"name": "order",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				}
+			},
+			"indexes": {
+				"entries_voucher_idx": {
+					"name": "entries_voucher_idx",
+					"columns": [
+						{
+							"expression": "voucher_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"entries_ledger_idx": {
+					"name": "entries_ledger_idx",
+					"columns": [
+						{
+							"expression": "ledger_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"voucher_entries_voucher_id_vouchers_id_fk": {
+					"name": "voucher_entries_voucher_id_vouchers_id_fk",
+					"tableFrom": "voucher_entries",
+					"tableTo": "vouchers",
+					"columnsFrom": [
+						"voucher_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"voucher_entries_ledger_id_ledgers_id_fk": {
+					"name": "voucher_entries_ledger_id_ledgers_id_fk",
+					"tableFrom": "voucher_entries",
+					"tableTo": "ledgers",
+					"columnsFrom": [
+						"ledger_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.voucher_types": {
+			"name": "voucher_types",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"short_code": {
+					"name": "short_code",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"category": {
+					"name": "category",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"affects_stock": {
+					"name": "affects_stock",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"numbering": {
+					"name": "numbering",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'automatic'"
+				},
+				"prefix": {
+					"name": "prefix",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "''"
+				},
+				"suffix": {
+					"name": "suffix",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "''"
+				},
+				"start_number": {
+					"name": "start_number",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 1
+				},
+				"numbering_periodicity": {
+					"name": "numbering_periodicity",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'never'"
+				},
+				"allow_zero_value_entries": {
+					"name": "allow_zero_value_entries",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"function_key": {
+					"name": "function_key",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {
+				"vt_company_name_uq": {
+					"name": "vt_company_name_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"voucher_types_company_id_companies_id_fk": {
+					"name": "voucher_types_company_id_companies_id_fk",
+					"tableFrom": "voucher_types",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.vouchers": {
+			"name": "vouchers",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "serial",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"company_id": {
+					"name": "company_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"voucher_type_id": {
+					"name": "voucher_type_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"date": {
+					"name": "date",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"number": {
+					"name": "number",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"fy": {
+					"name": "fy",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "''"
+				},
+				"reference": {
+					"name": "reference",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ref_date": {
+					"name": "ref_date",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"narration": {
+					"name": "narration",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "''"
+				},
+				"party_ledger_id": {
+					"name": "party_ledger_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_optional": {
+					"name": "is_optional",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"bank_txn_type": {
+					"name": "bank_txn_type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"reconciled_at": {
+					"name": "reconciled_at",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_rcm": {
+					"name": "is_rcm",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"is_cancelled": {
+					"name": "is_cancelled",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"cancelled_by": {
+					"name": "cancelled_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cancelled_at": {
+					"name": "cancelled_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_by": {
+					"name": "created_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_by": {
+					"name": "updated_by",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cancel_reason": {
+					"name": "cancel_reason",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"source": {
+					"name": "source",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'manual'"
+				},
+				"cheque_number": {
+					"name": "cheque_number",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cheque_date": {
+					"name": "cheque_date",
+					"type": "date",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"place_of_supply": {
+					"name": "place_of_supply",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"order_voucher_id": {
+					"name": "order_voucher_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {
+				"vouchers_company_date_idx": {
+					"name": "vouchers_company_date_idx",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "date",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"vouchers_type_idx": {
+					"name": "vouchers_type_idx",
+					"columns": [
+						{
+							"expression": "voucher_type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"vouchers_company_type_fy_number_uq": {
+					"name": "vouchers_company_type_fy_number_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "voucher_type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "fy",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "number",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"where": "is_optional = false",
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"vouchers_company_type_fy_number_opt_uq": {
+					"name": "vouchers_company_type_fy_number_opt_uq",
+					"columns": [
+						{
+							"expression": "company_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "voucher_type_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "fy",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "number",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"where": "is_optional = true",
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
+			"foreignKeys": {
+				"vouchers_company_id_companies_id_fk": {
+					"name": "vouchers_company_id_companies_id_fk",
+					"tableFrom": "vouchers",
+					"tableTo": "companies",
+					"columnsFrom": [
+						"company_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				},
+				"vouchers_voucher_type_id_voucher_types_id_fk": {
+					"name": "vouchers_voucher_type_id_voucher_types_id_fk",
+					"tableFrom": "vouchers",
+					"tableTo": "voucher_types",
+					"columnsFrom": [
+						"voucher_type_id"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"vouchers_cancelled_by_users_id_fk": {
+					"name": "vouchers_cancelled_by_users_id_fk",
+					"tableFrom": "vouchers",
+					"tableTo": "users",
+					"columnsFrom": [
+						"cancelled_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"vouchers_created_by_users_id_fk": {
+					"name": "vouchers_created_by_users_id_fk",
+					"tableFrom": "vouchers",
+					"tableTo": "users",
+					"columnsFrom": [
+						"created_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				},
+				"vouchers_updated_by_users_id_fk": {
+					"name": "vouchers_updated_by_users_id_fk",
+					"tableFrom": "vouchers",
+					"tableTo": "users",
+					"columnsFrom": [
+						"updated_by"
+					],
+					"columnsTo": [
+						"id"
+					],
+					"onDelete": "set null",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"schemas": {},
+		"tables": {},
+		"columns": {}
+	},
+	"id": "83ac5d5c-1dc5-4915-bd2d-e9bf9957e3bd",
+	"prevId": "0c5b7b5f-7bed-4ca6-ad77-9b837cbf2782"
+}

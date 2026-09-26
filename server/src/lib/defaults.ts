@@ -59,6 +59,13 @@ export const DEFAULT_VOUCHER_TYPES: DefaultVoucherType[] = [
   { name: "Purchase", shortCode: "PURCH", category: "Accounting", affectsStock: true, functionKey: "F9" },
   { name: "Credit Note", shortCode: "CRN", category: "Accounting", affectsStock: true, functionKey: "Alt+F6" },
   { name: "Debit Note", shortCode: "DRN", category: "Accounting", affectsStock: true, functionKey: "Alt+F5" },
+  // R-73 (F-73-4): Tally's order-processing pair — inventory lines ride along
+  // (kind "order") but move no stock. Deliberately KEYLESS: Tally's a/so slots
+  // are taken in zprime by Stock Journal (Alt+F7) / Credit Note (Alt+F6), and
+  // the R-53c scheme forbids duplicate chords — orders are reachable via the
+  // Gateway/Day Book/palette and the letters layer.
+  { name: "Sale Order", shortCode: "SO", category: "Accounting", affectsStock: false },
+  { name: "Purchase Order", shortCode: "PO", category: "Accounting", affectsStock: false },
   { name: "Delivery Note", shortCode: "DLV", category: "Inventory", affectsStock: true, functionKey: "Alt+F8" },
   { name: "Receipt Note", shortCode: "RCN", category: "Inventory", affectsStock: true, functionKey: "Alt+F9" },
   { name: "Stock Journal", shortCode: "SJ", category: "Inventory", affectsStock: true, functionKey: "Alt+F7" },

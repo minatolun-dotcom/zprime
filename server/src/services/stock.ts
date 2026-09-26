@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { companies, stockItems, inventoryEntries, vouchers, units } from "../db/schema.js";
-import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, ne, sql } from "drizzle-orm";
 import { num, r2 } from "../lib/util.js";
 
 export interface ItemStock {
@@ -53,7 +53,9 @@ export async function stockSummary(companyId: number, asOf: string, itemId?: num
     })
     .from(inventoryEntries)
     .innerJoin(vouchers, eq(vouchers.id, inventoryEntries.voucherId))
-    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), lte(vouchers.date, asOf)))
+    // R-73 (F-73-4): kind='order' rows (Sale/Purchase Order commitments) are
+    // stock-NEUTRAL — they never enter valuation or availability.
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), ne(inventoryEntries.kind, "order"), lte(vouchers.date, asOf)))
     .orderBy(asc(vouchers.date), asc(vouchers.id), asc(inventoryEntries.order));
 
   const apply = (itemId: number, qty: number, value: number, rate: number) => {

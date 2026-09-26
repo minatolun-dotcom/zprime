@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
-import { get, del, cancelVoucher, uncancelVoucher } from "../lib/api";
+import { get, del, post, cancelVoucher, uncancelVoucher } from "../lib/api";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, today, fmtDate, fyStart, fyEnd, fyEndFromBegin, loadSessionPeriod } from "../lib/format";
 import { useCompanyPeriod } from "../lib/period";
@@ -33,6 +33,9 @@ export default function DayBook() {
   const session = loadSessionPeriod(cid);
   const { from, to, setFrom, setTo } = useCompanyPeriod(company, session);
   const [type, setType] = useState("");
+  // R-73 (F-73-1): draft visibility — ALL (default) hides the parked vouchers;
+  // ONLY shows them (accept/delete surface); BOTH is the auditor's view.
+  const [draftView, setDraftView] = useState<"all" | "only" | "both">("all");
   const [error, setError] = useState("");
   // R-56: one-shot amber surface for the server's date-window advisories
   // (pre-books-begin / future date). Set by VoucherScreen on save via
@@ -57,6 +60,14 @@ export default function DayBook() {
     queryKey: ["daybook", cid, from, to, type],
     queryFn: () => get<any[]>(`/api/c/${cid}/vouchers?from=${from}&to=${to}${type ? `&type=${type}` : ""}`),
   });
+  // R-73: client-side draft lens over the fetched window (server list already
+  // carries isOptional; drafts do not pollute any report surface).
+  const visibleRows = useMemo(() => {
+    const list = rows ?? [];
+    if (draftView === "only") return list.filter((v: any) => v.isOptional);
+    if (draftView === "both") return list;
+    return list.filter((v: any) => !v.isOptional);
+  }, [rows, draftView]);
 
   const acctTypes = useMemo(() => (voucherTypes ?? []).filter((v: any) => v.category !== "Payroll"), [voucherTypes]);
   const byName = useMemo(() => {
@@ -90,6 +101,16 @@ export default function DayBook() {
       qc.invalidateQueries({ queryKey: ["daybook"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+
+  // R-73 (F-73-1): Accept a draft — posts it, stamps the real serial number.
+  const acceptDraft = async (row: any) => {
+    try {
+      await post(`/api/c/${cid}/vouchers/${row.id}/accept`, {});
+      qc.invalidateQueries({ queryKey: ["daybook"] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Accept failed");
     }
   };
 
@@ -149,14 +170,21 @@ export default function DayBook() {
               <option value="">All types</option>
               {acctTypes.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+            {/* R-73 (F-73-1): draft lens — All hides parked vouchers, Only shows
+                the accept/delete surface, Both is the auditor's view. */}
+            <select data-testid="daybook-draft-view" value={draftView} onChange={(e) => setDraftView(e.target.value as any)} title="Optional (draft) vouchers">
+              <option value="all">Hide drafts</option>
+              <option value="only">Optional only</option>
+              <option value="both">Include drafts</option>
+            </select>
             <button
               className="btn-ghost text-sm"
               data-testid="daybook-export-csv"
-              disabled={!rows || rows.length === 0}
+              disabled={!visibleRows || visibleRows.length === 0}
               onClick={() => csvDownload(
                 "day-book",
                 ["Date", "Type", "No", "Party / Ledger", "Amount"],
-                (rows ?? []).map((v: any) => [fmtDate(v.date), v.typeName, v.number, v.partyName ?? v.narration ?? "", num(v.amount)]),
+                visibleRows.map((v: any) => [fmtDate(v.date), v.typeName, v.number, v.partyName ?? v.narration ?? "", num(v.amount)]),
                 [[company?.name ?? "", company?.gstin ? `GSTIN ${company.gstin}` : ""], ["Day Book", `${fmtDate(from)} to ${fmtDate(to)}`]],
               )}
             >
@@ -185,7 +213,7 @@ export default function DayBook() {
             </tr>
           </thead>
           <tbody>
-            {(rows ?? []).map((v) => (
+            {(visibleRows ?? []).map((v) => (
               <tr key={v.id} className={`row-link ${v.isCancelled ? "opacity-60" : ""}`} onClick={() => nav(`/company/${cid}/voucher/${v.id}/edit`)}>
                 <td className="cell-nowrap">{fmtDate(v.date)}</td>
                 <td className="cell-nowrap">
@@ -203,6 +231,11 @@ export default function DayBook() {
                       Cancelled
                     </span>
                   )}
+                  {v.isOptional && !v.isCancelled && (
+                    <span className="pill ml-1.5 font-semibold bg-amber-100 text-amber-700" title="Optional draft — excluded from all reports; Accept to post (number stamped then)">
+                      Optional
+                    </span>
+                  )}
                   {v.isRcm && (
                     <span className="pill ml-1.5 font-semibold bg-amber-100 text-amber-700" title="Reverse charge — recipient self-accounted the GST (3B Table 4(A)(3))">
                       RCM
@@ -217,6 +250,11 @@ export default function DayBook() {
                     <>
                       <button className="text-emerald-600 text-sm hover:underline mr-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); uncancel(v); }}>Uncancel</button>
                     </>
+                  ) : v.isOptional ? (
+                    <>
+                      <button className="text-emerald-600 text-sm hover:underline mr-3" data-testid="accept-draft" onClick={(e) => { e.preventDefault(); e.stopPropagation(); acceptDraft(v); }}>Accept</button>
+                      <button className="text-red-500 text-sm hover:underline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); remove(v); }}>Del</button>
+                    </>
                   ) : (
                     <>
                       <Link to={`/company/${cid}/voucher/${v.id}/edit`} className="text-indigo-600 text-sm hover:underline mr-3">Alter</Link>
@@ -227,7 +265,7 @@ export default function DayBook() {
                 </td>
               </tr>
             ))}
-            {rows && rows.length === 0 && (
+            {rows && visibleRows.length === 0 && (
               <tr><td colSpan={6} className="text-center text-slate-400 py-10 text-sm">
                 {isLoading ? "Loading…" : "No vouchers in this period — press F8 for a new Sales voucher"}
               </td></tr>

@@ -58,7 +58,7 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
     .leftJoin(ledgers, eq(ledgers.id, vouchers.partyLedgerId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       gte(vouchers.date, from), lte(vouchers.date, to),
     ));
 
@@ -71,7 +71,7 @@ export async function voucherGst(companyId: number, from: string, to: string, ki
     .from(voucherEntries)
     .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
-    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false)));
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false)));
 
   const byVoucher = new Map<number, typeof entriesByVoucher>();
   for (const e of entriesByVoucher) {
@@ -262,7 +262,7 @@ export async function gstr1(companyId: number, from: string, to: string) {
     .innerJoin(stockItems, eq(stockItems.id, inventoryEntries.itemId))
     .innerJoin(units, eq(units.id, stockItems.unitId))
     .where(and(
-      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false),
+      eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(voucherTypes.name, "Sales"),
       gte(vouchers.date, from), lte(vouchers.date, to),
     ));

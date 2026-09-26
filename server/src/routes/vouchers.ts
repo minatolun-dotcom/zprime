@@ -5,7 +5,7 @@ import {
   stockItems, godowns, tdsSections, tcsSections, voucherCounters, payslips, companies, idempotencyKeys,
   auditEvents, users,
 } from "../db/schema.js";
-import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray, isNull } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
 import { r2, num, today, fyKeyOf } from "../lib/util.js";
 
@@ -157,7 +157,7 @@ export async function assertStockAvailabilityTx(
   const names = new Map(items.map((it) => [it.id, it.name]));
   const openings = new Map(items.map((it) => [it.id, num(it.openingQty)]));
 
-  const conds = [eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), inArray(inventoryEntries.itemId, itemIds)];
+  const conds = [eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), inArray(inventoryEntries.itemId, itemIds)];
   if (opts.excludeVoucherId != null) conds.push(ne(vouchers.id, opts.excludeVoucherId));
   const history = await tx
     .select({ id: vouchers.id, itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind, date: vouchers.date })
@@ -214,20 +214,35 @@ export async function assertStockAvailabilityTx(
 
 /** Exported so the XML import path (R-04) enforces the identical double-entry
  *  rules as the API instead of a divergent copy. */
-export function validateEntries(entries: { amount: number }[], inventoryCount: number, isInventoryType: boolean) {
+export function validateEntries(entries: { amount: number }[], inventoryCount: number, isInventoryType: boolean, allowZeroValue = false, allowEmpty = false) {
+  // R-73 (F-73-4): ORDER vouchers (Sale/Purchase Order) are pure commitments —
+  // Tally parity: no ledger postings at all (party + inventory lines only), so
+  // nothing hits outstanding, ledger balances or the TB until the invoice.
+  if (entries.length === 0) {
+    // inventory-category vouchers were ALWAYS allowed to be inventory-only
+    // (F-INV-01); R-73 extends the same courtesy to ORDER vouchers.
+    if ((allowEmpty || isInventoryType) && inventoryCount > 0) return;
+    throw bad("Voucher needs at least one entry");
+  }
   const total = r2(entries.reduce((s, e) => s + e.amount, 0));
   if (Math.abs(total) > 0.004) throw bad(`Debits and credits do not balance (difference ${total.toFixed(2)})`);
   if (isInventoryType) {
+    // F-INV-01: inventory-category vouchers may carry a zero/nominal ledger
+    // line alongside real stock movements (SJ consumption/production rows) —
+    // the zero-entry strictness below applies to ACCOUNTING vouchers.
     const hasNonZero = entries.some((e) => Math.abs(r2(e.amount)) >= 0.005);
     if (!hasNonZero && inventoryCount === 0) throw bad("Inventory voucher needs inventory entries or non-zero ledger entries");
     return;
   }
-  if (entries.length === 0) throw bad("Voucher needs at least one entry");
-  for (const e of entries) {
-    if (!Number.isFinite(e.amount) || Math.abs(r2(e.amount)) < 0.005) throw bad("Entry amount cannot be zero");
+  if (!allowZeroValue) {
+    // R-73 (F-73-7): the per-type opt-in (voucher_types.allow_zero_value_entries,
+    // Tally F12) permits zero-amount lines; the default stays byte-honest strict.
+    for (const e of entries) {
+      if (!Number.isFinite(e.amount) || Math.abs(r2(e.amount)) < 0.005) throw bad("Entry amount cannot be zero");
+    }
   }
   const gross = r2(entries.reduce((s, e) => s + Math.abs(e.amount), 0));
-  if (gross < 0.005) throw bad("Voucher total cannot be zero");
+  if (gross < 0.005 && !allowZeroValue) throw bad("Voucher total cannot be zero");
 }
 
 // ---------- numbering ----------
@@ -308,7 +323,7 @@ async function assertNoOutgoingSettlementsTx(tx: Tx, companyId: number, voucherI
     .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
     .where(and(
       eq(vouchers.companyId, companyId),
-      eq(vouchers.isCancelled, false),
+      eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       eq(billAllocations.billType, "new_ref"),
       inArray(billAllocations.billName, settleNames),
       ne(voucherEntries.voucherId, voucherId),
@@ -356,7 +371,7 @@ async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput[
     const names = [...new Set(newRefs.map((n) => n.name))];
     const conds = [
       eq(vouchers.companyId, companyId),
-      eq(vouchers.isCancelled, false),
+      eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false),
       inArray(billAllocations.billName, names),
     ];
     // When EDITING a voucher, its own previous allocations are still in the DB
@@ -390,7 +405,7 @@ async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput[
       .from(billAllocations)
       .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
       .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
-      .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), inArray(billAllocations.billName, wantedNames)));
+      .where(and(eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), inArray(billAllocations.billName, wantedNames)));
     for (const r of rows) {
       const key = `${r.ledgerId}::${r.billName}`;
       open.set(key, r2((open.get(key) ?? 0) + num(r.amount)));
@@ -433,6 +448,7 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
         hsnSac: e.hsnSac ?? null,
         tdsSectionId: e.tdsSectionId ?? null,
         tcsSectionId: e.tcsSectionId ?? null,
+        narration: e.narration ?? null, // R-73 (F-73-6)
         order: i,
       })
       .returning({ id: voucherEntries.id });
@@ -459,6 +475,7 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
       kind: ie.kind,
       hsnSac: ie.hsnSac ?? null,
       gstRate: ie.gstRate != null ? String(ie.gstRate) : null,
+      discountPct: (ie as any).discountPct != null ? String((ie as any).discountPct) : null, // R-73 (F-73-3)
       order: i,
     });
   }
@@ -480,6 +497,21 @@ export async function recordAuditEvent(tx: Tx, companyId: number, voucherId: num
 
 // R-17: actor provance — `actor` is the authenticated user's id (verified
 // JWT), stamped as created_by on every voucher insert (manual + import).
+/**
+ * R-73 (F-73-1): provisional number for an OPTIONAL voucher — `OPT-n`, n = 1 +
+ * count of this type's existing optional vouchers. Drafts never draw from the
+ * serial counter (Tally numbers optional vouchers on Accept); the display
+ * number is stamped from the real counter when the voucher is Accepted. The
+ * optional-class partial unique index keeps these collision-free.
+ */
+async function nextOptionalNumber(tx: Tx, companyId: number, typeId: number, type: { prefix?: string | null }): Promise<string> {
+  const [{ cnt }] = await tx
+    .select({ cnt: sql<number>`count(*)::int` })
+    .from(vouchers)
+    .where(and(eq(vouchers.companyId, companyId), eq(vouchers.voucherTypeId, typeId), eq(vouchers.isOptional, true)));
+  return `${type.prefix ?? ""}OPT-${cnt + 1}`;
+}
+
 async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, source: string, actor?: number, warnings?: string[]) {
   const [company] = await tx.select({ booksBeginFrom: companies.booksBeginFrom, financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, companyId));
   const dateWarnings = voucherDateWindowWarnings(company, input.date);
@@ -493,9 +525,26 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
   await assertLedgersTx(tx, companyId, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
   await assertRefsTx(tx, companyId, input);
   assertPhysicalRows(input, type.name === "Physical Stock");
-  validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
+  const isOrderType = type.name === "Sale Order" || type.name === "Purchase Order";
+  // R-73 (F-73-4), Tally parity: an ORDER carries NO ledger postings — only
+  // the party and its inventory commitment. Accepting entries would book a
+  // receivable/payable and inflate the party's outstanding via the R-69
+  // On-Account residual merge; the invoice against the order does the posting.
+  if (isOrderType && input.entries.some((e) => Math.abs(r2(e.amount)) >= 0.005)) {
+    throw bad("Order vouchers record the commitment only — no ledger entries. Book the invoice against this order to post the amounts.");
+  }
+  validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory", type.allowZeroValueEntries, isOrderType);
   await assertStockAvailabilityTx(tx, companyId, input);
-  const number = input.number?.trim() || (await nextNumber(tx, companyId, input.voucherTypeId, { fy: fyKey }));
+  // R-73 (F-73-1): an OPTIONAL voucher must not consume the serial counter —
+  // Tally numbers optional vouchers on Accept. The number is unique among
+  // optional vouchers of the type (the number column still carries the display
+  // value); the counter is drawn only when the voucher is Accepted.
+  const isOpt = input.isOptional === true;
+  const number = !isOpt && input.number?.trim()
+    ? input.number.trim()
+    : isOpt
+      ? await nextOptionalNumber(tx, companyId, input.voucherTypeId, type)
+      : await nextNumber(tx, companyId, input.voucherTypeId, { fy: fyKey });
   await validateBillsTx(tx, companyId, input.entries);
 
   const [v] = await tx
@@ -511,6 +560,9 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       narration: input.narration ?? "",
       partyLedgerId: input.partyLedgerId ?? null,
       isRcm: input.isRcm ?? false, // R-23: reverse charge flag (see schema note)
+      isOptional: input.isOptional ?? false, // R-73 (F-73-1): create path — new rows are posted unless flagged optional
+      bankTxnType: input.bankTxnType ?? null, // R-73 (F-73-5)
+      orderVoucherId: input.orderVoucherId ?? null, // R-73 (F-73-4)
       source,
       createdBy: typeof actor === "number" && actor > 0 ? actor : null,
       chequeNumber: input.chequeNumber ?? null,
@@ -545,6 +597,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         typeId: voucherTypes.id, typeName: voucherTypes.name, shortCode: voucherTypes.shortCode,
         isCancelled: vouchers.isCancelled, source: vouchers.source,
         isRcm: vouchers.isRcm, // R-23: Day Book badge + report drill-down context
+        isOptional: vouchers.isOptional, // R-73 (F-73-1): draft badge + Day Book Optional filter
         // R-59: who posted it / last touched it (R-22 provance, usernames via
         // left join — null-safe for system rows and pre-R-22 data).
         createdByUsername: users.username,
@@ -576,6 +629,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
         id: voucherEntries.id, ledgerId: voucherEntries.ledgerId, ledgerName: ledgers.name,
         amount: voucherEntries.amount, gstRate: voucherEntries.gstRate, hsnSac: voucherEntries.hsnSac,
         tdsSectionId: voucherEntries.tdsSectionId, tcsSectionId: voucherEntries.tcsSectionId, order: voucherEntries.order,
+        narration: voucherEntries.narration, // R-73 (F-73-6): per-line narration
       })
       .from(voucherEntries)
       .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
@@ -601,7 +655,28 @@ export default async function voucherRoutes(app: FastifyInstance) {
       createdByUsername: createdByUser?.username ?? null,
       updatedByUsername: updatedByUser?.username ?? null,
       entries: entries.map((e) => ({ ...e, amount: num(e.amount), bills: bills.filter((b) => b.entryId === e.id) })),
-      inventoryEntries: inv.map((e) => ({ ...e, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount) })),
+      inventoryEntries: inv.map((e) => ({ ...e, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount), discountPct: e.discountPct != null ? num(e.discountPct) : null })),
+      // R-73 (F-73-1): a draft carries a provisional OPT-n display number. The
+      // editor's next-number re-peek keeps the REAL next serial; Accept stamps it.
+      // (Inline peek — same logic as GET /vouchers/next-number, outside a tx.)
+      nextNumber: v.isOptional
+        ? await (async () => {
+            try {
+              let fy: string | null = null;
+              if (type?.numberingPeriodicity === "fiscal") {
+                const [company] = await db.select({ financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, c));
+                fy = fyKeyOf(v.date, company?.financialYearStart);
+              }
+              const [ctr] = await db.select().from(voucherCounters).where(and(
+                eq(voucherCounters.companyId, c), eq(voucherCounters.voucherTypeId, v.voucherTypeId),
+                eq(voucherCounters.fy, fy ?? ""),
+              ));
+              const last = ctr?.lastNumber ?? ((type?.startNumber ?? 1) - 1);
+              const n = Math.max(last + 1, type?.startNumber ?? 1);
+              return `${type?.prefix ?? ""}${n}${type?.suffix ?? ""}`;
+            } catch { return null; }
+          })()
+        : undefined,
     };
   });
 
@@ -725,7 +800,8 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await assertLedgersTx(tx, c, [...input.entries.map((e) => e.ledgerId), input.partyLedgerId]);
         await assertRefsTx(tx, c, input);
         assertPhysicalRows(input, type.name === "Physical Stock");
-        validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory");
+        const isOrderTypeEdit = type.name === "Sale Order" || type.name === "Purchase Order";
+        validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory", type.allowZeroValueEntries, isOrderTypeEdit);
         // R-06 chain comparison: the AFTER-chain uses the rewritten body; the
         // BEFORE-chain replays the voucher's CURRENT body (its rows are still in
         // the DB until the rewrite, so history excludes this voucher and they
@@ -758,6 +834,11 @@ export default async function voucherRoutes(app: FastifyInstance) {
             narration: input.narration ?? "",
             partyLedgerId: input.partyLedgerId ?? null,
             isRcm: input.isRcm ?? false, // R-23: editable — flips with the voucher's true nature
+            // R-73 (F-73-1): an omitted flag means "unchanged" — a client that
+            // does not model drafts cannot silently post (or unpark) a voucher.
+            isOptional: input.isOptional ?? existing.isOptional,
+            bankTxnType: input.bankTxnType ?? null, // R-73 (F-73-5)
+            orderVoucherId: input.orderVoucherId ?? null, // R-73 (F-73-4)
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
             placeOfSupply: input.placeOfSupply ?? null,
@@ -772,6 +853,45 @@ export default async function voucherRoutes(app: FastifyInstance) {
         await writeBody(tx, id, input);
         await recordAuditEvent(tx, c, id, req.userId, "edit");
         return editWarnings.length ? { id, warnings: editWarnings } : { id };
+      });
+    } catch (err: any) {
+      throw pgFriendly(err);
+    }
+  });
+
+  // ---- R-73 (F-73-1): Accept an OPTIONAL voucher ----
+  // The one legal transition draft → posted: the real number is drawn from the
+  // serial counter NOW (Tally stamps the number on Accept), isOptional flips
+  // off, and the full posting validators run (bills, stock, window advisories
+  // — the body was already validated at save time, but the books may have
+  // moved while the voucher sat parked). Audit action: "accept".
+  app.post("/vouchers/:id/accept", async (req) => {
+    const c = await cid(req);
+    const id = parseInt((req.params as any).id, 10);
+    if (!Number.isFinite(id) || id <= 0) throw bad("Invalid voucher id");
+    try {
+      return await db.transaction(async (tx) => {
+        const [v] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
+        if (!v) throw bad("Voucher not found", 404);
+        if (v.isCancelled) throw bad("Cancelled vouchers cannot be accepted. Uncancel the voucher first.", 409);
+        if (!v.isOptional) throw bad("Voucher is not optional — nothing to accept", 409);
+        const [company] = await tx.select({ booksBeginFrom: companies.booksBeginFrom, financialYearStart: companies.financialYearStart }).from(companies).where(eq(companies.id, c));
+        const warnings = voucherDateWindowWarnings(company, v.date);
+        // Re-run the availability guard with this voucher's own rows in the
+        // chain (a purchase consumed while parked must not strand a sale).
+        const invRows = await tx.select({ itemId: inventoryEntries.itemId, qty: inventoryEntries.qty, kind: inventoryEntries.kind }).from(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
+        if (invRows.length > 0) {
+          await assertStockAvailabilityTx(tx, c, { date: v.date, inventoryEntries: invRows.map((r) => ({ itemId: r.itemId, qty: num(r.qty), kind: r.kind })) }, { excludeVoucherId: id, voucherId: id });
+        }
+        const [type] = await tx.select().from(voucherTypes).where(eq(voucherTypes.id, v.voucherTypeId));
+        const fyKey = type?.numberingPeriodicity === "fiscal" ? fyKeyOf(v.date, company?.financialYearStart) : "";
+        const number = await nextNumber(tx, c, v.voucherTypeId, { fy: fyKey });
+        await tx
+          .update(vouchers)
+          .set({ isOptional: false, number, fy: fyKey })
+          .where(eq(vouchers.id, id));
+        await recordAuditEvent(tx, c, id, req.userId, "accept");
+        return { ok: true, id, number, isOptional: false, ...(warnings.length ? { warnings } : {}) };
       });
     } catch (err: any) {
       throw pgFriendly(err);
@@ -799,6 +919,10 @@ export default async function voucherRoutes(app: FastifyInstance) {
         const [v] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
         if (!v) throw bad("Voucher not found", 404);
         if (v.isCancelled) throw bad("Voucher is already cancelled", 409);
+        // R-73 (F-73-1): an OPTIONAL draft has no accounting existence — no
+        // bills can reference it, no stock replays through it. Drafts are
+        // ACCEPTED (posted) or DELETED, never cancelled.
+        if (v.isOptional) throw bad("This voucher is optional (a draft). Accept it to post it, or delete it — cancellation does not apply.", 409);
         // Same integrity rule as delete: must not strand settlements it holds
         // against other vouchers' bills. Settled bills ON this voucher are fine
         // — the bill rows survive cancellation (Model A).
@@ -850,6 +974,10 @@ export default async function voucherRoutes(app: FastifyInstance) {
         const [v] = await tx.select().from(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id))).for("update");
         if (!v) throw bad("Voucher not found", 404);
         if (!v.isCancelled) throw bad("Voucher is not cancelled", 409);
+        // R-73 (F-73-1): drafts are never cancelled, so a draft can never reach
+        // the uncancel path (defence in depth — the cancel endpoint refuses
+        // optional vouchers already).
+        if (v.isOptional) throw bad("Optional (draft) vouchers cannot be uncancelled.", 409);
         // If another (still active) voucher of the same type took this number
         // while this one was cancelled, restoring would collide — the DB unique
         // index is the authority, but we fail with a clear application error.
@@ -858,7 +986,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
           .from(vouchers)
           .where(and(
             eq(vouchers.companyId, c), eq(vouchers.voucherTypeId, v.voucherTypeId),
-            eq(vouchers.number, v.number), eq(vouchers.isCancelled, false), ne(vouchers.id, id),
+            eq(vouchers.number, v.number), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), ne(vouchers.id, id),
           ));
         if (clash) throw bad(`Cannot uncancel: voucher number ${v.number} has been reissued to another voucher. Delete or cancel the other voucher first.`, 409);
         // R-06: restoring this voucher's movements must not drive any item's
@@ -916,6 +1044,15 @@ export default async function voucherRoutes(app: FastifyInstance) {
         // hard-deleted. Uncancel first; normal delete rules then apply.
         if (existing.isCancelled) {
           throw bad("Cancelled vouchers cannot be deleted. Uncancel the voucher first.", 409);
+        }
+        // R-73 (F-73-1): an OPTIONAL draft is the one class that deletes freely —
+        // it never entered the books, so no settlements, stock or numbering
+        // guards can be stranded by its removal (its provisional OPT-n number
+        // belongs to no series). Every guard below still applies to posted rows.
+        if (existing.isOptional) {
+          await recordAuditEvent(tx, c, id, req.userId, "delete", `Optional draft (never posted) deleted`);
+          await tx.delete(vouchers).where(and(eq(vouchers.companyId, c), eq(vouchers.id, id)));
+          return { ok: true, optionalDraft: true };
         }
 
         // Guard: a voucher whose own bills (new_ref / advance) are settled by

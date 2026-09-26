@@ -418,6 +418,7 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
           { value: "never", label: "Never (one continuous series)" },
           { value: "fiscal", label: "Each financial year (Tally)" },
         ], hint: "Fiscal: automatic numbers restart at Start Number every FY (the FY-begin month comes from Company Settings). Locks after the first voucher." },
+        { name: "allowZeroValueEntries", label: "Allow Zero-value Entries", type: "checkbox", hint: "Tally F12 — accept zero-amount ledger lines on this type (default: rejected)" },
         { name: "affectsStock", label: "Affects Stock", type: "checkbox" },
       ],
       columns: [{ key: "name", label: "Name" }, { key: "category", label: "Category" }],
