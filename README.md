@@ -60,6 +60,8 @@ migrates cleanly instead of staying dead).
 
 **Keyboard workflow (TallyPrime parity — R-54)**
 
+Vouchers accept with `Ctrl+A` — and since R-72 masters accept the same way: in the Create/Alter slide-over, `Ctrl+A` (or `Ctrl+S`) saves the master, Tally's universal-Accept habit carried across the app.
+
 | Key | Action |
 |---|---|
 | `F2` | Date / period (voucher date, Day Book + report date inputs) |
@@ -82,7 +84,7 @@ migrates cleanly instead of staying dead).
 | (chip) | A few chips are click-only conveniences, not keyboard keys — e.g. the voucher screen's `F12` Ref/Party chip (F12 is browser-reserved in tab view). Everything listed in the table above fires from the physical keyboard. |
 | `Enter` | Drill down / add entry row · type-ahead ledger & item search |
 
-The Gateway carries Tally-style menu mnemonics (`C` `A` `V` `K` `R` `U` in the operator's order — Create, Alter, Vouchers, Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists types by shortcut class: plain F-keys first (F4…F10), then Alt+ chords, then Ctrl+. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P/S`, `Alt+F4`) are avoided or need app-window mode — see **Shortcut keys & the browser** below.
+The Gateway carries Tally-style menu mnemonics (`C` `A` `V` `K` `R` `U` in the operator's order — Create, Alter, Vouchers, Day Book first — plus per-item letters/digits and the `Alt+S` settings chord; zprime's own layer — official TallyPrime documents no such global table). The Vouchers pane lists types by shortcut class: plain F-keys first (F4…F10), then Alt+ chords, then Ctrl+. Keys a browser consumes before the page (`F1` `F11` `F12`, `Ctrl+N/W/P`, `Alt+F4`) are avoided or need app-window mode — the one deliberate exception is `Ctrl+S`: zprime intercepts it inside the master editor (R-72) so the Save dialog never interrupts master editing; in a plain browser tab the dialog may still surface on other screens, but the master editor itself always saves via `Ctrl+A` (and the on-screen button) regardless — see **Shortcut keys & the browser** below.
 
 **Shortcut keys & the browser (R-51)**
 In a normal browser **tab**, some chords are reserved by the browser itself and never reach the page — notably `F5` (reload in some browsers), `F6` (address bar), `F11/F12` (fullscreen/DevTools), `Alt+1–9` (Firefox tab switch) and `Alt`-letter menu access (Firefox/Linux). zprime intercepts everything the browser forwards, but it cannot intercept what the browser consumes first.
