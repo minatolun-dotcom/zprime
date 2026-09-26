@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.62.0
+
+- **Released:** 2026-09-26
+- **R-item:** R-72 — master editor save chords: Ctrl+A accepts (Tally's universal Accept) and Ctrl+S is claimed as its alias — the browser's Save dialog can no longer interrupt master editing
+- **Commit:** `987ec61c83d62e424ea6441fb34c558b5ed80cce` (annotated tag `76e5f098011c3c1223ac80c08346e62dee0638c1`)
+- **Purpose:** operator report — "alter Ctrl+S is not working as it tries to save the page": MasterPage's Alter button advertised **"Alter (Ctrl+S)"** but no key was registered, and the browser's own Save dialog swallowed the chord; the operator also asked whether Ctrl+A (native select-all) could take the job instead. Resolution (Tally parity): **Ctrl+A IS Tally's universal Accept** and already zprime's voucher save key, so the master editor now saves with **Ctrl+A too — scoped to the open slide-over only** (native select-all stays untouched everywhere else; VoucherScreen keeps its chord, Shell claims nothing new), and **Ctrl+S is additionally claimed as an alias** so the Save dialog can never interrupt master editing. Both chords submit via `requestSubmit()` through the form so **native required-field validation still runs** (a missing required field keeps the editor open), and the button hint now says what the keys do: **"Alter (Ctrl+A)"**. `hotkeys.ts` recognizes Ctrl+S (mirroring Ctrl+A/Ctrl+H); README's keyboard table extended (Ctrl+A row + new Ctrl+S row). Client-only; zero server/schema/accounting change. New `r72_ui.js` **11 checks** (Create via Ctrl+S with focus in the form — no dialog, editor closes, row present, no banner; Alter hint advertises Ctrl+A with no phantom Ctrl+S; Alter via Ctrl+A with focus in the GSTIN input — chord save, not select-all — and the change persists; native select-all intact outside the editor in the search box; Ctrl+A with a missing required field does NOT close the editor; Esc still closes; duplicate-name 409 surfaces in the editor via Ctrl+A; zero page errors).
+- **Verification:** typecheck server+client clean · build clean (bundle 415.47 kB / 117.97 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r68 **17**, r46_drill **42**, r69 **17**, r70 **19**, r71 **15**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, **new** r72 **11/11**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean
+- **Immutability:** v1.62.0 and all prior tags are immutable
+
+---
+
 ## v1.61.0
 
 - **Released:** 2026-09-26
