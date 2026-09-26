@@ -67,10 +67,11 @@ migrates cleanly instead of staying dead).
 | `F10` | Manufacturing Journal — from any screen (same editor suppression) |
 | `Alt+F1`…`Alt+F9` | Aliases of Alt+F1…F9 (also reachable as `Alt+1`…`Alt+9`) — Debit/Credit Note, Stock/Delivery/Receipt Note |
 | `Alt+F5`…`Alt+F9`, `Ctrl+F7` | Debit Note · Credit Note · Stock Journal · Delivery Note · Receipt Note · Physical Stock |
-| `Ctrl+A` | Accept / save voucher (accepts the on-the-fly ledger modal too) |
+| `Ctrl+A` | Accept / save voucher (accepts the on-the-fly ledger modal too); in the master editor (Create/Alter slide-over) it saves the master |
 | `Alt+J` | Apply GST on Sales/Purchase/CN/DN (Tally's statutory-adjustment slot) |
 | `Alt+C` | Create ledger on the fly |
 | `Alt+D` / `Alt+X` | Delete / cancel the open voucher (edit mode, confirm-guarded) |
+| `Ctrl+S` | Save the open master (Create/Alter slide-over) — an alias of Ctrl+A there; claimed so the browser's Save dialog never interrupts master editing |
 | `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
 | `Alt+S` | Company Settings (Tally's Stock-Query chord, unused here) — from any screen |
 | `Alt+O` | Chart of Accounts explorer — every group & ledger, one tree |

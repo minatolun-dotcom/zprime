@@ -23,7 +23,8 @@ export function useHotkeys(map: HotkeyMap, deps: unknown[] = []) {
       let combo: string | null = null;
       if (k.startsWith("F") && /^F\d{1,2}$/.test(k)) {
         combo = e.altKey ? `Alt+${k}` : e.ctrlKey ? `Ctrl+${k}` : e.shiftKey ? `Shift+${k}` : k;
-      } else if (e.ctrlKey && (k === "a" || k === "A")) combo = "Ctrl+A";
+      }      else if (e.ctrlKey && (k === "a" || k === "A")) combo = "Ctrl+A";
+      else if (e.ctrlKey && (k === "s" || k === "S")) combo = "Ctrl+S";
       else if (e.ctrlKey && (k === "h" || k === "H")) combo = "Ctrl+H";
       else if (e.altKey && /^[0-9]$/.test(k)) combo = `Alt+F${k}`;
       else if (k === "Escape") combo = "Escape";

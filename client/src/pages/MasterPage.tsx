@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell from "../components/Shell";
@@ -124,8 +124,25 @@ export default function MasterPage() {
   // nothing (operator report). Same pattern as VoucherScreen's quick-create
   // modal: the map omits Escape when no modal is open, so the key falls
   // through to Shell (history-back / Gateway last stop).
+  //
+  // R-72 (operator report): Ctrl+A is now the editor's Accept too — Tally's
+  // universal Accept chord, already the voucher screen's save key — and
+  // Ctrl+S is claimed as an alias because the browser's own Save dialog
+  // swallowed it (the button advertised "Alter (Ctrl+S)" that never fired).
+  // Both submit through the form so native required-field validation still
+  // runs; both are claimed ONLY while the editor is open, so native
+  // select-all stays untouched everywhere else.
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const saveViaKeys = (e: KeyboardEvent) => {
+    e.preventDefault();
+    formRef.current?.requestSubmit();
+  };
   useHotkeys({
-    ...(editing ? { Escape: (e) => { e.preventDefault(); setEditing(null); } } : {}),
+    ...(editing ? {
+      Escape: (e) => { e.preventDefault(); setEditing(null); },
+      "Ctrl+A": saveViaKeys,
+      "Ctrl+S": saveViaKeys,
+    } : {}),
   }, [editing]);
 
   const openNew = () => {
@@ -217,7 +234,7 @@ export default function MasterPage() {
       {editing !== null && (
         <div className="fixed inset-0 z-40 flex">
           <div className="flex-1 bg-black/30" onClick={() => setEditing(null)} />
-          <form onSubmit={save} className="w-[430px] max-w-full bg-white shadow-raised overflow-auto p-6">
+          <form ref={formRef} onSubmit={save} className="w-[430px] max-w-full bg-white shadow-raised overflow-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold tracking-tight">{editing.id ? "Alter" : "Create"} — {config.title}</h2>
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>✕</button>
@@ -260,7 +277,7 @@ export default function MasterPage() {
               ))}
             </div>
             <div className="mt-5 flex items-center gap-2">
-              <button disabled={saving} className="btn-primary">{editing.id ? "Alter (Ctrl+S)" : "Create"}</button>
+              <button disabled={saving} className="btn-primary">{editing.id ? "Alter (Ctrl+A)" : "Create"}</button>
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
             </div>
             {kind === "ledgers" && editing.id === undefined && (
