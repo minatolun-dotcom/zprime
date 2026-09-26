@@ -7,7 +7,11 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
     headers: options.body && !isFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
     ...options,
   });
-  if (res.status === 401) {
+  // A 401 on the LOGIN endpoint means bad credentials, not an expired
+  // session: the Login form must render the server's message locally instead
+  // of the global hard-redirect (which reloads the page and blanks the form
+  // with no feedback — found by the beginner-persona suite).
+  if (res.status === 401 && !path.startsWith("/api/auth/login")) {
     window.location.hash = "";
     window.location.href = "/login";
     throw new Error("Not authenticated");

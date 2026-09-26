@@ -532,7 +532,10 @@ export default async function voucherRoutes(app: FastifyInstance) {
     const conds = [eq(vouchers.companyId, c)];
     if (q.from) conds.push(gte(vouchers.date, q.from));
     if (q.to) conds.push(lte(vouchers.date, q.to));
-    if (q.type) conds.push(eq(vouchers.voucherTypeId, parseInt(q.type, 10)));
+    // NaN from a non-numeric ?type= must 400, not reach SQL as NaN (500)
+    const typeNum = q.type ? parseInt(q.type, 10) : NaN;
+    if (q.type && !Number.isFinite(typeNum)) throw bad("Invalid voucher type");
+    if (q.type) conds.push(eq(vouchers.voucherTypeId, typeNum));
     const rows = await db
       .select({
         id: vouchers.id, date: vouchers.date, number: vouchers.number,
