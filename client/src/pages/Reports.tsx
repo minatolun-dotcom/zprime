@@ -55,6 +55,11 @@ export default function Reports() {
     if (!endpoint) return null;
     if (key === "ledger-vouchers" && ledgerId) return `/api/c/${cid}/reports/ledger-vouchers/${ledgerId}?${qs}`;
     if (key === "group-summary" && groupId) return `/api/c/${cid}/reports/group-summary/${groupId}?${qs}`;
+    // R-66 (found via the export suite): the cheque register is a BANKING-surface
+    // endpoint mounted at /api/c/:cid/cheque-register — never under /reports,
+    // where the registry's generic prefix was sending it (the view could never
+    // render its data).
+    if (key === "cheque-register") return `/api/c/${cid}/cheque-register?${qs}`;
     return `/api/c/${cid}/reports/${endpoint}?${qs}`;
   }, [key, cid, qs, ledgerId, groupId]);
 
@@ -95,9 +100,16 @@ export default function Reports() {
 
   const title = TITLES[key ?? ""] ?? "Report";
 
+  // R-66: provenance for exports and paper — the same two rows sit above
+  // every CSV table and render as the print-only header line.
+  const meta: string[][] = [
+    [company?.name ?? "", company?.gstin ? `GSTIN ${company.gstin}` : ""],
+    [title, key === "balance-sheet" ? `as on ${fmtDate(to)}` : `${fmtDate(from)} to ${fmtDate(to)}`],
+  ];
+
   return (
     <Shell title={title} breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Reports" }, { label: title }]} fkeys={fkeys} wide>
-      <div className="flex items-center gap-3 mb-5 flex-wrap card px-4 py-3">
+      <div className="flex items-center gap-3 mb-5 flex-wrap card px-4 py-3 print:hidden">
         {key !== "balance-sheet" && (
           <>
             <span className="text-sm text-slate-500">Period</span>
@@ -133,33 +145,63 @@ export default function Reports() {
       </div>
 
       <ErrorBanner error={error} />
+      <PrintHead meta={meta} />
       {isLoading && <div className="text-slate-400 text-sm">Computing…</div>}
 
-      {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} />}
-      {key === "chart-of-accounts" && data && <ChartOfAccountsView cid={cid!} data={data} />}
-      {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} compare={compareOn} />}
-      {key === "trial-balance" && data && <TrialBalanceView cid={cid!} data={data} compare={compareOn} onCsv={(h, r) => csvDownload("trial-balance", h, r)} />}
-      {key === "ledger-vouchers" && data && <LedgerVouchersView data={data} />}
-      {key === "group-summary" && data && <GroupSummaryView data={data} detailed={detailed} />}
-      {key === "cash-bank" && data && <CashBankView cid={cid!} data={data} />}
+      {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} meta={meta} />}
+      {key === "chart-of-accounts" && data && <ChartOfAccountsView cid={cid!} data={data} meta={meta} />}
+      {key === "profit-loss" && data && <PnlView cid={cid!} data={data} detailed={detailed} compare={compareOn} meta={meta} />}
+      {key === "trial-balance" && data && <TrialBalanceView cid={cid!} data={data} compare={compareOn} meta={meta} />}
+      {key === "ledger-vouchers" && data && <LedgerVouchersView data={data} meta={meta} />}
+      {key === "group-summary" && data && <GroupSummaryView data={data} detailed={detailed} meta={meta} />}
+      {key === "cash-bank" && data && <CashBankView cid={cid!} data={data} meta={meta} />}
       {(key === "register-sales" || key === "register-purchase") && data && (
-        <RegisterView cid={cid!} data={data} onCsv={(h, r) => csvDownload(key, h, r)} />
+        <RegisterView cid={cid!} data={data} meta={meta} />
       )}
-      {key === "stock-summary" && data && <StockSummaryView data={data} single={Boolean(itemId)} />}
-      {key === "receivables" && data && <OutstandingView data={data} title="Bills Receivable" />}
-      {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" />}
-      {key === "gstr1" && data && <Gstr1View data={data} cid={cid} />}
-      {key === "gstr3b" && data && <Gstr3bView data={data} />}
-      {key === "gstr9" && data && <Gstr9View data={data} />}
-      {key === "tds" && data && <TdsView data={data} />}
-      {key === "tcs" && data && <TcsView data={data} />}
-      {key === "salary-register" && data && <SalaryRegisterView data={data} />}
-      {key === "cheque-register" && data && <ChequeRegisterView data={data} />}
+      {key === "stock-summary" && data && <StockSummaryView data={data} single={Boolean(itemId)} meta={meta} />}
+      {key === "receivables" && data && <OutstandingView data={data} title="Bills Receivable" meta={meta} />}
+      {key === "payables" && data && <OutstandingView data={data} title="Bills Payable" meta={meta} />}
+      {key === "gstr1" && data && <Gstr1View data={data} cid={cid} meta={meta} />}
+      {key === "gstr3b" && data && <Gstr3bView data={data} meta={meta} />}
+      {key === "gstr9" && data && <Gstr9View data={data} meta={meta} />}
+      {key === "tds" && data && <TdsView data={data} meta={meta} />}
+      {key === "tcs" && data && <TcsView data={data} meta={meta} />}
+      {key === "salary-register" && data && <SalaryRegisterView data={data} meta={meta} />}
+      {key === "cheque-register" && data && <ChequeRegisterView data={data} meta={meta} />}
     </Shell>
   );
 }
 
 // ---------- shared bits ----------
+
+// ---------- R-66: shared export/print bits ----------
+
+/** Print-only provenance header — company, report, period — from the same
+ *  meta rows the CSV export writes. Never visible on screen. */
+function PrintHead({ meta }: { meta: string[][] }) {
+  const [co, gstin] = meta[0];
+  const [what, period] = meta[1];
+  return (
+    <div className="hidden print:block mb-4">
+      <div className="text-lg font-semibold text-slate-900">{co}{gstin ? ` · ${gstin}` : ""}</div>
+      <div className="text-sm text-slate-600">{what} · {period}</div>
+    </div>
+  );
+}
+
+/** The per-report action row: Export CSV + Print. Hidden on paper. Rows are
+ *  built lazily — the thunk runs only when the operator clicks Export CSV. */
+function ReportActions({ name, meta, headers, rows }: {
+  name: string; meta: string[][]; headers: string[];
+  rows: () => (string | number | null | undefined)[][];
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2 mb-2 print:hidden" data-testid="report-actions">
+      <button className="btn-ghost text-sm" data-testid="export-csv" onClick={() => csvDownload(name, headers, rows(), meta)}>Export CSV</button>
+      <button className="btn-ghost text-sm" data-testid="print-report" onClick={() => window.print()}>Print</button>
+    </div>
+  );
+}
 
 function GroupPicker({ cid, value, onChange }: { cid: string; value: string; onChange: (v: string) => void }) {
   const { data: groups } = useQuery({ queryKey: ["groups", cid], queryFn: () => get<any[]>(`/api/c/${cid}/groups`) });
@@ -182,6 +224,9 @@ function TreeRows({ nodes, onClick, level = 0, prev = false }: { nodes: any[]; o
             <tr className={onClick ? "row-link" : ""} onClick={() => onClick?.(n)}>
               <td style={{ paddingLeft: `${8 + level * 16}px` }} className={level === 0 ? "font-semibold text-slate-800" : "text-slate-700"}>
                 {n.name}
+                {/* R-66: export provenance — the tree depth rides in the DOM so
+                    a flattened CSV can carry an explicit Level column. */}
+                <span className="sr-only print-keep" data-level={level} aria-hidden></span>
               </td>
               <td className="num">{n.closing >= 0 ? n.closing.toLocaleString("en-IN") : ""}</td>
               <td className="num">{n.closing < 0 ? Math.abs(n.closing).toLocaleString("en-IN") : ""}</td>
@@ -197,16 +242,21 @@ function TreeRows({ nodes, onClick, level = 0, prev = false }: { nodes: any[]; o
 
 // ---------- Balance Sheet ----------
 
-/** R-60: flatten a balance-sheet tree for the prior-year index. */
-function collectNodes(nodes: any[], out: any[] = []): any[] {
+/** R-60: flatten a balance-sheet tree for the prior-year index. R-66: carries
+ *  each node's depth for the Level column of the flattened CSV export. */
+function collectNodes(nodes: any[], out: any[] = [], depth = 0): any[] {
   for (const n of nodes) {
-    out.push(n);
-    if (n.children?.length) collectNodes(n.children, out);
+    out.push({ ...n, _depth: depth });
+    if (n.children?.length) collectNodes(n.children, out, depth + 1);
   }
   return out;
 }
 
-function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; detailed: boolean }) {
+/** R-66: CSV name for a tree row — indented (2 spaces per level) + the level
+ *  surfaced separately, mirroring Tally's exported tree look (operator pick). */
+const treeIndent = (name: string, level: number) => "  ".repeat(level) + name;
+
+function BalanceSheetView({ cid, data, detailed, meta }: { cid: string; data: any; detailed: boolean; meta: string[][] }) {
   const nav = useNavigate();
   const openGroup = (id: number) => nav(`/company/${cid}/reports/group-summary`, { state: { groupId: id } });
   // R-60: prior-year column — the server's `previous` payload re-shaped into
@@ -221,6 +271,21 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
   const liabilities = prev ? tagPrev(data.liabilities) : data.liabilities;
   const assets = prev ? tagPrev(data.assets) : data.assets;
   return (
+    <>
+    <ReportActions
+      name="balance-sheet"
+      meta={meta}
+      headers={prev ? ["Level", "Particulars", "Debit", "Credit", "Prev Closing"] : ["Level", "Particulars", "Debit", "Credit"]}
+      rows={() => {
+        const flat = [...collectNodes(liabilities), ...collectNodes(assets)];
+        const rows: (string | number)[][] = flat.map((n: any) => prev
+          ? [n._depth, treeIndent(n.name, n._depth), n.closing >= 0 ? r2(n.closing) : "", n.closing < 0 ? r2(-n.closing) : "", n.prevClosing ?? ""]
+          : [n._depth, treeIndent(n.name, n._depth), n.closing >= 0 ? r2(n.closing) : "", n.closing < 0 ? r2(-n.closing) : ""]);
+        rows.push(["", "TOTAL LIABILITIES", "", r2(data.totalLiabilities)]);
+        rows.push(["", "TOTAL ASSETS", r2(data.totalAssets), ""]);
+        return rows;
+      }}
+    />
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Liabilities</div>
@@ -259,14 +324,41 @@ function BalanceSheetView({ cid, data, detailed }: { cid: string; data: any; det
         </div>
       )}
     </div>
+    </>
   );
 }
 
 // ---------- P&L ----------
 
-function PnlView({ cid, data, detailed, compare }: { cid: string; data: any; detailed: boolean; compare: boolean }) {
+function PnlView({ cid, data, detailed, compare, meta }: { cid: string; data: any; detailed: boolean; compare: boolean; meta: string[][] }) {
+  // R-66: one unified statement export — sections labelled, Dr/Cr columns.
+  const onCsv = () => {
+    csvDownload(
+      "profit-loss",
+      ["Particulars", "Debit", "Credit"],
+      [
+        ["Opening Stock", data.openingStock > 0 ? r2(data.openingStock) : "", ""],
+        ["Purchase Accounts", data.purchases > 0 ? r2(data.purchases) : "", ""],
+        ["Direct Expenses", data.directExpenses > 0 ? r2(data.directExpenses) : "", ""],
+        ...data.purchaseDetail.map((l: any) => [treeIndent(l.name, 1), l.amount > 0 ? r2(l.amount) : "", ""]),
+        ...data.directExpensesDetail.map((l: any) => [treeIndent(l.name, 1), l.amount > 0 ? r2(l.amount) : "", ""]),
+        ["Total (Dr side)", r2(data.purchases + data.openingStock + data.directExpenses), ""],
+        ["Sales Accounts", "", data.sales > 0 ? r2(data.sales) : ""],
+        ["Closing Stock", "", data.closingStock > 0 ? r2(data.closingStock) : ""],
+        ["Direct Incomes", "", data.directIncome > 0 ? r2(data.directIncome) : ""],
+        ...data.directIncomeDetail.map((l: any) => [treeIndent(l.name, 1), "", l.amount > 0 ? r2(l.amount) : ""]),
+        ["Gross Profit c/d", data.grossProfit > 0 ? r2(data.grossProfit) : "", ""],
+        ["Indirect Expenses", data.indirectExpenses > 0 ? r2(data.indirectExpenses) : "", ""],
+        ...data.indirectExpensesDetail.map((l: any) => [treeIndent(l.name, 1), l.amount > 0 ? r2(l.amount) : "", ""]),
+        ["Indirect Incomes", "", data.indirectIncome > 0 ? r2(data.indirectIncome) : ""],
+        ...data.indirectIncomeDetail.map((l: any) => [treeIndent(l.name, 1), "", l.amount > 0 ? r2(l.amount) : ""]),
+        ["Gross Profit b/f", "", data.grossProfit > 0 ? r2(data.grossProfit) : ""],
+        [data.netProfit >= 0 ? "Net Profit" : "Net Loss", "", r2(Math.abs(data.netProfit))],
+      ],
+      meta,
+    );
+  };
   const nav = useNavigate();
-  // R-60: prior-year column (server-composed `previous`, same shape).
   const p = compare ? (data.previous as any | null) : null;
   const labels = data.compareLabels as { current: string; previous: string } | undefined;
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
@@ -285,6 +377,8 @@ function PnlView({ cid, data, detailed, compare }: { cid: string; data: any; det
     </>
   );
   return (
+    <>
+    <ReportActions name="profit-loss" meta={meta} headers={["Particulars", "Debit", "Credit"]} rows={() => { onCsv(); return []; }} />
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Expenses (Dr){p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
@@ -347,11 +441,12 @@ function PnlView({ cid, data, detailed, compare }: { cid: string; data: any; det
         </table>
       </Card>
     </div>
+    </>
   );
 }
 
 // ---------- Trial Balance ----------
-function TrialBalanceView({ cid, data, compare, onCsv }: { cid: string; data: any; compare: boolean; onCsv: (h: string[], r: (string | number)[][]) => void }) {
+function TrialBalanceView({ cid, data, compare, meta }: { cid: string; data: any; compare: boolean; meta: string[][] }) {
   const nav = useNavigate();
   // R-60: prior-year column — rows joined on ledgerId; a ledger that exists
   // only today (no prior row, or a zero prior closing) renders a dash.
@@ -365,6 +460,16 @@ function TrialBalanceView({ cid, data, compare, onCsv }: { cid: string; data: an
   };
   const prevLabel: string = data.compareLabels?.previous ?? "Prev";
   return (
+    <>
+    <ReportActions
+      name="trial-balance"
+      meta={meta}
+      headers={p ? ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit", "Prev Closing"] : ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"]}
+      rows={() => [
+        ...data.rows.map((r: any) => (p ? [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit, prevOf(r) ?? ""] : [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit])),
+        ["Totals", "", "", "", data.totalDebit, data.totalCredit],
+      ]}
+    />
     <Card>
       <table className="report-table">
         <thead>
@@ -395,26 +500,29 @@ function TrialBalanceView({ cid, data, compare, onCsv }: { cid: string; data: an
           </tr>
         </tbody>
       </table>
-      <div className="p-2">
-        <button className="btn-ghost text-sm" onClick={() => onCsv(
-          p ? ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit", "Prev Closing"] : ["Ledger", "Group", "Op Dr", "Op Cr", "Debit", "Credit"],
-          data.rows.map((r: any) => (p ? [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit, prevOf(r) ?? ""] : [r.name, r.groupName, r.openingDebit, r.openingCredit, r.debit, r.credit])),
-        )}>
-          Export CSV
-        </button>
-      </div>
       {Math.abs(data.difference ?? 0) > 0.004 && (
         <div className="text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-4 py-2.5 m-3 leading-relaxed">
           Difference in books: {data.difference.toLocaleString("en-IN")} — check opening balances or unposted entries.
         </div>
       )}
     </Card>
+    </>
   );
 }
 
 // ---------- Ledger vouchers ----------
-function LedgerVouchersView({ data }: { data: any }) {
+function LedgerVouchersView({ data, meta }: { data: any; meta: string[][] }) {
   return (
+    <>
+    <ReportActions
+      name="ledger-vouchers"
+      meta={meta}
+      headers={["Date", "Vch Type", "Vch No.", "Narration", "Debit", "Credit", "Balance"]}
+      rows={() => [
+        ...data.txns.map((t: any) => [fmtDate(t.date), t.typeName, t.number, t.narration ?? "", t.debit || "", t.credit || "", t.balance]),
+        ["Closing", "", "", "", data.totalDebit, data.totalCredit, data.closing],
+      ]}
+    />
     <Card>
       <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
         <div className="text-base font-semibold text-slate-800">{data.ledger.name} — Account</div>
@@ -444,13 +552,21 @@ function LedgerVouchersView({ data }: { data: any }) {
         </tbody>
       </table>
     </Card>
+    </>
   );
 }
 
 // ---------- Group summary ----------
-function GroupSummaryView({ data, detailed }: { data: any; detailed: boolean }) {
+function GroupSummaryView({ data, detailed, meta }: { data: any; detailed: boolean; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   return (
+    <>
+    <ReportActions
+      name="group-summary"
+      meta={meta}
+      headers={["Ledger", "Debit", "Credit"]}
+      rows={() => data.ledgers.map((l: any) => [l.name, l.closing > 0 ? r2(l.closing) : "", l.closing < 0 ? r2(-l.closing) : ""])}
+    />
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card>
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">{data.group.name} — Group Summary</div>
@@ -478,13 +594,21 @@ function GroupSummaryView({ data, detailed }: { data: any; detailed: boolean }) 
         </Card>
       )}
     </div>
+    </>
   );
 }
 
 // ---------- Cash / bank ----------
-function CashBankView({ cid, data }: { cid: string; data: any }) {
+function CashBankView({ cid, data, meta }: { cid: string; data: any; meta: string[][] }) {
   const nav = useNavigate();
   return (
+    <>
+    <ReportActions
+      name="cash-bank"
+      meta={meta}
+      headers={["Ledger", "Period Dr", "Period Cr", "Closing"]}
+      rows={() => data.map((b: any) => [b.name, b.debit, b.credit, b.closing])}
+    />
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       {data.map((b: any) => (
         <Card key={b.ledgerId} className="p-0 overflow-hidden">
@@ -505,13 +629,21 @@ function CashBankView({ cid, data }: { cid: string; data: any }) {
         </Card>
       ))}
     </div>
+    </>
   );
 }
 
 // ---------- Sales / purchase register ----------
-function RegisterView({ cid, data, onCsv }: { cid: string; data: any; onCsv: (h: string[], r: (string | number)[][]) => void }) {
+function RegisterView({ cid, data, meta }: { cid: string; data: any; meta: string[][] }) {
   const nav = useNavigate();
   return (
+    <>
+    <ReportActions
+      name="register"
+      meta={meta}
+      headers={["Date", "No", "Party", "Amount", "GST"]}
+      rows={() => data.rows.map((r: any) => [fmtDate(r.date), r.number, r.partyName ?? "", r.amount, r.gst || ""])}
+    />
     <Card>
       <table className="report-table">
         <thead>
@@ -531,21 +663,26 @@ function RegisterView({ cid, data, onCsv }: { cid: string; data: any; onCsv: (h:
           </tr>
         </tbody>
       </table>
-      <div className="p-2">
-        <button className="btn-ghost text-sm" onClick={() => onCsv(["Date", "No", "Party", "Amount", "GST"], data.rows.map((r: any) => [r.date, r.number, r.partyName ?? "", r.amount, r.gst]))}>Export CSV</button>
-      </div>
     </Card>
+    </>
   );
 }
 
 // ---------- Stock summary ----------
-function StockSummaryView({ data, single }: { data: any; single: boolean }) {
+function StockSummaryView({ data, single, meta }: { data: any; single: boolean; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   const qty = (v: number) => (Math.abs(v) < 1e-9 ? "" : v.toLocaleString("en-IN", { maximumFractionDigits: 3 }));
   if (single) {
     const it = data[0];
     if (!it) return <Card className="p-6 text-slate-400 text-sm">No movements.</Card>;
     return (
+      <>
+      <ReportActions
+        name="stock-summary"
+        meta={meta}
+        headers={["Stage", "Qty", "Value"]}
+        rows={() => [["Opening", it.openingQty || "", it.openingValue], ["Inwards", it.inQty || "", it.inValue], ["Outwards", it.outQty || "", it.outValue], ["Closing", it.closingQty, it.closingValue]]}
+      />
       <Card>
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">{it.name} ({it.unit}) — Stock Item</div>
         <table className="report-table">
@@ -558,9 +695,20 @@ function StockSummaryView({ data, single }: { data: any; single: boolean }) {
           </tbody>
         </table>
       </Card>
+      </>
     );
   }
   return (
+    <>
+    <ReportActions
+      name="stock-summary"
+      meta={meta}
+      headers={["Item", "Unit", "In Qty", "Out Qty", "Closing Qty", "Closing Value"]}
+      rows={() => [
+        ...data.map((it: any) => [it.name, it.unit, it.inQty || "", it.outQty || "", it.closingQty, it.closingValue]),
+        ["Total Stock Value", "", "", "", "", r2(data.reduce((s: number, it: any) => s + it.closingValue, 0))],
+      ]}
+    />
     <Card>
       <table className="report-table">
         <thead>
@@ -586,17 +734,25 @@ function StockSummaryView({ data, single }: { data: any; single: boolean }) {
         </tbody>
       </table>
     </Card>
+    </>
   );
 }
 
 // ---------- Outstanding ----------
-function OutstandingView({ data, title }: { data: any; title: string }) {
+function OutstandingView({ data, title, meta }: { data: any; title: string; meta: string[][] }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
+    <>
+    <ReportActions
+      name="bills-outstanding"
+      meta={meta}
+      headers={["Party", "Bill Date", "Bill", "Amount", "Due Date"]}
+      rows={() => data.parties.flatMap((p: any) => p.bills.map((b: any) => [p.ledgerName, fmtDate(b.date), b.billName, b.amount, b.dueDate ? fmtDate(b.dueDate) : ""]))}
+    />
     <div className="space-y-3">
       {data.parties.map((p: any) => (
         <Card key={p.ledgerId} className="p-0 overflow-hidden">
-          <button className="w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => setOpen(open === String(p.ledgerId) ? null : String(p.ledgerId))}>
+          <button className="print-keep w-full px-3 py-2 flex justify-between items-center hover:bg-slate-50" onClick={() => setOpen(open === String(p.ledgerId) ? null : String(p.ledgerId))}>
             <span className="text-base font-semibold">{p.ledgerName}</span>
             <span className={`num text-base ${p.total > 0 ? "text-slate-800" : "text-amber-600"}`}>{p.total.toLocaleString("en-IN")}</span>
           </button>
@@ -618,15 +774,20 @@ function OutstandingView({ data, title }: { data: any; title: string }) {
       ))}
       {data.parties.length === 0 && <Card className="p-10 text-center text-slate-400 text-sm">No open bills. {title} is clear 🎉</Card>}
     </div>
+    </>
   );
 }
 
 // ---------- GSTR-1 ----------
-function Gstr1View({ data, cid }: { data: any; cid?: string }) {
+function Gstr1View({ data, cid, meta }: { data: any; cid?: string; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   const t = data.totals ?? {};
   const hasNotes = (data.cdnr?.length ?? 0) + (data.cdnur?.length ?? 0) > 0;
   const [einvMsg, setEinvMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // R-66: the B2B table exports (the filing accountants' working sheet); per-voucher
+  // e-inv/e-way JSON downloads remain the statutory-format surface.
+  const gstr1Csv = () =>
+    data.b2b.map((v: any) => [fmtDate(v.date), v.number, v.partyName ?? "", v.partyGstin ?? "", v.taxable, v.igst, v.cgst, v.sgst]);
   // R-24/R-25: generate + download compliance payloads for one voucher. The
   // server validates strictly; validation failures surface every gap at once;
   // non-blocking advisories (e-way threshold, HSN depth) show as warnings.
@@ -780,6 +941,7 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
   );
   return (
     <div className="space-y-4">
+      <ReportActions name="gstr1" meta={meta} headers={["Date", "Invoice", "Party", "GSTIN", "Taxable", "IGST", "CGST", "SGST"]} rows={gstr1Csv} />
       {einvMsg && (
         <div className={`px-3 py-2 rounded text-sm ${einvMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-900 border border-amber-200"}`} role="status">
           {einvMsg.text}
@@ -858,12 +1020,29 @@ function Gstr1View({ data, cid }: { data: any; cid?: string }) {
 }
 
 // ---------- GSTR-3B ----------
-function Gstr3bView({ data }: { data: any }) {
+function Gstr3bView({ data, meta }: { data: any; meta: string[][] }) {
   const money = (v: number) => v.toLocaleString("en-IN");
   const Row = ({ label, a, b, c, d, e }: any) => (
     <tr><td>{label}</td><td className="num">{money(a)}</td><td className="num">{money(b)}</td><td className="num">{money(c)}</td><td className="num">{money(d)}</td><td className="num">{money(e)}</td></tr>
   );
   return (
+    <>
+    <ReportActions
+      name="gstr-3b"
+      meta={meta}
+      headers={["Section", "Taxable", "IGST", "CGST", "SGST", "Cess"]}
+      rows={() => [
+        ["3.1 Outward supplies", data.outward.taxable, data.outward.igst, data.outward.cgst, data.outward.sgst, data.outward.cess],
+        ...(data.inwardRcm ? [["3.1.1 Inward supplies (RCM)", data.inwardRcm.taxable, data.inwardRcm.igst, data.inwardRcm.cgst, data.inwardRcm.sgst, data.inwardRcm.cess]] : []),
+        ["4 ITC available", 0, data.itc.igst, data.itc.cgst, data.itc.sgst, data.itc.cess],
+        ...(data.rcmItc ? [["ITC claimed on RCM", 0, data.rcmItc.igst, data.rcmItc.cgst, data.rcmItc.sgst, data.rcmItc.cess]] : []),
+        ["Net IGST payable", "", "", "", "", data.net.igst],
+        ["Net CGST payable", "", "", "", "", data.net.cgst],
+        ["Net SGST payable", "", "", "", "", data.net.sgst],
+        ["Net Cess payable", "", "", "", "", data.net.cess],
+        ["Net Tax Payable", "", "", "", "", data.net.total],
+      ]}
+    />
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <Card className="p-0 overflow-hidden xl:col-span-2">
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">3.1 Outward taxable supplies</div>
@@ -909,14 +1088,21 @@ function Gstr3bView({ data }: { data: any }) {
         </table>
       </Card>
     </div>
+    </>
   );
 }
 
 // ---------- TDS ----------
-function TdsView({ data }: { data: any }) {
+function TdsView({ data, meta }: { data: any; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   return (
     <div className="space-y-4">
+      <ReportActions
+        name="tds"
+        meta={meta}
+        headers={["Section", "Entries", "Amount"]}
+        rows={() => data.sections.map((s: any) => [s.section, s.count, s.amount])}
+      />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Deductions by Section</div>
@@ -1030,10 +1216,16 @@ function FyPayeeThresholdCard({ fyAggregates, dutyHead }: { fyAggregates: any[] 
 }
 
 // ---------- TCS (R-27) — collection-side mirror of the TDS view ----------
-function TcsView({ data }: { data: any }) {
+function TcsView({ data, meta }: { data: any; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
   return (
     <div className="space-y-4">
+      <ReportActions
+        name="tcs"
+        meta={meta}
+        headers={["Section", "Entries", "Rate %", "Amount"]}
+        rows={() => data.sections.map((s: any) => [s.section, s.count, s.rate ?? "", s.amount])}
+      />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Collections by Section</div>
@@ -1083,9 +1275,16 @@ function TcsView({ data }: { data: any }) {
 }
 
 // ---------- Salary register ----------
-function SalaryRegisterView({ data }: { data: any }) {
+function SalaryRegisterView({ data, meta }: { data: any; meta: string[][] }) {
   const money = (v: any) => num(v).toLocaleString("en-IN");
   return (
+    <>
+    <ReportActions
+      name="salary-register"
+      meta={meta}
+      headers={["Month", "Employee", "Gross", "Deductions", "Net"]}
+      rows={() => data.map((p: any) => [monthLabel(p.month), p.employeeName, num(p.gross), num(p.deductions), num(p.net)])}
+    />
     <Card>
       <table className="report-table">
         <thead><tr><th className="w-24">Month</th><th>Employee</th><th className="w-28 text-right">Gross</th><th className="w-28 text-right">Deductions</th><th className="w-28 text-right">Net</th></tr></thead>
@@ -1101,12 +1300,20 @@ function SalaryRegisterView({ data }: { data: any }) {
         </tbody>
       </table>
     </Card>
+    </>
   );
 }
 
 // ---------- Cheque register ----------
-function ChequeRegisterView({ data }: { data: any }) {
+function ChequeRegisterView({ data, meta }: { data: any; meta: string[][] }) {
   return (
+    <>
+    <ReportActions
+      name="cheque-register"
+      meta={meta}
+      headers={["Date", "Cheque No.", "Bank", "Party / Narration", "Amount", "Direction"]}
+      rows={() => data.map((c: any) => [fmtDate(c.date), c.chequeNumber, c.bankLedger, c.narration ?? "", c.amount, c.direction])}
+    />
     <Card>
       <table className="report-table">
         <thead><tr><th className="w-24">Date</th><th className="w-24">Cheque No.</th><th>Bank</th><th>Party / Narration</th>
@@ -1124,12 +1331,35 @@ function ChequeRegisterView({ data }: { data: any }) {
         </tbody>
       </table>
     </Card>
+    </>
   );
 }
 
 // ---------- GSTR-9 (annual) ----------
-function Gstr9View({ data }: { data: any }) {
+function Gstr9View({ data, meta }: { data: any; meta: string[][] }) {
   const money = (v: number) => (Math.abs(v) < 0.005 ? "" : v.toLocaleString("en-IN"));
+  // R-66: the duty-head tables flatten into one long (Section, IGST, CGST, SGST,
+  // Cess) sheet — the annual return's working copy.
+  const gstr9Csv = () => {
+    const t4 = data.table4, t8 = data.table8, t9 = data.table9, con = data.consistency;
+    const duty = (label: string, v: any) => [label, v.igst, v.cgst, v.sgst, v.cess ?? 0];
+    return [
+      duty("Table 4 A(5) — supplier-charged ITC", t4.currentYearRegular),
+      duty("Table 4 A(3) — reverse-charge ITC", t4.currentYearRcm),
+      duty("Table 8 Opening credit balance", t8.opening),
+      duty("Table 8 ITC claimed this FY", t8.claimed),
+      duty("Table 8 Computed closing", t8.computedClosing),
+      duty("Table 8 Actual duty-ledger closing", t8.ledgerClosing),
+      duty("Table 8 Difference", t8.difference),
+      ["Table 9 B2B", t9.b2b.taxable, t9.b2b.igst, t9.b2b.cgst, t9.b2b.sgst],
+      ["Table 9 B2C", t9.b2c.taxable, t9.b2c.igst, t9.b2c.cgst, t9.b2c.sgst],
+      ["Table 9 CDNR", t9.cdnr.taxable, t9.cdnr.igst, t9.cdnr.cgst, t9.cdnr.sgst],
+      ["Table 9 CDNUR", t9.cdnur.taxable, t9.cdnur.igst, t9.cdnur.cgst, t9.cdnur.sgst],
+      ["Table 9 Net", t9.net.taxable, t9.net.igst, t9.net.cgst, t9.net.sgst],
+      ["Check: Table 9 net − 3B outward", con.table9Vs3bOutward.taxable, con.table9Vs3bOutward.igst, con.table9Vs3bOutward.cgst, con.table9Vs3bOutward.sgst],
+      ...data.table12.map((h: any) => [`Table 12 HSN ${h.hsn} @${h.rate}%`, "", "", "", ""]),
+    ];
+  };
   const DutyRow = ({ label, v, tol = 0.005 }: { label: string; v: { igst: number; cgst: number; sgst: number; cess?: number }; tol?: number }) => (
     <tr className={Math.abs(v.igst) + Math.abs(v.cgst) + Math.abs(v.sgst) + Math.abs(v.cess ?? 0) > tol ? "bg-amber-50" : ""}>
       <td>{label}</td><td className="num">{money(v.igst)}</td><td className="num">{money(v.cgst)}</td><td className="num">{money(v.sgst)}</td><td className="num">{money(v.cess ?? 0)}</td>
@@ -1138,6 +1368,8 @@ function Gstr9View({ data }: { data: any }) {
   const dutyHead = (<tr><th></th><th className="w-28 text-right">IGST</th><th className="w-28 text-right">CGST</th><th className="w-28 text-right">SGST</th><th className="w-28 text-right">CESS</th></tr>);
   const t4 = data.table4, t8 = data.table8, t9 = data.table9, con = data.consistency;
   return (
+    <>
+    <ReportActions name="gstr-9" meta={meta} headers={["Section", "IGST", "CGST", "SGST", "CESS"]} rows={gstr9Csv} />
     <div className="space-y-4">
       <Card>
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">Table 4 — Eligible ITC (current year)</div>
@@ -1214,8 +1446,10 @@ function Gstr9View({ data }: { data: any }) {
         </table>
       </Card>
     </div>
+    </>
   );
 }
+
 
 // ---------- registry ----------
 const ENDPOINTS: Record<string, string> = {
@@ -1269,10 +1503,27 @@ const TITLES: Record<string, string> = {
  *  Balance Sheet and P&L roll up. Read-only; click a ledger for its vouchers,
  *  a group for Group Summary. Type-to-filter narrows the tree, keeping every
  *  ancestor of a match. */
-function ChartOfAccountsView({ cid, data }: { cid: string; data: any }) {
+function ChartOfAccountsView({ cid, data, meta }: { cid: string; data: any; meta: string[][] }) {
   const nav = useNavigate();
   const [filter, setFilter] = useState("");
   const q = filter.trim().toLowerCase();
+
+  // R-66: full-chart export — every group row (indented + Level) followed by
+  // its ledger leaves, mirroring the on-screen tree regardless of expansion.
+  const coaCsv = () => {
+    const rows: (string | number)[][] = [];
+    const walk = (nodes: any[], depth: number) => {
+      for (const n of nodes) {
+        rows.push([depth, treeIndent(n.name, depth), n.opening, n.debit, n.credit, n.closing]);
+        for (const l of (byGroup.get(n.id) ?? []).filter((l) => matches(l.name)).sort((a, b) => a.name.localeCompare(b.name))) {
+          rows.push([depth + 1, treeIndent(l.name, depth + 1), l.opening, l.debit, l.credit, l.closing]);
+        }
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(data.groups ?? [], 0);
+    return rows;
+  };
 
   // Expanded one level deep at rest (roots + their children); expansion state
   // persists across refetches (ids are stable). While filtering, every branch
@@ -1360,6 +1611,12 @@ function ChartOfAccountsView({ cid, data }: { cid: string; data: any }) {
 
   return (
     <div className="card p-4">
+      <ReportActions
+        name="chart-of-accounts"
+        meta={meta}
+        headers={["Level", "Particulars", "Opening", "Debit", "Credit", "Closing"]}
+        rows={coaCsv}
+      />
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <input
           data-testid="coa-filter"

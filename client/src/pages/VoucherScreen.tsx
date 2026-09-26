@@ -8,6 +8,7 @@ import { get, post, put, del } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate } from "../lib/format";
+import InvoicePrint from "../components/InvoicePrint";
 
 interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
 interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; amount: number; kind: string; }
@@ -72,6 +73,9 @@ export default function VoucherScreen() {
         })(),
   );
   const [detailed, setDetailed] = useState(true);
+  // R-66: the server-loaded voucher as saved — the printable invoice face
+  // renders THIS, never the in-form buffers, so paper always matches the books.
+  const [savedVoucher, setSavedVoucher] = useState<any | null>(null);
   // R-35: ledger-on-the-fly — quick-create modal state. quickTrigger records
   // which TypeAhead opened the modal so the created ledger is picked back into
   // that exact row (party or entry) without disturbing voucher state.
@@ -124,6 +128,28 @@ export default function VoucherScreen() {
   const { data: tcsSections } = useQuery({ queryKey: ["tcs-sections", cid], queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`) });
   // R-35: groups for the quick-create "Under" select (cache shared with Reports).
   const { data: allGroups } = useQuery({ queryKey: ["groups", cid], queryFn: () => get<any[]>(`/api/c/${cid}/groups`) });
+  // R-66: party master details for the printable invoice face (address, GSTIN,
+  // state) — only fetched for Sales / Delivery Note vouchers, where the print
+  // surface exists. Silent-degrade: the face renders dashes when the ledger
+  // detail is missing.
+  const isInvoicePrintable = vType ? ["Sales", "Delivery Note"].includes(vType.name) : false;
+  const { data: partyDetail } = useQuery({
+    queryKey: ["party-detail", cid, party.id],
+    queryFn: () => get<any>(`/api/c/${cid}/ledgers/${party.id}`),
+    enabled: isInvoicePrintable && isEdit && !!party.id,
+  });
+  // R-66: the print face always renders the SAVED voucher state + party master
+  // details, never the in-form buffers — paper matches the books. Sales DN
+  // header label differs; Purchase/DN variants are intentionally excluded.
+  const voucherForPrint = useMemo(() => {
+    if (!isInvoicePrintable || !isEdit || !savedVoucher) return null;
+    return {
+      ...savedVoucher,
+      partyAddress: partyDetail?.partyAddress ?? null,
+      partyState: partyDetail?.partyState ?? null,
+      partyGstin: partyDetail?.gstin ?? null,
+    };
+  }, [isInvoicePrintable, isEdit, savedVoucher, partyDetail]);
 
   const ledgerOptions: Option[] = (allLedgers ?? []).map((l) => ({ id: l.id, name: l.name }));
   const itemOptions: Option[] = (allItems ?? []).map((l) => ({ id: l.id, name: l.name }));
@@ -160,6 +186,8 @@ export default function VoucherScreen() {
             godownId: e.godownId, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount), kind: e.kind,
           }));
           setInv(items);
+          // R-66: keep the saved shape for the invoice print face
+          setSavedVoucher(v);
         } else {
           const t = await get<VoucherType>(`/api/c/${cid}/voucher-types/${typeId}`);
           setVType(t);
@@ -544,6 +572,8 @@ export default function VoucherScreen() {
       if (warns.length) {
         sessionStorage.setItem("zprime_voucher_warnings_last", JSON.stringify(warns));
       }
+      // R-66: keep the print face in sync with the just-saved state
+      try { setSavedVoucher(await get<any>(`/api/c/${cid}/vouchers/${res?.id ?? voucherId}`)); } catch { /* print face stays stale rather than blocking navigation */ }
       nav(`/company/${cid}/daybook`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -910,6 +940,9 @@ export default function VoucherScreen() {
             <div className="flex gap-2.5 pt-2 flex-wrap items-center">
               <button className="btn-primary" disabled={saving || cancelledView} onClick={save}>{isEdit ? "Alter (Ctrl+A)" : "Accept (Ctrl+A)"}</button>
               <button className="btn-ghost" onClick={() => nav(-1)}>Cancel (Esc)</button>
+              {isInvoicePrintable && isEdit && !saving && (
+                <button className="btn-ghost" data-testid="print-invoice" onClick={() => window.print()}>Print Invoice</button>
+              )}
               <span className="flex-1" />
               <span className="text-xs text-slate-400 self-center">
                 Enter on last amount row adds a new line · {fmtDate(date)}
@@ -917,6 +950,12 @@ export default function VoucherScreen() {
             </div>
           </div>
         </div>
+      )}
+      {/* R-66: printable invoice face (Sales / Delivery Note, edit mode).
+          The face renders the SAVED voucher state (server-loaded) + party
+          master details — after an Alter, Ctrl+A first, then Print. */}
+      {isInvoicePrintable && isEdit && !cancelledView && voucherForPrint && (
+        <InvoicePrint cid={cid!} voucherId={voucherId!} voucher={voucherForPrint} />
       )}
       {/* R-35: ledger-on-the-fly quick-create. Layering contract: Esc here
           closes ONLY this modal; the voucher behind keeps every keystroke.

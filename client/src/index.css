@@ -110,3 +110,38 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
 .card {
   @apply bg-white rounded-xl border border-slate-200 shadow-card;
 }
+
+/* ---- Print (R-66): paper / Save-as-PDF output ----
+   App chrome (top bar, shortcut rails, toolbars, every button) is hidden via
+   print:hidden on the element or the blanket button rule below; report pages
+   render their own print-only header line (company, report, period). Cheque
+   Printing and the voucher invoice face keep their dedicated fixed print-only
+   layers (proven pattern from ChequePrint, untouched). */
+@media print {
+  html, body, #root {
+    height: auto !important;
+    background: #fff !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+  button {
+    display: none !important;
+  }
+  /* Interactive row headers carry real content on paper (Outstanding party
+     cards) — they survive the blanket button hide. */
+  button.print-keep {
+    display: flex !important;
+  }
+  .card {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  /* sticky table headers smear across printed pages — print them once */
+  .report-table th {
+    position: static !important;
+  }
+  .report-table thead {
+    display: table-header-group; /* repeat headers on every printed page */
+  }
+}

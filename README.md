@@ -38,7 +38,7 @@ migrates cleanly instead of staying dead).
 - Sales/Purchase, Delivery/Receipt Notes, Stock Journal, Physical Stock, Manufacturing Journal
 - Weighted-average or FIFO costing, opening stock, reorder flag
 
-**Reports** (all with period picker, Alt+F1 detailed/condensed, CSV export, drill-down)
+**Reports** (all with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV + Print** on every view — R-66)
 - Balance Sheet, Profit & Loss, Trial Balance, Day Book
 - Ledger Vouchers (running balance), Group Summary, Cash/Bank Book
 - **Chart of Accounts** — every group and ledger in one expandable tree with period balances, type-to-filter (Alt+O)
@@ -54,6 +54,7 @@ migrates cleanly instead of staying dead).
 **Utilities**
 - **XML import** — masters (groups/ledgers/stock items/units/godowns) + vouchers (all types, bill refs, GSTIN) from standard accounting XML exports; duplicates skipped
 - Cheque printing (printable cheque face with amount in words)
+- **Invoice printing** — Sales and Delivery Note vouchers (alter mode) render a GST-ready invoice face with the party's master details and amount in words; report pages print clean via a print stylesheet (chrome and buttons hidden)
 - Company settings, simple JWT login
 - **Company users** — the company creator adds/removes users and resets passwords in Company Settings → Users; every user has full access to the company (no permission levels, Tally-style)
 

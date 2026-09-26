@@ -9,6 +9,7 @@ import { num, today, fmtDate, fyStart, fyEnd, fyEndFromBegin, loadSessionPeriod 
 import { useCompanyPeriod } from "../lib/period";
 import { voucherKeyRank } from "../lib/gatewayMenu";
 import { useCompany } from "../store";
+import { csvDownload } from "../lib/csv";
 
 const TYPE_COLORS: Record<string, string> = {
   Sales: "bg-green-100 text-green-700",
@@ -148,6 +149,19 @@ export default function DayBook() {
               <option value="">All types</option>
               {acctTypes.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+            <button
+              className="btn-ghost text-sm"
+              data-testid="daybook-export-csv"
+              disabled={!rows || rows.length === 0}
+              onClick={() => csvDownload(
+                "day-book",
+                ["Date", "Type", "No", "Party / Ledger", "Amount"],
+                (rows ?? []).map((v: any) => [fmtDate(v.date), v.typeName, v.number, v.partyName ?? v.narration ?? "", num(v.amount)]),
+                [[company?.name ?? "", company?.gstin ? `GSTIN ${company.gstin}` : ""], ["Day Book", `${fmtDate(from)} to ${fmtDate(to)}`]],
+              )}
+            >
+              Export CSV
+            </button>
           </div>
         }
       />

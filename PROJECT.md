@@ -57,7 +57,7 @@ The permanent technical/product description of zprime. Every claim here is verif
 
 ## Reports
 
-All with period picker, Alt+F1 detailed/condensed, CSV export, drill-down: Balance Sheet, P&L (sub-period = period movements; FY view = cumulative), Trial Balance (with out-of-balance difference surface — R-14), Day Book (incl. RCM badge — R-23), Ledger Vouchers (running balance), Group Summary, Cash/Bank Book (O-1 period semantics: future vouchers never contaminate historical windows), Sales/Purchase Registers, Stock Summary, Bills Receivable/Payable (incl. display-only party opening bills — R-07), GSTR-1 (with e-invoice/EWB submit + lifecycle actions), GSTR-3B, GSTR-9, TDS report, TCS report, Salary Register, Cheque Register, Audit Trail (company chronology + per-voucher history — R-18/R-20).
+All with period picker, Alt+F1 detailed/condensed, drill-down, **Export CSV (every view, R-66) and Print (print stylesheet)**: Balance Sheet, P&L (sub-period = period movements; FY view = cumulative), Trial Balance (with out-of-balance difference surface — R-14), Day Book (incl. RCM badge — R-23), Ledger Vouchers (running balance), Group Summary, Cash/Bank Book (O-1 period semantics: future vouchers never contaminate historical windows), Sales/Purchase Registers, Stock Summary, Bills Receivable/Payable (incl. display-only party opening bills — R-07), GSTR-1 (with e-invoice/EWB submit + lifecycle actions), GSTR-3B, GSTR-9, TDS report, TCS report, Salary Register, Cheque Register, Audit Trail (company chronology + per-voucher history — R-18/R-20).
 
 ## XML import
 
@@ -66,7 +66,7 @@ All with period picker, Alt+F1 detailed/condensed, CSV export, drill-down: Balan
 
 ## Utilities & UI philosophy
 
-- Cheque printing with amount-in-words; cheque register; company settings; CSV report export.
+- Cheque printing with amount-in-words; cheque register; company settings; CSV report export on every report view (R-66) + report print stylesheet + **invoice printing** for Sales/Delivery Note vouchers (GST-ready face, party master details, amount in words).
 - **Keyboard-first:** F2 date · F4–F9/Alt+F-keys quick vouchers · Ctrl+A accept · Alt+F1 detailed/condensed · Esc back · Enter adds entry row · type-ahead ledger & item search. The UI is compact and minimal by design — no ERP clutter.
 - **Quick-create (Tally Alt+C analogue):** typing an unknown ledger/item in a voucher and pressing Enter opens inline creation; while a freshly mounted screen's options are on their initial fetch the create path is suppressed with a "Loading options…" hint (R-43 F-42-1 guard). Fresh companies seed accounting ledgers plus starter units (Nos, Pieces) and godown Main — ordinary masters, edit/delete freely (R-44 F-42-2).
 

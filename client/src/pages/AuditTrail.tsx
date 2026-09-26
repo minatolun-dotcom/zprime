@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Shell from "../components/Shell";
 import { Card, ErrorBanner, PageHead } from "../components/ui";
 import { get } from "../lib/api";
+import { csvDownload } from "../lib/csv";
 
 // R-20: company-wide audit timeline — one row per voucher lifecycle event,
 // newest first. Read-only: every row is server-recorded provance (R-18), so
@@ -45,19 +46,39 @@ export default function AuditTrail() {
         title="Audit Trail"
         sub="Every voucher lifecycle event recorded by the server — who did what, when. Newest first."
         actions={
-          <select
-            value={action}
-            onChange={(e) => setAction(e.target.value)}
-            className="text-sm py-2"
-            aria-label="Filter by action"
-          >
-            <option value="">All actions</option>
-            <option value="create">Created</option>
-            <option value="edit">Edited</option>
-            <option value="cancel">Cancelled</option>
-            <option value="uncancel">Uncancelled</option>
-            <option value="delete">Deleted</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className="text-sm py-2"
+              aria-label="Filter by action"
+            >
+              <option value="">All actions</option>
+              <option value="create">Created</option>
+              <option value="edit">Edited</option>
+              <option value="cancel">Cancelled</option>
+              <option value="uncancel">Uncancelled</option>
+              <option value="delete">Deleted</option>
+            </select>
+            <button
+              className="btn-ghost text-sm"
+              data-testid="audit-export-csv"
+              disabled={!rows || rows.length === 0}
+              onClick={() => csvDownload(
+                "audit-trail",
+                ["When", "Action", "Voucher", "Detail", "By"],
+                (rows ?? []).map((e: any) => [
+                  new Date(e.createdAt).toLocaleString(),
+                  ACTION_LABELS[e.action] ?? e.action,
+                  e.voucherId ? `${e.voucherTypeName ?? "Voucher"} #${e.voucherNumber}` : "(deleted)",
+                  e.detail ?? "",
+                  e.actorUsername ?? "system",
+                ]),
+              )}
+            >
+              Export CSV
+            </button>
+          </div>
         }
       />
       {error !== undefined && <ErrorBanner error={error} />}

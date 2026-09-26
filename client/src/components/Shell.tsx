@@ -176,7 +176,8 @@ export default function Shell({
         Skip to content
       </a>
       <GoTo open={goToOpen} items={goToItems} onClose={() => setGoToOpen(false)} />
-      <header className="sticky top-0 z-30">
+      {/* R-66: the app chrome never prints — paper output is the page's own artifact. */}
+      <header className="sticky top-0 z-30 print:hidden">
         <div className="bg-indigo-700 text-white shadow-card">
           <div className={`mx-auto flex items-center gap-3 px-5 h-12 ${container}`}>
           {breadcrumb && breadcrumb.length > 0 && (
@@ -243,7 +244,7 @@ export default function Shell({
         </main>
 
         {fkeys && fkeys.length > 0 && (
-          <aside aria-label={`${title} shortcuts`} className="w-64 shrink-0 p-3 overflow-auto hidden lg:block">
+          <aside aria-label={`${title} shortcuts`} className="w-64 shrink-0 p-3 overflow-auto hidden lg:block print:hidden">
             <div className="sticky top-2 card p-2 space-y-1">
               <div className="px-2 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 {title} shortcuts
@@ -260,7 +261,7 @@ export default function Shell({
       </div>
 
       {fkeys && fkeys.length > 0 && (
-        <div className="lg:hidden border-t border-slate-200 bg-white px-3 py-2 flex gap-2 overflow-x-auto">
+        <div className="lg:hidden border-t border-slate-200 bg-white px-3 py-2 flex gap-2 overflow-x-auto print:hidden">
           {fkeys.map((f, i) => (
             <button key={i} onClick={f.onClick} className="fkey-item w-auto shrink-0">
               <span className="fkey-chip">{f.key}</span>

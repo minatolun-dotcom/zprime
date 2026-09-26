@@ -1,6 +1,7 @@
 /**
  * RFC 4180-compliant CSV serialization with spreadsheet formula-injection
- * protection. Used by every report's "Export CSV" button.
+ * protection. Used by every report view's "Export CSV" button (R-66 spread it
+ * across all of them) plus the Day Book and Audit Trail lists.
  *
  - Fields containing a comma, double quote, CR or LF are quoted; embedded
    quotes are doubled ("").
@@ -36,9 +37,17 @@ export function csvBody(headers: string[], rows: (string | number | null | undef
   return lines.join("\r\n");
 }
 
-/** Build and download a CSV file. */
-export function csvDownload(name: string, headers: string[], rows: (string | number | null | undefined)[][]) {
-  const body = "\uFEFF" + csvBody(headers, rows);
+/**
+ * Build and download a CSV file. Optional `meta` rows (R-66) are written as
+ * plain CSV lines above the table — report name, period, context — followed
+ * by a blank separator, so spreadsheets show provenance above the data.
+ */
+export function csvDownload(name: string, headers: string[], rows: (string | number | null | undefined)[][], meta?: (string | number | null | undefined)[][]) {
+  const body = "\uFEFF" + [
+    ...(meta ?? []).map((r) => r.map(csvField).join(",")),
+    ...(meta?.length ? [""] : []),
+    csvBody(headers, rows),
+  ].join("\r\n");
   const url = URL.createObjectURL(new Blob([body], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a");
   a.href = url;

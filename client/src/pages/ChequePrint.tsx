@@ -6,25 +6,7 @@ import { Card, PageHead } from "../components/ui";
 import { get } from "../lib/api";
 import { useCompany } from "../store";
 import { num, today, fmtDate } from "../lib/format";
-
-/** Amount in words (Indian system) for cheque printing. */
-function words(n: number): string {
-  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-    "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-  const two = (x: number): string => (x < 20 ? ones[x] : `${tens[Math.floor(x / 10)]}${x % 10 ? " " + ones[x % 10] : ""}`);
-  const three = (x: number): string => (x >= 100 ? `${ones[Math.floor(x / 100)]} Hundred${x % 100 ? " " + two(x % 100) : ""}` : two(x));
-  if (n === 0) return "Zero";
-  const crore = Math.floor(n / 1e7); n %= 1e7;
-  const lakh = Math.floor(n / 1e5); n %= 1e5;
-  const thousand = Math.floor(n / 1e3); n %= 1e3;
-  const parts: string[] = [];
-  if (crore) parts.push(`${three(crore)} Crore`);
-  if (lakh) parts.push(`${three(lakh)} Lakh`);
-  if (thousand) parts.push(`${three(thousand)} Thousand`);
-  if (n) parts.push(three(n));
-  return parts.join(" ");
-}
+import { amountWords } from "../lib/amountWords";
 
 export default function ChequePrint() {
   const { cid } = useParams();
@@ -107,7 +89,7 @@ function ChequeFace({ company, bankName, cheque }: { company: string; bankName: 
         </div>
       </div>
       <div className="mt-3 text-[13px]">Pay <b>{payee}</b> or order the sum of</div>
-      <div className="mt-1 border-b border-slate-800 pb-1 text-[13px]">Rupees <b>{words(Math.floor(amt))}</b>{amt % 1 ? ` and ${Math.round((amt % 1) * 100)} Paise` : ""} Only</div>
+      <div className="mt-1 border-b border-slate-800 pb-1 text-[13px]">Rupees <b>{amountWords(Math.floor(amt))}</b>{amt % 1 ? ` and ${Math.round((amt % 1) * 100)} Paise` : ""} Only</div>
       <div className="mt-3 flex items-end justify-between">
         <div className="text-[12px]">₹ <span className="font-mono text-[15px]">{amt.toLocaleString("en-IN")}</span></div>
         <div className="text-[12px]">A/c Payee <span className="inline-block border border-slate-400 rounded px-1 py-0.5 text-[10px] ml-1">A/C PAYEE ONLY</span></div>
