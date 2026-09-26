@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.61.0
+
+- **Released:** 2026-09-26
+- **R-item:** R-71 — overdue bills highlight red on the Outstanding views (Bills Receivable / Bills Payable), per the operator's request following R-70
+- **Commit:** `6562dcf0167d03f83998d2cfcff0edde0a9407a8` (annotated tag `50e71e92463e4ae1e3deb2b5ce04d1a432294b16`)
+- **Purpose:** R-70 made every bill row visible on the face, but a bill past its due date looked identical to a current one — ageing had to be read cell by cell. `OutstandingView` gains a `debtSign: 1 | -1` prop (receivables=1, payables=-1) and a `daysOverdue(b)` helper; a bill is **overdue** only when ALL hold: it carries a dueDate, it is still open in the debt direction (receivables `amount > 0.004` with debtSign=1; payables `amount < -0.004` with debtSign=-1 — an advance/settled bill must never flag red), and `dueDate < asOf` (the report's own `data.asOf`, so as-of time travel stays honest — an as-of before the due date shows nothing overdue). Overdue rows render a `bg-red-50` tint with red-700 bill name/amount/due text, a print-safe color-independent `· overdue Nd` day-count marker in the Due cell (asOf − dueDate), and the party header shows a red "overdue" chip (`print-keep`) when any of its bills is overdue. Client-only; zero server/schema/accounting change; CSV and API contracts untouched. New `r71_ui.js` **15 checks** (past-due bill flags red + day marker; future-due clean; no-due clean; an advance receipt Cr 750 carrying a past dueDate does NOT flag — the direction gate; party-header overdue chip; payables mirrored (supplier Cr− flags); print-media marker visible; zero page errors).
+- **Verification:** typecheck server+client clean · build clean (bundle 415.31 kB / 117.90 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r68 **17**, r46_drill **42**, r69 **17**, r70 **19**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, **new** r71 **15/15**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean
+- **Immutability:** v1.61.0 and all prior tags are immutable
+
+---
+
 ## v1.60.0
 
 - **Released:** 2026-09-26
