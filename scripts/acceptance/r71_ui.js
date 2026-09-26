@@ -18,6 +18,14 @@ const ok = (name, cond, detail) => {
   else { fail++; console.log(`  FAIL ${name} :: ${JSON.stringify(detail)?.slice(0, 240)}`); }
 };
 
+// The class string alone doesn't prove paint (a utility could be missing from the
+// CSS bundle), so the overdue checks also assert the COMPUTED background color.
+// Tailwind v4 renders red-50 as oklch(0.971 0.013 17.38): L≈0.97 light tint,
+// tiny chroma, hue 10–25 = red. (Tailwind v3's rgb(254 242 242) would NOT match —
+// this pins the v4 rendering the app actually ships.)
+const RED_TINT = /^oklch\(0\.97\d? 0\.0\d+ (1\d|2[0-5])\.\d+\)$/;
+const bgOf = (loc) => loc.evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => "");
+
 const BASE = D.BASE.replace(/\/$/, "");
 
 (async () => {
@@ -99,16 +107,25 @@ const BASE = D.BASE.replace(/\/$/, "");
   const buyerText = await buyerCard.textContent();
   ok("past-due bill row shows the 'overdue 1d+' marker with day count", /overdue \d+d/.test(buyerText), buyerText.slice(0, 300));
   const odRow = buyerCard.locator("tr", { hasText: "OD-1" });
-  ok("past-due row carries the red tint (bg-red-50)", (await odRow.getAttribute("class").catch(() => "")).includes("bg-red-50"), await odRow.getAttribute("class"));
+  ok("past-due row carries the red tint (bg-red-50 class AND computed oklch red-50 paint)",
+     ((await odRow.getAttribute("class").catch(() => "")) ?? "").includes("bg-red-50") && RED_TINT.test(await bgOf(odRow)),
+     { cls: await odRow.getAttribute("class"), bg: await bgOf(odRow) });
   const futureRow = buyerCard.locator("tr", { hasText: "OD-2" });
-  ok("future-due row stays clean (no red tint, no marker)", !(await futureRow.getAttribute("class").catch(() => "")).includes("bg-red-50") && !/overdue \d+d/.test(await futureRow.textContent()), await futureRow.textContent());
+  ok("future-due row stays clean (no red tint class, no red paint, no marker)",
+     !((await futureRow.getAttribute("class").catch(() => "")) ?? "").includes("bg-red-50") && !RED_TINT.test(await bgOf(futureRow)) && !/overdue \d+d/.test(await futureRow.textContent()),
+     { cls: await futureRow.getAttribute("class"), bg: await bgOf(futureRow), text: await futureRow.textContent() });
   const noDueRow = buyerCard.locator("tr", { hasText: "OD-3" });
-  ok("no-due-date row stays clean", !(await noDueRow.getAttribute("class").catch(() => "")).includes("bg-red-50"), await noDueRow.getAttribute("class"));
+  ok("no-due-date row stays clean (no red tint class, no red paint)",
+     !((await noDueRow.getAttribute("class").catch(() => "")) ?? "").includes("bg-red-50") && !RED_TINT.test(await bgOf(noDueRow)),
+     { cls: await noDueRow.getAttribute("class"), bg: await bgOf(noDueRow) });
   ok("party header shows the overdue chip", (await buyerCard.locator("button").first().textContent()).includes("overdue"));
 
   const advCard = page.locator("div.card", { hasText: "Advance Buyer" }).first();
-  const advRowClass = (await advCard.locator("tr").first().getAttribute("class").catch(() => "")) ?? "";
-  ok("advance (Cr) with a past dueDate does NOT flag red", !advRowClass.includes("bg-red-50") && !/overdue \d+d/.test(await advCard.textContent()), { advRowClass, text: (await advCard.textContent()).slice(0, 200) });
+  const advRow = advCard.locator("tr").first();
+  const advRowClass = (await advRow.getAttribute("class").catch(() => "")) ?? "";
+  ok("advance (Cr) with a past dueDate does NOT flag red (no tint class, no red paint, no marker)",
+     !advRowClass.includes("bg-red-50") && !RED_TINT.test(await bgOf(advRow)) && !/overdue \d+d/.test(await advCard.textContent()),
+     { advRowClass, bg: await bgOf(advRow), text: (await advCard.textContent()).slice(0, 200) });
 
   // ---- payables mirror ---------------------------------------------------------
   await page.goto(`${BASE}/company/${cid}/reports/payables`);
@@ -116,7 +133,10 @@ const BASE = D.BASE.replace(/\/$/, "");
   await page.waitForTimeout(400);
   const suppCard = page.locator("div.card", { hasText: "Overdue Supplier" }).first();
   ok("payables: past-due purchase flags overdue (mirrored direction)", /overdue \d+d/.test(await suppCard.textContent()), (await suppCard.textContent()).slice(0, 240));
-  ok("payables: past-due row carries the red tint", (await suppCard.locator("tr", { hasText: "SUP-1" }).getAttribute("class").catch(() => "")).includes("bg-red-50"));
+  const supRow = suppCard.locator("tr", { hasText: "SUP-1" });
+  ok("payables: past-due row carries the red tint (bg-red-50 class AND computed oklch red-50 paint)",
+     ((await supRow.getAttribute("class").catch(() => "")) ?? "").includes("bg-red-50") && RED_TINT.test(await bgOf(supRow)),
+     { cls: await supRow.getAttribute("class"), bg: await bgOf(supRow) });
 
   // ---- print: marker text survives (color-independent) -------------------------
   await page.goto(`${BASE}/company/${cid}/reports/receivables`);
