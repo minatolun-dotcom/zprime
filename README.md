@@ -55,6 +55,7 @@ migrates cleanly instead of staying dead).
 - **XML import** — masters (groups/ledgers/stock items/units/godowns) + vouchers (all types, bill refs, GSTIN) from standard accounting XML exports; duplicates skipped
 - Cheque printing (printable cheque face with amount in words)
 - **Invoice printing** — Sales and Delivery Note vouchers (alter mode) render a GST-ready invoice face with the party's master details and amount in words; report pages print clean via a print stylesheet (chrome and buttons hidden)
+- **Company logo on prints** — upload any image in Company Settings (auto-converted to a crisp ≤512 px PNG); it prints top-left on the invoice face and on every report print-out
 - Company settings, simple JWT login
 - **Company users** — the company creator adds/removes users and resets passwords in Company Settings → Users; every user has full access to the company (no permission levels, Tally-style)
 
