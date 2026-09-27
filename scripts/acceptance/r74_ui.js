@@ -12,6 +12,10 @@
 //  F) Orders (F-73-4): order moves no stock, creates no bills; invoice
 //     against order links; Order Book shows ordered/fulfilled/pending.
 //  G) Banking (F-73-5): txn type persists; BRS view reconciles + identity.
+//  H) Mirrored flow: Purchase Order → Purchase invoice against it → Credit
+//     Note against the same PO — payables appear only from the invoice
+//     (creditor totals negative), CN stock is inward (+qty) and counts toward
+//     PO fulfilment in the Order Book.
 // Prereqs: compose stack at localhost:3000 (admin/admin123).
 const D = require("./driver.js");
 
@@ -55,6 +59,8 @@ const BASE = D.BASE.replace(/\/$/, "");
   const cash = ledgers.find((l) => l.name === "Cash");
   const buyer = (await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R74 Buyer ${stamp}`, groupId: g["Sundry Debtors"], billWise: true } })).json());
   const salesL = (await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: "R74 Local Sales", groupId: g["Sales Accounts"] } })).json());
+  const supplier = (await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R74 Supplier ${stamp}`, groupId: g["Sundry Creditors"], billWise: true } })).json());
+  const purchL = (await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: "R74 Local Purchases", groupId: g["Purchase Accounts"] } })).json());
 
   // ---- A) Optional draft lifecycle (API + UI) ---------------------------------
   const draft = await post({
@@ -272,6 +278,86 @@ const BASE = D.BASE.replace(/\/$/, "");
   await page.waitForSelector("table.report-table", { timeout: 8000 });
   const obText = await page.locator("body").textContent();
   ok("Order Book view renders with pending qty", /8/.test(obText) && /Pending/.test(obText), null);
+
+  // ---- H) Mirrored flow: Purchase Order → Purchase → Credit Note ---------------
+  // Mirror of section F on the buy side, plus a Credit Note against the PO.
+  // Verified semantics: payables totals are NEGATIVE for creditors (debit-
+  // positive convention — receivables assert +300 in section F); CN stock is
+  // INWARD (+qty, STOCK_FLOW CN:+1 — engine.py's add_in mirror; the outward
+  // purchase-return document is the Debit Note, −1); and the Order Book
+  // measures PO fulfilment at +qty, so the CN's +4 COUNTS as fulfilment.
+  // Note: section F's sale (−12) ran against only +10 on hand — R-06's
+  // availability guard is company-opt-in, so the honest closing before H is −2.
+  const poTry = await page.request.post(`${BASE}/api/c/${cid}/vouchers`, { data: {
+    voucherTypeId: vt["Purchase Order"], date: "2026-04-24", partyLedgerId: supplier.id,
+    entries: [{ ledgerId: purchL.id, amount: 400 }, { ledgerId: supplier.id, amount: -400 }],
+    inventoryEntries: [{ itemId: item.id, qty: 16, rate: 25, amount: 400, kind: "order" }],
+  } });
+  ok("Purchase Order with ledger entries is refused (commitments only)", poTry.status() === 400, await poTry.text());
+  const po = await post({
+    voucherTypeId: vt["Purchase Order"], date: "2026-04-24", partyLedgerId: supplier.id,
+    entries: [],
+    inventoryEntries: [{ itemId: item.id, qty: 16, rate: 25, amount: 400, kind: "order" }],
+  });
+  const poBack = await get(`/api/c/${cid}/vouchers/${po.id}`);
+  ok("Purchase Order saved (party + commitment, zero ledger rows)",
+     !!po.id && poBack.entries.length === 0 && poBack.inventoryEntries.length === 1,
+     { entries: poBack.entries.length, inv: poBack.inventoryEntries.length });
+  const payAfterPO = await get(`/api/c/${cid}/reports/payables`);
+  ok("Purchase Order created NO payable", !payAfterPO.parties.some((p) => p.ledgerName === `R74 Supplier ${stamp}`), payAfterPO.parties);
+  const stockAfterPO = (await get(`/api/c/${cid}/reports/stock-summary?to=2026-04-25`)).find((s) => s.itemId === item.id || s.name === "R74 Widget");
+  ok("Purchase Order moved NO stock (closing still F's oversold −2; the PO's 16 absent)",
+     stockAfterPO && Math.abs(stockAfterPO.closingQty - -2) < 0.0001 && Math.abs(stockAfterPO.closingValue - 0) < 0.01, stockAfterPO);
+
+  // Purchase invoice against the PO (12 of 16) — payable + inward stock now
+  const pinv = await post({
+    voucherTypeId: vt["Purchase"], date: "2026-04-26", partyLedgerId: supplier.id, orderVoucherId: po.id,
+    entries: [
+      { ledgerId: purchL.id, amount: 300 },
+      { ledgerId: supplier.id, amount: -300 },
+    ],
+    inventoryEntries: [{ itemId: item.id, qty: 12, rate: 25, amount: 300, kind: "stock" }],
+  });
+  ok("Purchase invoice against PO saved", !!pinv.id && pinv.orderVoucherId === po.id, pinv);
+  const payAfterInv = await get(`/api/c/${cid}/reports/payables`);
+  ok("payable appears only from the invoice (creditor −300)",
+     (() => { const p = payAfterInv.parties.find((x) => x.ledgerName === `R74 Supplier ${stamp}`); return p && Math.abs(p.total - -300) < 0.01; })(),
+     payAfterInv.parties);
+  const stockAfterInv = (await get(`/api/c/${cid}/reports/stock-summary?to=2026-04-27`)).find((s) => s.itemId === item.id || s.name === "R74 Widget");
+  ok("Purchase invoice moved stock in (−2 + 12 = 10 qty)",
+     stockAfterInv && Math.abs(stockAfterInv.closingQty - 10) < 0.0001, stockAfterInv);
+  const obPo = await get(`/api/c/${cid}/reports/order-book`);
+  const poLine = (obPo.orders || []).find((o) => o.id === po.id)?.lines?.[0];
+  ok("Order Book mirrors: PO ordered 16 / fulfilled 12 / pending 4",
+     poLine && poLine.orderedQty === 16 && poLine.fulfilledQty === 12 && poLine.pendingQty === 4, obPo.orders);
+
+  // Credit Note against the same PO: supplier is DEBITED (payable shrinks),
+  // stock comes IN (+qty — the CN sign; a purchase return's outward doc is the
+  // Debit Note), and the Order Book counts +qty toward the PO's fulfilment —
+  // pending drops 4 → 0.
+  const cn = await post({
+    voucherTypeId: vt["Credit Note"], date: "2026-04-28", partyLedgerId: supplier.id, orderVoucherId: po.id,
+    entries: [
+      { ledgerId: purchL.id, amount: -100 },
+      { ledgerId: supplier.id, amount: 100 },
+    ],
+    inventoryEntries: [{ itemId: item.id, qty: 4, rate: 25, amount: 100, kind: "stock" }],
+  });
+  const cnBack = await get(`/api/c/${cid}/vouchers/${cn.id}`);
+  ok("Credit Note against PO saved with +qty (STOCK_FLOW CN:+1) and the order link",
+     !!cn.id && cn.orderVoucherId === po.id && cnBack.inventoryEntries[0].qty === 4,
+     cnBack.inventoryEntries[0]);
+  const payAfterCN = await get(`/api/c/${cid}/reports/payables`);
+  ok("Credit Note reduces the payable 300 → 200 (creditor −200)",
+     (() => { const p = payAfterCN.parties.find((x) => x.ledgerName === `R74 Supplier ${stamp}`); return p && Math.abs(p.total - -200) < 0.01; })(),
+     payAfterCN.parties);
+  const stockAfterCN = (await get(`/api/c/${cid}/reports/stock-summary?to=2026-04-29`)).find((s) => s.itemId === item.id || s.name === "R74 Widget");
+  ok("Credit Note stock comes IN (−2 + 12 + 4 = 14 qty)",
+     stockAfterCN && Math.abs(stockAfterCN.closingQty - 14) < 0.0001, stockAfterCN);
+  const obPo2 = await get(`/api/c/${cid}/reports/order-book`);
+  const poLine2 = (obPo2.orders || []).find((o) => o.id === po.id)?.lines?.[0];
+  ok("Order Book counts the CN toward PO fulfilment: 16 / 16 / pending 0",
+     poLine2 && poLine2.orderedQty === 16 && poLine2.fulfilledQty === 16 && poLine2.pendingQty === 0, obPo2.orders);
 
   ok("zero page errors across the R-74 scenario", pageErrors.length === 0, pageErrors);
 
