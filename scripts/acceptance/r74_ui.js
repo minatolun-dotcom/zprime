@@ -16,6 +16,9 @@
 //     Note against the same PO — payables appear only from the invoice
 //     (creditor totals negative), CN stock is inward (+qty) and counts toward
 //     PO fulfilment in the Order Book.
+//  I) UI mirror of H: the PO and the Credit Note are driven through the real
+//     VoucherScreen (Ctrl+A saves; the Against-Order picker populates on alter
+//     only — its query is edit-gated), with the same end-state assertions.
 // Prereqs: compose stack at localhost:3000 (admin/admin123).
 const D = require("./driver.js");
 
@@ -358,6 +361,111 @@ const BASE = D.BASE.replace(/\/$/, "");
   const poLine2 = (obPo2.orders || []).find((o) => o.id === po.id)?.lines?.[0];
   ok("Order Book counts the CN toward PO fulfilment: 16 / 16 / pending 0",
      poLine2 && poLine2.orderedQty === 16 && poLine2.fulfilledQty === 16 && poLine2.pendingQty === 0, obPo2.orders);
+
+  // ---- I) UI mirror of H — PO + Credit Note through the real VoucherScreen ----
+  // Order types render an inventory grid but NO party picker in the UI
+  // (hasParty excludes orders — the commitment is item-first), and the
+  // Against-Order picker only populates on ALTER (its query is edit-gated),
+  // so the CN is saved first and the order attached on alter. Ctrl+A saves
+  // and returns to the Day Book. April dates keep the as-of windows honest.
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Purchase Order"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  await D.sleep(400);
+  ok("Purchase Order form opens inventory-only (no Party A/c field)",
+     (await page.locator('xpath=//span[text()="Party A/c"]/following::input[1]').count()) === 0, null);
+  const poInvTable = page.locator("table").first();
+  // Order forms start with an EMPTY inventory grid (no template row, unlike
+  // invoice types) — add the row explicitly.
+  if ((await poInvTable.locator("tbody tr").count()) === 0) { await page.click('button:has-text("+ Add Item")'); await D.sleep(150); }
+  await D.pickAhead(poInvTable.locator("tbody tr").nth(0).locator("input").first(), "R74 Widget");
+  const poNums = poInvTable.locator("tbody tr").nth(0).locator('input[type="number"]');
+  await poNums.nth(0).fill("16");   // qty
+  await poNums.nth(1).fill("25");   // rate
+  await page.fill("#v-date", "2026-04-24");
+  await D.sleep(300);
+  const poShown = await poInvTable.locator("tbody tr").nth(0).locator("td.num").first().textContent();
+  ok("PO line amounts to 400 (16 × 25)", /400/.test(poShown ?? ""), poShown);
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 8000 });
+  const vlistUi = await get(`/api/c/${cid}/vouchers`);
+  const poUi = vlistUi.find((v) => v.typeName === "Purchase Order" && !v.isCancelled && !v.isOptional && String(v.id) !== String(po.id));
+  ok("Ctrl+A saved the Purchase Order from the UI form", !!poUi, vlistUi.filter((v) => v.typeName === "Purchase Order").map((v) => v.number));
+  const poUiBack = await get(`/api/c/${cid}/vouchers/${poUi.id}`);
+  ok("UI-saved PO carries zero ledger rows and an order-kind line (qty 16)",
+     poUiBack.entries.length === 0 && poUiBack.inventoryEntries.length === 1
+     && poUiBack.inventoryEntries[0].kind === "order" && poUiBack.inventoryEntries[0].qty === 16,
+     { e: poUiBack.entries.length, inv: poUiBack.inventoryEntries[0] });
+  const obUi1 = await get(`/api/c/${cid}/reports/order-book`);
+  const poUiLine1 = (obUi1.orders || []).find((o) => o.id === poUi.id)?.lines?.[0];
+  ok("Order Book lists the UI PO at 16 ordered / 0 fulfilled / 16 pending",
+     poUiLine1 && poUiLine1.orderedQty === 16 && poUiLine1.fulfilledQty === 0 && poUiLine1.pendingQty === 16, obUi1.orders);
+
+  // Credit Note through the UI: party pick auto-inserts the supplier row at
+  // the grid top (amount filled LAST — run.js's balancing convention); the
+  // Against Order is attached on ALTER because the picker is edit-gated.
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Credit Note"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  await D.sleep(400);
+  const partyField2 = page.locator('xpath=//span[text()="Party A/c"]/following::input[1]');
+  await D.pickAhead(partyField2, `R74 Supplier ${stamp}`);
+  const cnLtable = page.locator("table").filter({ hasText: "Ledger" }).last();
+  const cnPartyRowName = await cnLtable.locator("tbody tr").nth(0).locator("input").first().inputValue();
+  ok("party pick auto-inserted the supplier row at the entries-grid top",
+     cnPartyRowName.includes(`R74 Supplier`), cnPartyRowName);
+  const cnInvTable = page.locator("table").first();
+  if ((await cnInvTable.locator("tbody tr").count()) === 0) { await page.click('button:has-text("+ Add Item")'); await D.sleep(150); }
+  await D.pickAhead(cnInvTable.locator("tbody tr").nth(0).locator("input").first(), "R74 Widget");
+  const cnNums = cnInvTable.locator("tbody tr").nth(0).locator('input[type="number"]');
+  await cnNums.nth(0).fill("4");    // qty (client signs it +4 on save — STOCK_FLOW CN:+1)
+  await cnNums.nth(1).fill("25");   // rate
+  await page.click('button:has-text("+ Add Ledger")');
+  await D.sleep(150);
+  await D.pickAhead(cnLtable.locator("tbody tr").nth(1).locator("input").first(), "R74 Local Purchases");
+  await cnLtable.locator("tbody tr").nth(1).locator('input[type="number"]').nth(1).fill("100"); // Cr 100
+  await cnLtable.locator("tbody tr").nth(0).locator('input[type="number"]').nth(0).fill("100"); // party Dr 100 (last)
+  await page.fill("#v-date", "2026-04-30");
+  await D.sleep(300);
+  const cnShown = await cnInvTable.locator("tbody tr").nth(0).locator("td.num").first().textContent();
+  ok("CN line amounts to 100 (4 × 25)", /100/.test(cnShown ?? ""), cnShown);
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 8000 });
+  const vlistUi2 = await get(`/api/c/${cid}/vouchers`);
+  const cnUi = vlistUi2.find((v) => v.typeName === "Credit Note" && !v.isCancelled && !v.isOptional && String(v.id) !== String(cn.id));
+  ok("Ctrl+A saved the Credit Note from the UI form", !!cnUi, vlistUi2.filter((v) => v.typeName === "Credit Note").map((v) => v.number));
+
+  // Alter: the Against-Order picker is populated only in edit mode
+  await page.goto(`${BASE}/company/${cid}/voucher/${cnUi.id}/edit`);
+  await page.waitForSelector("text=Ledger Entries");
+  await D.sleep(700);
+  const aoSelect = page.locator('xpath=//span[text()="Against Order"]/following::select[1]');
+  const poOption = await aoSelect.locator(`option[value="${poUi.id}"]`).count();
+  ok("alter form's Against-Order picker offers the UI-saved PO", poOption === 1, { poUiId: poUi.id });
+  await aoSelect.selectOption(String(poUi.id));
+  await D.sleep(200);
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 8000 });
+  const cnUiBack = await get(`/api/c/${cid}/vouchers/${cnUi.id}`);
+  ok("Against Order attached on alter and saved (orderVoucherId set)",
+     cnUiBack.orderVoucherId === poUi.id, { link: cnUiBack.orderVoucherId, want: poUi.id });
+  ok("UI CN stored the signed truth: +4 qty stock row, supplier credited +100",
+     cnUiBack.inventoryEntries[0].qty === 4 && cnUiBack.inventoryEntries[0].kind === "stock"
+     && cnUiBack.entries.some((e) => e.ledgerId === supplier.id && e.amount === 100)
+     && cnUiBack.entries.some((e) => e.ledgerId === purchL.id && e.amount === -100),
+     { inv: cnUiBack.inventoryEntries[0], entries: cnUiBack.entries });
+  const obUi2 = await get(`/api/c/${cid}/reports/order-book`);
+  const poUiLine2 = (obUi2.orders || []).find((o) => o.id === poUi.id)?.lines?.[0];
+  const poApiLine2 = (obUi2.orders || []).find((o) => o.id === po.id)?.lines?.[0];
+  ok("Order Book after the UI CN: UI PO 16/4/12; H's API PO untouched at 16/16/0",
+     poUiLine2 && poUiLine2.fulfilledQty === 4 && poUiLine2.pendingQty === 12
+     && poApiLine2 && poApiLine2.fulfilledQty === 16 && poApiLine2.pendingQty === 0,
+     obUi2.orders);
+  const payAfterUi = await get(`/api/c/${cid}/reports/payables`);
+  ok("UI CN booked through the real form: supplier total now −100 (−200 + 100)",
+     (() => { const p = payAfterUi.parties.find((x) => x.ledgerName === `R74 Supplier ${stamp}`); return p && Math.abs(p.total - -100) < 0.01; })(),
+     payAfterUi.parties);
+  const stockAfterUi = (await get(`/api/c/${cid}/reports/stock-summary?to=2026-04-30`)).find((s) => s.itemId === item.id || s.name === "R74 Widget");
+  ok("UI CN stock comes IN too (−2 + 12 + 4 + 4 = 18 qty)",
+     stockAfterUi && Math.abs(stockAfterUi.closingQty - 18) < 0.0001, stockAfterUi);
 
   ok("zero page errors across the R-74 scenario", pageErrors.length === 0, pageErrors);
 
