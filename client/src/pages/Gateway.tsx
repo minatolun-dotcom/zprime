@@ -72,7 +72,26 @@ export default function Gateway() {
   const entries: MenuEntry[] = useMemo(() => buildGatewayMenu(cid ?? "", acct), [cid, acct]);
 
   // Headings only at first view — the contents pane opens on selection.
-  const [open, setOpen] = useState<string | null>(null);
+  // R-75 (operator report): back from a report landed on a CLOSED Gateway —
+  // the pane the operator left open (e.g. Reports) must be restored so the
+  // second Back returns to the Gateway itself. The open heading rides the
+  // CURRENT history entry's state — nested INSIDE react-router's `usr` slot
+  // with the router's own key/idx preserved (probe-proven: replacing the
+  // whole state object makes the router re-initialize it on back-pop, and
+  // the restore silently dies). Every `open` change replaceState-syncs,
+  // covering mouse clicks AND letter-navigation. Navigating forward to a
+  // leaf overwrites THAT entry's state, so only Gateway-to-Gateway returns
+  // restore — exactly the operator's flow.
+  const [open, setOpen] = useState<string | null>(() => {
+    const st = (window.history.state as any)?.usr ?? null;
+    return st && typeof st.gatewayPane === "string" ? st.gatewayPane : null;
+  });
+  useEffect(() => {
+    const st = (window.history.state as any) ?? {};
+    const usr = st.usr ?? {};
+    if ((usr.gatewayPane ?? null) === open) return; // avoid redundant replaceState loops
+    window.history.replaceState({ ...st, usr: { ...usr, gatewayPane: open } }, "");
+  }, [open]);
   const [hl, setHl] = useState<number | null>(null);
 
   const stateRef = useRef({ open, entries, hl });

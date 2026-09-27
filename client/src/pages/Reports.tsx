@@ -119,7 +119,7 @@ export default function Reports() {
   ];
 
   return (
-    <Shell title={title} breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Reports" }, { label: title }]} fkeys={fkeys} wide>
+    <Shell title={title} breadcrumb={[{ label: "Gateway", to: `/company/${cid}` }, { label: "Reports", to: `/company/${cid}/reports` }, { label: title }]} fkeys={fkeys} wide>
       <div className="flex items-center gap-3 mb-5 flex-wrap card px-4 py-3 print:hidden">
         {key !== "balance-sheet" && (
           <>
@@ -320,7 +320,7 @@ function BalanceSheetView({ cid, data, detailed, meta }: { cid: string; data: an
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Liabilities</div>
         <table className="report-table">
-          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}<th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
+          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}</tr></thead>
           <tbody>
             <TreeRows nodes={liabilities} onClick={detailed ? (n) => openGroup(n.id) : undefined} prev={!!prev} />
             {data.profitLine && (
@@ -328,10 +328,11 @@ function BalanceSheetView({ cid, data, detailed, meta }: { cid: string; data: an
                 <td className="font-medium text-indigo-700">Profit & Loss A/c</td>
                 <td className="num">{data.netProfit < 0 ? Math.abs(data.netProfit).toLocaleString("en-IN") : ""}</td>
                 <td className="num">{data.netProfit >= 0 ? data.netProfit.toLocaleString("en-IN") : ""}</td>
+                {prev && <td className="num" />}
               </tr>
             )}
             <tr className="font-bold border-t-2 border-slate-300">
-              <td>Total</td><td className="num" /><td className="num">{data.totalLiabilities.toLocaleString("en-IN")}</td>
+              <td>Total</td><td className="num" /><td className="num">{data.totalLiabilities.toLocaleString("en-IN")}</td>{prev && <td className="num" />}
             </tr>
           </tbody>
         </table>
@@ -339,11 +340,11 @@ function BalanceSheetView({ cid, data, detailed, meta }: { cid: string; data: an
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Assets</div>
         <table className="report-table">
-          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}<th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th></tr></thead>
+          <thead><tr><th>Particulars</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th>{prev && <th className="w-24 text-right" title={data.previousWindow ? `As on ${fmtDate(data.previousWindow.to)}` : undefined}>Prev</th>}</tr></thead>
           <tbody>
             <TreeRows nodes={assets} onClick={detailed ? (n) => openGroup(n.id) : undefined} prev={!!prev} />
             <tr className="font-bold border-t-2 border-slate-300">
-              <td>Total</td><td className="num">{data.totalAssets.toLocaleString("en-IN")}</td><td className="num" />
+              <td>Total</td><td className="num">{data.totalAssets.toLocaleString("en-IN")}</td><td className="num" />{prev && <td className="num" />}
             </tr>
           </tbody>
         </table>

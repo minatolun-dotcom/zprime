@@ -11,6 +11,7 @@ import PayrollProcess from "./pages/PayrollProcess";
 import ImportXml from "./pages/ImportXml";
 import ChequePrint from "./pages/ChequePrint";
 import Reports from "./pages/Reports";
+import ReportsMenu from "./pages/ReportsMenu";
 import CompanySettings from "./pages/CompanySettings";
 import AuditTrail from "./pages/AuditTrail";
 
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/company/:cid/daybook" element={<DayBook />} />
         <Route path="/company/:cid/voucher/:typeId/new" element={<VoucherScreen />} />
         <Route path="/company/:cid/voucher/:voucherId/edit" element={<VoucherScreen />} />
+        <Route path="/company/:cid/reports" element={<ReportsMenu />} />
         <Route path="/company/:cid/reports/:key" element={<Reports />} />
         <Route path="/company/:cid/payroll" element={<PayrollProcess />} />
         <Route path="/company/:cid/import" element={<ImportXml />} />
