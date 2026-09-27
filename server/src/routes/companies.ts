@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "../db/index.js";
 import { companies, groups, ledgers, voucherTypes, userCompanies, users, irpCredentials, units, godowns } from "../db/schema.js";
 import { encryptSecret, decryptSecret } from "../lib/crypto.js";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, sql } from "drizzle-orm";
 import { DEFAULT_GROUPS, DEFAULT_VOUCHER_TYPES } from "../lib/defaults.js";
 import { bad, pgFriendly } from "../lib/routes.js";
 import { hashPassword } from "../plugins/auth.js";
@@ -137,7 +137,9 @@ export default async function companyRoutes(app: FastifyInstance) {
         phone: companies.phone, email: companies.email, gstin: companies.gstin,
         financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom,
         createdAt: companies.createdAt, role: userCompanies.role,
-        allowNegativeStock: companies.allowNegativeStock })
+        allowNegativeStock: companies.allowNegativeStock,
+        // R-74: logo presence only — bytes never travel in JSON payloads.
+        hasLogo: sql<boolean>`${companies.logo} IS NOT NULL` })
       .from(companies)
       .innerJoin(userCompanies, and(eq(userCompanies.companyId, companies.id), eq(userCompanies.userId, req.userId as number)))
       .orderBy(asc(companies.name));
@@ -152,7 +154,9 @@ export default async function companyRoutes(app: FastifyInstance) {
         city: companies.city, state: companies.state, stateCode: companies.stateCode, pincode: companies.pincode,
         phone: companies.phone, email: companies.email, gstin: companies.gstin,
         financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom, createdAt: companies.createdAt,
-        allowNegativeStock: companies.allowNegativeStock })
+        allowNegativeStock: companies.allowNegativeStock,
+        // R-74: logo presence only — bytes never travel in JSON payloads.
+        hasLogo: sql<boolean>`${companies.logo} IS NOT NULL` })
       .from(companies)
       .innerJoin(userCompanies, and(eq(userCompanies.companyId, companies.id), eq(userCompanies.userId, req.userId as number)))
       .where(eq(companies.id, id))
@@ -179,6 +183,52 @@ export default async function companyRoutes(app: FastifyInstance) {
     }
   });
 
+  // ---- R-74: company logo (print surface) -------------------------------
+  // Bytes ship ONLY here — never inside JSON company payloads (explicit
+  // selects everywhere; hasLogo is the payload's only logo-related fact).
+  // Cache-Control: no-store — the suite-proven contract. A longer browser
+  // cache collides with the client's version-buster across page reloads
+  // (a cached pre-delete response can resurrect a removed logo); react-
+  // query's staleTime already dedupes fetches within a session.
+  const LOGO_CACHE = "no-store";
+  app.get("/companies/:id/logo", async (req, reply) => {
+    const id = parseInt((req.params as any).id, 10);
+    if (!Number.isFinite(id) || id <= 0) throw bad("Company not found", 404);
+    const [m] = await db.select({ id: userCompanies.id }).from(userCompanies)
+      .where(and(eq(userCompanies.companyId, id), eq(userCompanies.userId, req.userId as number))).limit(1);
+    if (!m) throw bad("Company not found", 404);
+    const [row] = await db.select({ logo: companies.logo }).from(companies).where(eq(companies.id, id)).limit(1);
+    if (!row?.logo) throw bad("No logo uploaded", 404);
+    reply.header("Content-Type", "image/png").header("Cache-Control", LOGO_CACHE);
+    return reply.send(row.logo);
+  });
+
+  // The client canvas-converts ANY operator-selected image to a canonical
+  // ≤512px PNG before uploading, so the server accepts PNG bytes only — no
+  // native image dependency, no SVG script surface. Byte cap 1 MiB.
+  const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  app.put("/companies/:id/logo", async (req, reply) => {
+    const id = await requireMember(req, parseInt((req.params as any).id, 10));
+    let buf: Buffer | null = null;
+    if (req.isMultipart()) {
+      const file = await req.file();
+      if (file) buf = await file.toBuffer();
+    } else if (Buffer.isBuffer(req.body)) {
+      buf = req.body;
+    }
+    if (!buf || buf.length === 0) throw bad("No logo bytes uploaded");
+    if (buf.length > 1024 * 1024) throw bad("Logo exceeds the 1 MiB cap — shrink the image and retry");
+    if (!buf.subarray(0, 8).equals(PNG_SIG)) throw bad("Logo must be a PNG image (the upload dialog converts automatically)");
+    await db.update(companies).set({ logo: buf }).where(eq(companies.id, id));
+    return reply.code(200).send({ ok: true });
+  });
+
+  app.delete("/companies/:id/logo", async (req) => {
+    const id = await requireMember(req, parseInt((req.params as any).id, 10));
+    await db.update(companies).set({ logo: null }).where(eq(companies.id, id));
+    return { ok: true };
+  });
+
   // R-03: settings updates are membership-gated (404 — no existence leak).
   // The request body can never grant or bypass membership.
   app.put("/companies/:id", async (req) => {
@@ -189,7 +239,16 @@ export default async function companyRoutes(app: FastifyInstance) {
     if (!member) throw bad("Company not found", 404);
     const parsed = companySchema.partial().safeParse(req.body);
     if (!parsed.success) throw bad("Invalid company data");
-    const [row] = await db.update(companies).set(parsed.data).where(eq(companies.id, id)).returning();
+    // R-74: explicit returning — the logo bytea never serializes into the
+    // settings-save response; hasLogo keeps the payload's shape stable.
+    const [row] = await db.update(companies).set(parsed.data).where(eq(companies.id, id)).returning({
+      id: companies.id, name: companies.name, mailingName: companies.mailingName, address: companies.address,
+      city: companies.city, state: companies.state, stateCode: companies.stateCode, pincode: companies.pincode,
+      phone: companies.phone, email: companies.email, gstin: companies.gstin,
+      financialYearStart: companies.financialYearStart, booksBeginFrom: companies.booksBeginFrom,
+      createdAt: companies.createdAt, allowNegativeStock: companies.allowNegativeStock,
+      hasLogo: sql<boolean>`${companies.logo} IS NOT NULL`,
+    });
     if (!row) throw bad("Company not found", 404);
     return row;
   });

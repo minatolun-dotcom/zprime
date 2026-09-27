@@ -18,6 +18,14 @@ const masterActor = () => ({
 });
 
 // ---------- Users & Companies ----------
+// R-74: company logo — raw PNG bytes (custom bytea type; the client canvas-
+// converts ANY uploaded image to a canonical ≤512px PNG before upload, so the
+// server accepts image/png only). Served by GET /api/companies/:id/logo.
+import { customType } from "drizzle-orm/pg-core";
+const bytea = () => customType<{ data: Buffer; default: false }>({
+  dataType() { return "bytea"; },
+})();
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
@@ -59,6 +67,9 @@ export const companies = pgTable("companies", {
   // drive an item's chronological stock quantity negative are rejected at
   // posting. Opt-in per company for dispatch-first workflows.
   allowNegativeStock: boolean("allow_negative_stock").notNull().default(false),
+  // R-74: print logo (PNG bytes; null = no logo). Never selected into JSON
+  // company payloads — hasLogo is derived and the bytes ship from /logo only.
+  logo: bytea(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

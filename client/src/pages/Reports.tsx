@@ -11,6 +11,7 @@ import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate, fyStart, fyEnd, monthLabel, loadSessionPeriod, drCr } from "../lib/format";
 import { useCompanyPeriod } from "../lib/period";
 import { csvDownload, textDownload } from "../lib/csv";
+import { useCompanyLogo } from "../lib/useCompanyLogo";
 
 export default function Reports() {
   const { cid, key } = useParams();
@@ -155,7 +156,7 @@ export default function Reports() {
       </div>
 
       <ErrorBanner error={error} />
-      <PrintHead meta={meta} />
+      <PrintHead meta={meta} cid={cid} />
       {isLoading && <div className="text-slate-400 text-sm">Computing…</div>}
 
       {key === "balance-sheet" && data && <BalanceSheetView cid={cid!} data={data} detailed={detailed} meta={meta} />}
@@ -197,14 +198,23 @@ export default function Reports() {
 // ---------- R-66: shared export/print bits ----------
 
 /** Print-only provenance header — company, report, period — from the same
- *  meta rows the CSV export writes. Never visible on screen. */
-function PrintHead({ meta }: { meta: string[][] }) {
+ *  meta rows the CSV export writes. Never visible on screen. R-74: carries
+ *  the company logo (top-left, sized for paper) when one is uploaded. */
+function PrintHead({ meta, cid }: { meta: string[][]; cid?: string }) {
   const [co, gstin] = meta[0];
   const [what, period] = meta[1];
+  const { data: logoUrl } = useCompanyLogo(cid);
   return (
     <div className="hidden print:block mb-4">
-      <div className="text-lg font-semibold text-slate-900">{co}{gstin ? ` · ${gstin}` : ""}</div>
-      <div className="text-sm text-slate-600">{what} · {period}</div>
+      <div className="flex items-start gap-3">
+        {logoUrl && (
+          <img src={logoUrl} alt="" data-testid="report-logo" className="w-14 h-14 object-contain shrink-0" />
+        )}
+        <div>
+          <div className="text-lg font-semibold text-slate-900">{co}{gstin ? ` · ${gstin}` : ""}</div>
+          <div className="text-sm text-slate-600">{what} · {period}</div>
+        </div>
+      </div>
     </div>
   );
 }

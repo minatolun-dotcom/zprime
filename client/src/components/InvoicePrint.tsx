@@ -4,6 +4,7 @@ import { useCompany } from "../store";
 import { get } from "../lib/api";
 import { num, r2, fmtDate } from "../lib/format";
 import { amountWords } from "../lib/amountWords";
+import { useCompanyLogo } from "../lib/useCompanyLogo";
 
 /**
  * R-66: printable invoice face for Sales / Delivery Note vouchers (edit mode).
@@ -67,6 +68,13 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
   const isSales = voucher.type?.name === "Sales";
   const isDN = voucher.type?.name === "Delivery Note";
   const docTitle = isSales ? "INVOICE" : "DELIVERY NOTE";
+  // R-74: the seller header renders from the LIVE company record (the store
+  // payload) — R-66's voucher.company read never had a data source, so the
+  // seller block has rendered blank until now (suite-verified defect found
+  // en-route). Same source carries the logo fact for the top-left print slot.
+  const { company } = useCompany();
+  const co: any = company ?? voucher.company ?? {};
+  const { data: logoUrl } = useCompanyLogo(cid);
   // R-68: the accepted e-invoice for this voucher (if any) — carries the
   // IRP-signed QR stored at GENIRN-accept time.
   const { data: submissions } = useQuery({
@@ -91,15 +99,20 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
     <div className="border border-slate-700 rounded-lg w-[760px] bg-white text-slate-900 mx-auto">
       {/* header */}
       <div className="flex justify-between items-start border-b-2 border-slate-700 px-6 py-4">
-        <div>
-          <div className="text-lg font-bold">{voucher.company?.mailingName || voucher.company?.name}</div>
-          <div className="text-xs text-slate-600 leading-relaxed">
-            {voucher.company?.address ? <div>{voucher.company.address}</div> : null}
-            {voucher.company?.city || voucher.company?.pincode ? (
-              <div>{[voucher.company?.city, voucher.company?.pincode].filter(Boolean).join(" - ")}</div>
-            ) : null}
-            {voucher.company?.gstin ? <div>GSTIN: <b>{voucher.company.gstin}</b></div> : null}
-            {voucher.company?.phone ? <div>Ph: {voucher.company.phone}</div> : null}
+        <div className="flex items-start gap-4">
+          {logoUrl && (
+            <img src={logoUrl} alt="" data-testid="invoice-logo" className="w-20 h-20 object-contain shrink-0" />
+          )}
+          <div>
+            <div className="text-lg font-bold">{co.mailingName || co.name}</div>
+            <div className="text-xs text-slate-600 leading-relaxed">
+              {co.address ? <div>{co.address}</div> : null}
+              {co.city || co.pincode ? (
+                <div>{[co.city, co.pincode].filter(Boolean).join(" - ")}</div>
+              ) : null}
+              {co.gstin ? <div>GSTIN: <b>{co.gstin}</b></div> : null}
+              {co.phone ? <div>Ph: {co.phone}</div> : null}
+            </div>
           </div>
         </div>
         <div className="text-right">
@@ -221,7 +234,7 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
           ) : null}
         </div>
         <div className="text-right">
-          <div className="text-slate-500">for {voucher.company?.mailingName || voucher.company?.name}</div>
+          <div className="text-slate-500">for {co.mailingName || co.name}</div>
           <div className="mt-8 border-t border-slate-400 pt-1 text-slate-600">Authorised Signatory</div>
         </div>
       </div>

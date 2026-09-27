@@ -5,6 +5,8 @@ import Shell from "../components/Shell";
 import { Card, ErrorBanner, Field, PageHead } from "../components/ui";
 import { get, post, put, patch, del } from "../lib/api";
 import { useCompany } from "../store";
+import { fileToLogoPng } from "../lib/logo";
+import { useCompanyLogo, bumpCompanyLogoVersion } from "../lib/useCompanyLogo";
 
 // R-28: IRP connectivity credentials (opt-in, owner-only). Secrets are stored
 // AES-256-GCM encrypted server-side; reads return last-4 masks only, and the
@@ -40,6 +42,53 @@ export default function CompanySettings() {
       <input className="w-full" value={form[name] ?? ""} onChange={(e) => setForm({ ...form, [name]: e.target.value })} {...extra} />
     </Field>
   );
+
+  // ---- R-74: company logo (print surface) ---------------------------------
+  // Any browser-renderable image is accepted; fileToLogoPng converts it to a
+  // canonical ≤512px PNG in-page before the upload (the server stores PNG
+  // bytes only). The logo prints on the invoice face and report print headers.
+  const logoQ = useCompanyLogo(cid);
+  const logoUrl = logoQ.data ?? null;
+  const [logoMsg, setLogoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+
+  const uploadLogo = async (file: File | undefined | null) => {
+    if (!file) return;
+    setLogoMsg(null);
+    setLogoBusy(true);
+    try {
+      const png = await fileToLogoPng(file);
+      const fd = new FormData();
+      fd.append("file", png, "logo.png");
+      const res = await fetch(`/api/companies/${cid}/logo`, { method: "PUT", credentials: "include", body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `Upload failed (${res.status})`);
+      }
+      bumpCompanyLogoVersion();
+      qc.invalidateQueries({ queryKey: ["company", cid] });
+      setLogoMsg({ ok: true, text: "Logo saved — it will print on the invoice face and report print-outs." });
+    } catch (err) {
+      setLogoMsg({ ok: false, text: err instanceof Error ? err.message : "Upload failed" });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setLogoMsg(null);
+    setLogoBusy(true);
+    try {
+      await del(`/api/companies/${cid}/logo`);
+      bumpCompanyLogoVersion();
+      qc.invalidateQueries({ queryKey: ["company", cid] });
+      setLogoMsg({ ok: true, text: "Logo removed — print-outs render text-only again." });
+    } catch (err) {
+      setLogoMsg({ ok: false, text: err instanceof Error ? err.message : "Remove failed" });
+    } finally {
+      setLogoBusy(false);
+    }
+  };
 
   // ---- R-58: company members (list / add / remove / reset password) ----
   // Creator-only management, matching the server's requireOwner gate. Every
@@ -178,6 +227,41 @@ export default function CompanySettings() {
             <button className="btn-primary">Save</button>
           </div>
         </form>
+
+        {/* R-74: print logo — upload (auto-converted to ≤512px PNG), preview, remove */}
+        <div className="mt-6 pt-5 border-t border-slate-100">
+          <div className="text-sm font-semibold text-slate-700 mb-1">Print logo</div>
+          <p className="text-xs text-slate-500 leading-relaxed mb-3">
+            Any image works — it is automatically converted to a crisp ≤512&nbsp;px PNG.
+            It prints top-left on the invoice face and on report print-outs; it never affects the books or exports.
+          </p>
+          {logoMsg && (
+            <div className={`mb-3 rounded-lg border text-sm px-4 py-2.5 ${logoMsg.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{logoMsg.text}</div>
+          )}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="w-28 h-28 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden" data-testid="logo-preview">
+              {logoUrl
+                ? <img src={logoUrl} alt="Company logo preview" className="max-w-full max-h-full object-contain" />
+                : <span className="text-xs text-slate-400">no logo</span>}
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="btn-ghost inline-block cursor-pointer">
+                  {logoUrl ? "Replace logo…" : "Upload logo…"}
+                  <input type="file" accept="image/*" className="hidden" data-testid="logo-input"
+                    disabled={logoBusy} onChange={(e) => { uploadLogo(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+                </label>
+              </div>
+              {logoUrl && (
+                <div>
+                  <button type="button" className="text-sm text-red-600 hover:underline" data-testid="logo-remove" disabled={logoBusy} onClick={removeLogo}>
+                    Remove logo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </Card>
 
       <Card className="p-6 max-w-3xl mt-5">

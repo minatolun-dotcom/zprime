@@ -134,6 +134,13 @@
 			"when": 1790444428235,
 			"tag": "0018_r73_voucher_features",
 			"breakpoints": true
+		},
+		{
+			"idx": 19,
+			"version": "7",
+			"when": 1790530771823,
+			"tag": "0019_r74_company_logo",
+			"breakpoints": true
 		}
 	]
 }

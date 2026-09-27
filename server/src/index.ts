@@ -30,6 +30,13 @@ app.addContentTypeParser(XML_RE, { parseAs: "string", bodyLimit: 64 * 1024 * 102
   done(null, body);
 });
 
+// R-74: raw-image bodies (logo upload without multipart) arrive as image/* —
+// parse to Buffer; the route validates the PNG signature itself.
+const IMAGE_RE = /^image\//;
+app.addContentTypeParser(IMAGE_RE, { parseAs: "buffer", bodyLimit: 2 * 1024 * 1024 }, (_req, body, done) => {
+  done(null, body);
+});
+
 await app.register(cors, { origin: true, credentials: true });
 await app.register(cookie);
 await app.register(multipart);
