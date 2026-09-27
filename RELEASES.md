@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.65.0
+
+- **Released:** 2026-09-27
+- **R-item:** R-75 — operator-reported pair: "(1) in balance sheet in both liabilities and assets table there seems to be extra blank column of debit and credit in both the table" · "(2) from gateway when navigating lets say to reports then to balance sheet, it opens the balance sheet, when going back it directly goes back to the gateway not the options that comes after it"
+- **Commit:** `a7aa411c80c5328a1eb65f32440e3ce9b7686033` (annotated tag `4272a047a7c0777a6e1bdc55b149b2cbd4315022`)
+- **Purpose:** (1) **Balance Sheet column integrity** — both cards' theads rendered a SECOND Debit/Credit pair after the optional Prev column while `TreeRows`, the profit row and the CSV export emit exactly one pair: every row's last two cells were blank-only phantom columns (misaligned grid). Fixed by rendering the thead exactly as the body emits (Particulars + Dr + Cr, + Prev under F12 compare only) and completing the profit/Total rows with a Prev cell when compare is on — r76 pins header-vs-row cell-count equality on both cards in both modes. (2) **Back-navigation** — the Gateway is a two-pane menu, but back from a report re-mounted it CLOSED (pane state was component state): the operator's second Back then exited to the company-select page. Fixed history-faithfully: the open heading now rides the CURRENT history entry's state — nested inside react-router's `usr` slot with the router's `key`/`idx` preserved (probe-proven: replacing the whole state object made the router re-initialize it on back-pop and the restore silently died); a mount restores from it, so browser Back AND Esc reopen the pane the operator left (mouse clicks and letter-navigation both covered by an `open`-change sync effect). Plus a new **Reports menu page** (`/company/:cid/reports`, `ReportsMenu.tsx`, same `gatewayMenu.ts` source of truth): the in-between surface Esc/Back land on when a report was opened via the menu, and a real target for the report breadcrumb's Reports crumb (previously dead text). Deep-link fallback unchanged (no trail → Gateway, R-53c).
+- **Verification:** typecheck server+client clean · build clean (bundle 433.56 kB / 122.64 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, r53 **43**, r54 **26**, r56 **22**, r57 **21**, r58 **15**, r59 **12**, r60 **16**, r62 **15**, r63 **25**, r64 **13**, r65 **12**, r66 **75**, r68 **17**, r46_drill **42**, r69 **17**, r70 **19**, r71 **15**, r72 **11**, r74 **59**, r75 **25**, r34 **20**, r35 **23**, r20 **12**, r26 **12**, r27 **15**, **new** r76 **20/20**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lessons: an R-60 prior-year column renders only when the prior window overlaps the books (honest-null) — the compare leg needs books-begin one FY back (r60's own fixture pattern); Playwright's `newPage()` carries an `about:blank` history entry so `nav.length > 1` — Esc walks history back rather than hitting the Gateway fallback (correct semantics, pin both outcomes); TS annotations in a plain-JS acceptance suite are a hard SyntaxError.
+- **Immutability:** v1.65.0 and all prior tags are immutable
+
+---
+
 ## v1.64.0
 
 - **Released:** 2026-09-27
