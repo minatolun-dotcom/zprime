@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.68.1
+
+- **Released:** 2026-09-28
+- **R-item:** R-80 — operator request: "in dark mode the selected text is blue and the background is also blue so its a bit hard to see visually, make it more visible"
+- **Commit:** `a93347c1a3a2c7023778e7012fcf2be02cf97b58` (annotated tag `d6fcf6f58d65e497ac75a1a7ff6ce49941b90de5`)
+- **Purpose:** explicit per-theme text-selection colors. The browser's default `::selection` is a translucent blue with a light-blue text tint — on the dark page that rendered blue-on-blue and selected text was nearly unreadable. `client/src/index.css` now pins `::selection` per theme with LITERAL colors — palette tokens are unusable here because inside `.dark` the indigo/slate variables are INVERTED (e.g. `bg-indigo-200` resolves to the dark navy tint `#3f4f7f` and would recreate the bug): **light** keeps a soft indigo highlight `#c7d2fe` with `#1e1b4b` ink; **dark** gets a bright indigo-300 highlight `#a5b4fc` with slate-900 `#0f172a` ink — a LIGHT highlight with DARK text, high-contrast against both the dark page AND the glyphs inside the highlight; **warm** gets ochre `#d9c58a` with the warm ramp's ink `#2b2517`. `-moz-selection` aliases included; `@media print` needs no selection reset (paper carries none). r79_ui.js extended 23 → **28**: per-theme computed `getComputedStyle(el, "::selection")` pins — dark highlight L > 60 with ink L < 35, dark highlight-vs-page lightness delta > 25 (the blue-on-blue killer), warm ochre hue window 25–60° with dark ink, light indigo hue window with dark ink.
+- **Verification:** typecheck server+client clean · build clean · full estate green on a fresh volume, every suite exactly once: run.js ALL CHECKS PASSED (153), smoke **39/39**, final_regression **952/952**, attack **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r76 58, r78 27, r46_drill 42, r03 12, r04 9, r05 12, r07 14, r10 10, r14 11, r18 11, r20 12, r21 13, r23 14, r24 16, r25 13, r26 12, r27 15, r28 15, r30 17, r31 15, r33 13, r34 20, r35 23, r36 25, r38 14, r43 12, r44 11), **r79 28/28**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lesson: author `::selection` colors are readable via `getComputedStyle(el, "::selection")` in Chromium; inside an inverted-variable scope the rules must use literal colors, not palette tokens.
+- **Immutability:** v1.68.1 and all prior tags are immutable
+
+---
+
 ## v1.68.0
 
 - **Released:** 2026-09-28
