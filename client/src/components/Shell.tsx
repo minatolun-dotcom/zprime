@@ -238,7 +238,7 @@ export default function Shell({
                   onClick={() => (t === theme ? cycleTheme() : setDirect(t))}
                   aria-pressed={theme === t}
                   title={`${label} theme${t === theme ? " — click to cycle to the next" : ""}`}
-                  className={`px-1.5 py-0.5 rounded text-xs leading-4 transition-colors ${theme === t ? "bg-white/90 text-indigo-800 font-semibold" : "text-indigo-200 hover:text-white hover:bg-indigo-700/60"}`}
+                  className={`px-1.5 py-0.5 rounded text-xs leading-4 transition-colors ${theme === t ? "bg-white/90 text-[#312e81] font-semibold" : "text-indigo-200 hover:text-white hover:bg-indigo-700/60"}`}
                 >
                   <span aria-hidden>{icon}</span>
                   <span className="sr-only">{label} theme</span>

@@ -58,7 +58,8 @@ html, body, #root {
      class needs a lighter accent than the header bar can afford). */
   --color-indigo-50: #252f4e;
   --color-indigo-100: #2c3860;
-  --color-indigo-200: #3f4f7f;
+  --color-indigo-200: #8fa8f5; /* header-bar accent text — Tailwind's indigo-200 sits at 1.7:1 on the bar */
+  --color-indigo-300: #a5b8f8; /* fkey chips + header-bar accents, lightened for on-dark contrast */
   /* semantic families: soft dark backgrounds + brighter on-dark text */
   --color-amber-50: #2c2310;  --color-amber-100: #392d15; --color-amber-200: #53421d;
   --color-amber-600: #f59e0b; --color-amber-700: #fbbf24; --color-amber-800: #fcd34d;
@@ -78,30 +79,45 @@ html, body, #root {
 .dark .fkey-chip {
   @apply border-indigo-200/70 bg-indigo-50 text-indigo-300;
 }
+/* v1.68.2: deep-indigo accent TEXT (links, section titles, selected rows) is
+   unreadable on dark surfaces (Tailwind's indigo-600/700/800 ≈ 1.6–2.2:1 vs the
+   dark page). The indigo VARIABLES cannot be remapped — the same tokens paint
+   btn-primary and the header bar — so the TEXT utilities are overridden here,
+   scoped to .dark and mapped to the slate-900 variable, which @media print
+   resets to dark ink (the print faces self-heal, same mechanism as the ramp).
+   text-indigo-200/300 and the GoTo/Gateway !text-indigo-800 rows already sit
+   on accent surfaces that go dark (bg-indigo-50 → navy) and are lightened too. */
+.dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800 { color: var(--color-slate-900); }
+.dark .hover\:text-indigo-600:hover, .dark .hover\:text-indigo-800:hover { color: var(--color-slate-950); }
+.dark .focus\:text-indigo-700:focus { color: var(--color-slate-950); }
+.dark .text-indigo-100 { color: var(--color-slate-800); } /* the header-bar title span — near-white per the white-tone contract */
 
-/* ---- Text selection (v1.68.1) --------------------------------------
+/* ---- Text selection (v1.68.1, re-tuned v1.68.2) --------------------
    The browser's default selection palette is translucent blue with a
    light-blue text tint — on the dark page that is blue-on-blue. The rules
    use LITERAL colors, not palette tokens: inside .dark the indigo/slate
    variables are INVERTED, so e.g. bg-indigo-200 would resolve to the dark
-   navy tint and recreate the bug. Contract: light selection bg + dark text
-   (high contrast against both the dark page and the text inside the
-   highlight); warm ochre in Reading; soft indigo in light. Chromium applies
-   author ::selection colors; Firefox needs the -moz- alias. */
+   navy tint and recreate the bug. Contract: LIGHT themes tint softly with
+   dark ink (the native light-selection convention); DARK flips to the
+   native dark-selection convention — WHITE text on a deep indigo band
+   (operator: white-tone selected text; the v1.68.1 bright-band-with-dark-
+   ink still read as hard to see). font-weight is not an author-selectable
+   property, so no bold — the white/accent pair IS the emphasis. Chromium
+   applies author ::selection colors; Firefox needs the -moz- alias. */
 ::selection {
   background: #c7d2fe; /* indigo-200, light */
   color: #1e1b4b;      /* indigo-950 ink */
 }
 .dark ::selection {
-  background: #a5b4fc; /* indigo-300 — bright on the dark page */
-  color: #0f172a;      /* slate-900 ink */
+  background: #4338ca; /* deep indigo band — the native dark-selection convention */
+  color: #f8fafc;      /* WHITE selected text (operator: selection was still hard to see) */
 }
 .warm ::selection {
   background: #d9c58a; /* warm ochre paper */
   color: #2b2517;      /* warm ink (slate-900 of the warm ramp) */
 }
 ::-moz-selection { background: #c7d2fe; color: #1e1b4b; }
-.dark ::-moz-selection { background: #a5b4fc; color: #0f172a; }
+.dark ::-moz-selection { background: #4338ca; color: #f8fafc; }
 .warm ::-moz-selection { background: #d9c58a; color: #2b2517; }
 
 .warm {
@@ -253,6 +269,8 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
     --color-red-500: #ef4444; --color-red-600: #dc2626; --color-red-700: #b91c1c;
     --color-teal-100: #ccfbf1; --color-teal-700: #0f766e;
     --color-violet-100: #ede9fe; --color-violet-600: #7c3aed; --color-violet-700: #6d28d9;
+    /* v1.68.2: the .dark utility overrides must self-heal on paper too */
+    .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800 { color: var(--color-indigo-700); }
   }
   main {
     overflow: visible !important;

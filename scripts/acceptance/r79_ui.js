@@ -97,6 +97,22 @@ const BASE = D.BASE.replace(/\/$/, "");
     const cs = getComputedStyle(document.body, "::selection");
     return { bg: cs.backgroundColor, color: cs.color };
   });
+  // WCAG relative luminance/contrast — HSL lightness misjudges vivid mid-tones
+  // (indigo-700 has HSL-L 51 yet reads deep; its white-text contrast is 7.9:1)
+  const lumRGB = (rgbStr) => page.evaluate((c) => {
+    const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return null;
+    const [r, g, b] = [+m[1], +m[2], +m[3]].map((v) => {
+      v /= 255;
+      return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }, rgbStr);
+  const contrastRGB = async (a, b) => {
+    const L1 = await lumRGB(a), L2 = await lumRGB(b);
+    if (L1 === null || L2 === null) return null;
+    return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+  };
 
   const gotoGateway = async () => {
     await page.goto(`${BASE}/company/${cid}`);
@@ -141,13 +157,44 @@ const BASE = D.BASE.replace(/\/$/, "");
   const textL = await rgbToHsl(textColor);
   ok("dark body text is light (readable)", textL !== null && textL.l > 70, textColor);
 
-  // explicit selection: light highlight + dark ink, well clear of the page
+  // v1.68.2: deep-indigo accent TEXT is near-white on dark — links, section
+  // titles, selected rows, the header-bar title (the "headers text also
+  // white tone" contract; variables can't move, utilities are overridden)
+  const indigoLink = await page.evaluate(() => {
+    // exact token match — "hover:text-indigo-600" contains the substring and
+    // would match the breadcrumb link (base color slate-500), not the target
+    const el = [...document.querySelectorAll("a")].find((a) => [...a.classList].includes("text-indigo-600"));
+    return el ? getComputedStyle(el).color : null;
+  });
+  const indigoLinkL = await rgbToHsl(indigoLink);
+  ok("dark indigo-600 links render near-white", indigoLinkL !== null && indigoLinkL.l > 85, { color: indigoLink, hsl: indigoLinkL });
+  const tbTitle = await page.evaluate(() => {
+    const el = [...document.querySelectorAll("span")].find((s) => s.className?.includes?.("text-indigo-100"));
+    return el ? getComputedStyle(el).color : null;
+  });
+  const tbTitleL = await rgbToHsl(tbTitle);
+  ok("dark header-bar title is near-white", tbTitleL !== null && tbTitleL.l > 80, { color: tbTitle, hsl: tbTitleL });
+  const activeChip = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="theme-toggle"] button[aria-pressed="true"], [data-testid="theme-toggle"] .bg-white\\/90');
+    return el ? { cls: el.className, color: getComputedStyle(el).color } : null;
+  });
+  const activeChipL = await rgbToHsl(activeChip?.color ?? null);
+  ok("active theme chip on its white pill keeps DARK indigo ink (white-pill exception)",
+     activeChip && activeChip.cls.includes("text-[#312e81]") && activeChipL !== null && activeChipL.l < 35, activeChip);
+
+  // explicit selection: WHITE text on a deep indigo band (the native
+  // dark-selection convention — operator found the v1.68.1 bright band with
+  // dark ink still hard to see), and the highlight must sit near-white-clear
+  // of the dark page (no blue-on-blue)
   const darkSel = await selectionColors();
   const darkSelBg = await rgbToHsl(darkSel.bg);
   const darkSelText = await rgbToHsl(darkSel.color);
-  ok("dark selection highlight is LIGHT (visible against the dark page)", darkSelBg !== null && darkSelBg.l > 60, { sel: darkSel, hsl: darkSelBg });
-  ok("dark selection text is dark ink (readable inside the highlight)", darkSelText !== null && darkSelText.l < 35, darkSelText);
-  ok("dark selection beats the page — no blue-on-blue", darkSelBg && bodyL && darkSelBg.l - bodyL.l > 25, { selBg: darkSelBg, body: bodyL });
+  const selRead = await contrastRGB(darkSel.bg, darkSel.color);
+  const selVsPage = await contrastRGB(darkSel.bg, await bgOf("body"));
+  ok("dark selection text is WHITE (operator contract)", darkSelText !== null && darkSelText.l > 90, darkSelText);
+  ok("dark selection band reads white text (WCAG >= 6)", selRead !== null && selRead >= 6, { bg: darkSel.bg, contrast: selRead });
+  ok("dark selection band stands out from the dark page (contrast >= 1.8 + vivid)",
+     selVsPage !== null && selVsPage >= 1.8 && darkSelBg !== null && darkSelBg.s >= 40, { vsPage: selVsPage, band: darkSelBg });
 
   // header bar stays accent-tinted with WHITE text (the white-text contract)
   const headerColor = await page.evaluate(() => getComputedStyle(document.querySelector("header .bg-indigo-700")).color);
