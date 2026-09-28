@@ -27,6 +27,88 @@ html, body, #root {
   height: 100%;
 }
 
+/* ---- R-79: app themes — Dark (proper) & Reading (warm light) ----
+   Tailwind v4 utilities resolve to var(--color-*) at paint time, so
+   overriding palette variables inside a scope re-themes EVERY existing
+   component with zero class churn. The class lives on <html> (theme.ts + a
+   pre-hydration script in index.html — no flash) and covers native controls
+   via color-scheme.
+   Contract: "white" as SURFACE moved to bg-slate-50 (the one token that
+   cannot be remapped — it is also header/button TEXT); "white" as TEXT is
+   untouched. Print faces (InvoicePrint/ChequePrint) keep literal white —
+   paper is paper — and @media print hard-resets these variables so printed
+   output is always black-on-white regardless of the active theme. */
+.dark {
+  color-scheme: dark;
+  /* neutral ramp: inverted — 50 is the CARD surface (LIGHTER than the page,
+     matching light-theme elevation where cards sit above the page), 100 the
+     page, 800/900 primary text. Dark blue-grey, not grey-black. */
+  --color-slate-50: #222d43;
+  --color-slate-100: #1a2332;
+  --color-slate-200: #33415c;
+  --color-slate-300: #47587a;
+  --color-slate-400: #8fa0b8;
+  --color-slate-500: #a3b2c8;
+  --color-slate-600: #c2cde0;
+  --color-slate-700: #d9e1ee;
+  --color-slate-800: #e7ecf5;
+  --color-slate-900: #f3f6fb;
+  --color-slate-950: #ffffff;
+  /* accent surfaces: dark navy tints; chip TEXT overrides below (the chip
+     class needs a lighter accent than the header bar can afford). */
+  --color-indigo-50: #252f4e;
+  --color-indigo-100: #2c3860;
+  --color-indigo-200: #3f4f7f;
+  /* semantic families: soft dark backgrounds + brighter on-dark text */
+  --color-amber-50: #2c2310;  --color-amber-100: #392d15; --color-amber-200: #53421d;
+  --color-amber-600: #f59e0b; --color-amber-700: #fbbf24; --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+  --color-blue-50: #12233d;   --color-blue-100: #1a3154;  --color-blue-200: #26436e;
+  --color-blue-700: #7cb0f5;
+  --color-emerald-50: #0e2e1e; --color-emerald-200: #1c4d33;
+  --color-emerald-600: #2fa66a; --color-emerald-700: #46c083; --color-emerald-800: #6fd6a3;
+  --color-green-50: #0e2e1e;  --color-green-100: #163b27; --color-green-200: #1c4d33;
+  --color-green-600: #2fa66a; --color-green-700: #46c083; --color-green-800: #6fd6a3;
+  --color-orange-100: #3d2612; --color-orange-700: #fb923c;
+  --color-red-50: #331416;    --color-red-100: #451a1d;   --color-red-200: #5f2428;
+  --color-red-500: #f87171;   --color-red-600: #ef4444;   --color-red-700: #fca5a5;
+  --color-teal-100: #123c3c;  --color-teal-700: #4cc4c4;
+  --color-violet-100: #2b2350; --color-violet-600: #8b7cf6; --color-violet-700: #a89bf9;
+}
+.dark .fkey-chip {
+  @apply border-indigo-200/70 bg-indigo-50 text-indigo-300;
+}
+
+.warm {
+  color-scheme: light;
+  /* reading mode: warm paper ramp — sepia surfaces, ink-brown text */
+  --color-slate-50: #faf6ec;
+  --color-slate-100: #f4ecdb;
+  --color-slate-200: #e5d9c0;
+  --color-slate-300: #cfc2a4;
+  --color-slate-400: #8d8069;
+  --color-slate-500: #77694f;
+  --color-slate-600: #5f5440;
+  --color-slate-700: #4a4130;
+  --color-slate-800: #3a3325;
+  --color-slate-900: #2b2517;
+  /* accent: warm ochre/brown — same structure as the indigo family */
+  --color-indigo-50: #f6efdd;
+  --color-indigo-100: #eee4cb;
+  --color-indigo-200: #dccca4;
+  --color-indigo-500: #b45309;
+  --color-indigo-600: #a16207;
+  --color-indigo-700: #854d0e;
+}
+.dark a:focus-visible, .dark button:focus-visible, .dark input:focus-visible,
+.dark select:focus-visible, .dark textarea:focus-visible, .dark [tabindex]:focus-visible {
+  @apply ring-indigo-300/70 ring-offset-slate-100;
+}
+.warm a:focus-visible, .warm button:focus-visible, .warm input:focus-visible,
+.warm select:focus-visible, .warm textarea:focus-visible, .warm [tabindex]:focus-visible {
+  @apply ring-indigo-500/70 ring-offset-slate-100;
+}
+
 body {
   @apply bg-slate-100 text-slate-800 antialiased;
   font-feature-settings: "tnum" 1; /* tabular numbers for accounting columns */
@@ -54,7 +136,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
   @apply w-full text-sm border-collapse;
 }
 .report-table th {
-  @apply text-left font-semibold text-slate-600 border-b border-slate-200 px-3 py-2.5 sticky top-0 bg-white z-10 tracking-wide;
+  @apply text-left font-semibold text-slate-600 border-b border-slate-200 px-3 py-2.5 sticky top-0 bg-slate-50 z-10 tracking-wide;
 }
 .report-table td {
   @apply px-3 py-2.5 border-b border-slate-100 align-top;
@@ -84,7 +166,7 @@ textarea:focus-visible, [tabindex]:focus-visible {
 
 /* ---- Form controls ---- */
 input, select, textarea {
-  @apply border border-slate-300 rounded-md px-2.5 py-1.5 text-base bg-white text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25;
+  @apply border border-slate-300 rounded-md px-2.5 py-1.5 text-base bg-slate-50 text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25;
 }
 input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
 
@@ -93,9 +175,9 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
   @apply inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm font-medium transition-colors min-h-[2.25rem];
 }
 .btn {
-  @apply bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400;
+  @apply bg-slate-50 border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400;
 }
-.btn-secondary { @apply bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400; }
+.btn-secondary { @apply bg-slate-50 border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400; }
 .btn-primary {
   @apply bg-indigo-600 text-white hover:bg-indigo-700 shadow-card;
 }
@@ -108,7 +190,7 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
 
 /* ---- Cards & shared surfaces ---- */
 .card {
-  @apply bg-white rounded-xl border border-slate-200 shadow-card;
+  @apply bg-slate-50 rounded-xl border border-slate-200 shadow-card;
 }
 
 /* ---- Print (R-66): paper / Save-as-PDF output ----
@@ -121,6 +203,31 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
   html, body, #root {
     height: auto !important;
     background: #fff !important;
+  }
+  /* R-79: paper is always light — hard-reset the theme variables so themed
+     text prints black-on-white no matter which app theme is active. */
+  .dark, .warm {
+    color-scheme: light;
+    --color-slate-50: #f8fafc; --color-slate-100: #f1f5f9; --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1; --color-slate-400: #94a3b8; --color-slate-500: #64748b;
+    --color-slate-600: #475569; --color-slate-700: #334155; --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a; --color-slate-950: #020617;
+    --color-indigo-50: #eef2ff; --color-indigo-100: #e0e7ff; --color-indigo-200: #c7d2fe;
+    --color-indigo-500: #6366f1; --color-indigo-600: #4f46e5; --color-indigo-700: #4338ca;
+    --color-amber-50: #fffbeb; --color-amber-100: #fef3c7; --color-amber-200: #fde68a;
+    --color-amber-600: #d97706; --color-amber-700: #b45309; --color-amber-800: #92400e;
+    --color-amber-900: #78350f;
+    --color-blue-50: #eff6ff; --color-blue-100: #dbeafe; --color-blue-200: #bfdbfe;
+    --color-blue-700: #1d4ed8;
+    --color-emerald-50: #ecfdf5; --color-emerald-200: #a7f3d0;
+    --color-emerald-600: #059669; --color-emerald-700: #047857; --color-emerald-800: #065f46;
+    --color-green-50: #f0fdf4; --color-green-100: #dcfce7; --color-green-200: #bbf7d0;
+    --color-green-600: #16a34a; --color-green-700: #15803d; --color-green-800: #166534;
+    --color-orange-100: #ffedd5; --color-orange-700: #c2410c;
+    --color-red-50: #fef2f2; --color-red-100: #fee2e2; --color-red-200: #fecaca;
+    --color-red-500: #ef4444; --color-red-600: #dc2626; --color-red-700: #b91c1c;
+    --color-teal-100: #ccfbf1; --color-teal-700: #0f766e;
+    --color-violet-100: #ede9fe; --color-violet-600: #7c3aed; --color-violet-700: #6d28d9;
   }
   main {
     overflow: visible !important;

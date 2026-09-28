@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { get } from "../lib/api";
 import GoTo from "./GoTo";
 import { buildGatewayMenu, flattenMenu } from "../lib/gatewayMenu";
+import { getStoredTheme, applyTheme, nextTheme, Theme } from "../lib/theme";
 
 export interface FKeyButton { key: string; label: string; onClick?: () => void; }
 
@@ -154,6 +155,24 @@ export default function Shell({
       else (document.getElementById("main-content") as HTMLElement | null)?.focus({ preventScroll: true });
     }
   }, [location.pathname]);
+  // R-79: dedicated theme toggle — Light / Dark (proper) / Reading (warm).
+  // Click cycles; each button is also a direct switch. Persisted per browser
+  // (localStorage `zprime_theme`), applied pre-hydration in index.html.
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
+  const cycleTheme = () => {
+    const next = nextTheme(theme);
+    applyTheme(next);
+    setTheme(next);
+  };
+  const setDirect = (t: Theme) => {
+    applyTheme(t);
+    setTheme(t);
+  };
+  const themes: { t: Theme; icon: string; label: string }[] = [
+    { t: "light", icon: "☀", label: "Light" },
+    { t: "dark", icon: "☾", label: "Dark" },
+    { t: "warm", icon: "☕", label: "Reading (warm light)" },
+  ];
   const [goToOpen, setGoToOpen] = useState(false);
   const goToItems = useMemo(
     () => flattenMenu(buildGatewayMenu(cid ?? "", (goToVoucherTypes ?? []).filter((v) => v.category === "Accounting" || v.category === "Inventory"))),
@@ -171,7 +190,7 @@ export default function Shell({
       {/* R-64 (Phase C): skip link — first tab stop for keyboard users. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:text-indigo-700 focus:px-3 focus:py-1.5 focus:rounded-md focus:shadow-raised focus:border focus:border-indigo-200"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-slate-50 focus:text-indigo-700 focus:px-3 focus:py-1.5 focus:rounded-md focus:shadow-raised focus:border focus:border-indigo-200"
       >
         Skip to content
       </a>
@@ -205,6 +224,27 @@ export default function Shell({
             <Link to="/companies" className="text-sm text-indigo-200 hover:text-white whitespace-nowrap">
               Switch Company
             </Link>
+            {/* R-79: theme toggle — dedicated, one click from any screen. */}
+            <span className="h-4 w-px bg-indigo-500/60 hidden sm:block" aria-hidden />
+            <div
+              className="flex items-center gap-0.5 rounded-md border border-indigo-500/60 bg-indigo-800/60 p-0.5"
+              role="group"
+              aria-label="Colour theme"
+              data-testid="theme-toggle"
+            >
+              {themes.map(({ t, icon, label }) => (
+                <button
+                  key={t}
+                  onClick={() => (t === theme ? cycleTheme() : setDirect(t))}
+                  aria-pressed={theme === t}
+                  title={`${label} theme${t === theme ? " — click to cycle to the next" : ""}`}
+                  className={`px-1.5 py-0.5 rounded text-xs leading-4 transition-colors ${theme === t ? "bg-white/90 text-indigo-800 font-semibold" : "text-indigo-200 hover:text-white hover:bg-indigo-700/60"}`}
+                >
+                  <span aria-hidden>{icon}</span>
+                  <span className="sr-only">{label} theme</span>
+                </button>
+              ))}
+            </div>
             <span className="h-4 w-px bg-indigo-500/60 hidden sm:block" aria-hidden />
             <button
               onClick={async () => {
@@ -219,7 +259,7 @@ export default function Shell({
         </div>
 
         {breadcrumb && breadcrumb.length > 0 && (
-          <nav className={`mx-auto w-full px-5 bg-white/80 backdrop-blur border-b border-slate-200 ${container}`}>
+          <nav className={`mx-auto w-full px-5 bg-slate-50/80 backdrop-blur border-b border-slate-200 ${container}`}>
             <div className="flex items-center gap-1.5 text-sm text-slate-500 py-2">
               {breadcrumb.map((b, i) => (
                 <span key={b.label + String(i)} className="flex items-center gap-1.5">
@@ -261,7 +301,7 @@ export default function Shell({
       </div>
 
       {fkeys && fkeys.length > 0 && (
-        <div className="lg:hidden border-t border-slate-200 bg-white px-3 py-2 flex gap-2 overflow-x-auto print:hidden">
+        <div className="lg:hidden border-t border-slate-200 bg-slate-50 px-3 py-2 flex gap-2 overflow-x-auto print:hidden">
           {fkeys.map((f, i) => (
             <button key={i} onClick={f.onClick} className="fkey-item w-auto shrink-0">
               <span className="fkey-chip">{f.key}</span>

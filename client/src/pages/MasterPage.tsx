@@ -234,7 +234,7 @@ export default function MasterPage() {
       {editing !== null && (
         <div className="fixed inset-0 z-40 flex">
           <div className="flex-1 bg-black/30" onClick={() => setEditing(null)} />
-          <form ref={formRef} onSubmit={save} className="w-[430px] max-w-full bg-white shadow-raised overflow-auto p-6">
+          <form ref={formRef} onSubmit={save} className="w-[430px] max-w-full bg-slate-50 shadow-raised overflow-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold tracking-tight">{editing.id ? "Alter" : "Create"} — {config.title}</h2>
               <button type="button" className="btn-ghost" onClick={() => setEditing(null)}>✕</button>

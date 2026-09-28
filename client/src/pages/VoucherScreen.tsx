@@ -1145,7 +1145,7 @@ export default function VoucherScreen() {
           closes ONLY this modal; the voucher behind keeps every keystroke.
           Ctrl+A / Enter accept; the server's 409 wording surfaces verbatim. */}
       {quickOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center" data-testid="quick-ledger-modal">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" data-testid="quick-ledger-modal">
           <div className="card shadow-raised w-[440px] max-w-[95vw]">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl text-base font-semibold text-indigo-700">
               Create Ledger

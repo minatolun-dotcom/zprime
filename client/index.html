@@ -11,6 +11,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // R-79: apply the stored theme BEFORE first paint (no flash of the
+      // wrong theme). Same key/contract as client/src/lib/theme.ts.
+      try {
+        var t = localStorage.getItem("zprime_theme");
+        if (t === "dark" || t === "warm") document.documentElement.classList.add(t);
+      } catch (e) { /* storage unavailable */ }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

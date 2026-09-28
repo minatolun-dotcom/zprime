@@ -75,7 +75,7 @@ export default function TypeAhead({
         }}
       />
       {open && matches.length > 0 && (
-        <div className="absolute z-30 left-0 right-0 top-full bg-white border border-slate-200 rounded-lg shadow-raised max-h-64 overflow-auto">
+        <div className="absolute z-30 left-0 right-0 top-full bg-slate-50 border border-slate-200 rounded-lg shadow-raised max-h-64 overflow-auto">
           {matches.map((m, i) => (
             <div
               key={m.id}
@@ -90,7 +90,7 @@ export default function TypeAhead({
       {open && matches.length === 0 && canCreate && (
         <div
           data-testid="typeahead-create"
-          className="absolute z-30 left-0 right-0 top-full bg-white border border-slate-200 rounded-lg shadow-raised px-3 py-2 text-sm font-medium cursor-pointer text-indigo-700 hover:bg-indigo-50"
+          className="absolute z-30 left-0 right-0 top-full bg-slate-50 border border-slate-200 rounded-lg shadow-raised px-3 py-2 text-sm font-medium cursor-pointer text-indigo-700 hover:bg-indigo-50"
           onMouseDown={(e) => { e.preventDefault(); onCreate!(text.trim()); }}
         >
           ＋ Create "{text.trim()}"
@@ -99,7 +99,7 @@ export default function TypeAhead({
       {open && loading && matches.length === 0 && !canCreate && (
         <div
           data-testid="typeahead-loading"
-          className="absolute z-30 left-0 right-0 top-full bg-white border border-slate-200 rounded-lg shadow-raised px-3 py-2 text-sm text-slate-400"
+          className="absolute z-30 left-0 right-0 top-full bg-slate-50 border border-slate-200 rounded-lg shadow-raised px-3 py-2 text-sm text-slate-400"
         >
           Loading options…
         </div>

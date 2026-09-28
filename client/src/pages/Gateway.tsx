@@ -453,7 +453,7 @@ export default function Gateway() {
           Session-scoped: stored per company in localStorage, cleared anytime;
           reports/daybook default windows follow it. Company FY/books unchanged. */}
       {periodOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setPeriodOpen(false); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setPeriodOpen(false); }}>
           <div className="card w-full max-w-sm p-5 space-y-4" data-testid="period-modal">
             <div>
               <div className="text-base font-semibold text-slate-800">Change Period</div>

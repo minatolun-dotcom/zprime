@@ -32,6 +32,7 @@ migrates cleanly instead of staying dead).
 - All accounting vouchers: Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9), Credit Note (Alt+F6), Debit Note (Alt+F5), Sale Order, Purchase Order
 - Double-entry validation, automatic voucher numbering with prefix/suffix
 - Narration, cheque numbers, bill references (New Ref / Against Ref / Advance / On Account)
+- **Light / Dark / Reading themes** — a dedicated toggle in the top bar: a proper dark mode (every surface, input and table re-themes, native controls included) and a warm sepia **Reading** light; persisted per browser, and prints stay black-on-white under any theme
 
 **Inventory**
 - Stock items, units, stock groups/categories, godowns
