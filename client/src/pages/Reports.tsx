@@ -414,6 +414,9 @@ function PnlView({ cid, data, detailed, compare, meta }: { cid: string; data: an
       <Card className="p-0 overflow-hidden">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700 tracking-wide">Expenses (Dr){p && labels && <span className="ml-2 font-normal text-xs text-slate-400">{labels.current} vs {labels.previous}</span>}</div>
         <table className="report-table">
+          {/* R-77: P&L cards are intentionally header-less (Tally's statement
+              look) — the Particulars/Debit/Credit band lives in the card title.
+              The table just needs every row emitting the same cell count. */}
           <tbody>
             <tr><td>Opening Stock</td><DrCr v={data.openingStock} pv={p?.openingStock} /></tr>
             <tr className="row-link" onClick={() => nav(`/company/${cid}/reports/register-purchase`)}><td>Purchase Accounts</td><DrCr v={data.purchases} pv={p?.purchases} /></tr>
@@ -440,7 +443,13 @@ function PnlView({ cid, data, detailed, compare, meta }: { cid: string; data: an
             ))}
             {data.grossProfit > 0 && <tr className="font-semibold text-green-700"><td>Gross Profit c/d</td><DrCr v={data.grossProfit} pv={p?.grossProfit} /></tr>}
             {data.grossProfit < 0 && <tr className="font-semibold text-red-700"><td>Gross Loss c/d</td><DrCr v={-data.grossProfit} pv={p ? -(p.grossProfit ?? 0) : null} /></tr>}
-            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(r2(data.sales + data.closingStock + data.directIncome + Math.max(data.grossProfit, 0)))}</td><td className="num">{money(Math.max(-data.grossProfit, 0))}</td>{p && <td className="num text-slate-500">{money(r2((p.sales ?? 0) + (p.closingStock ?? 0) + (p.directIncome ?? 0) + Math.max(p.grossProfit ?? 0, 0)))}</td>}{p && <td className="num text-slate-500">{money(Math.max(-(p.grossProfit ?? 0), 0))}</td>}</tr>
+            {/* R-77: mirror the card's row silhouette — [Total][Dr][Cr] + ONE
+                prev cell. Previously the value cells rendered swapped (the Cr
+                total under Dr, gross loss under Cr) and TWO prev cells were
+                emitted with compare on — a 5-cell row against 4-cell rows. */}
+            <tr className="font-semibold bg-slate-50 border-t border-slate-200"><td>Total</td><td className="num">{money(Math.max(-data.grossProfit, 0))}</td><td className="num">{money(r2(data.sales + data.closingStock + data.directIncome + Math.max(data.grossProfit, 0)))}</td>
+            {p && <td className="num text-slate-500">{money(r2((p.sales ?? 0) + (p.closingStock ?? 0) + (p.directIncome ?? 0) + Math.max(p.grossProfit ?? 0, 0)))}</td>}
+          </tr>
           </tbody>
         </table>
       </Card>
@@ -1028,8 +1037,11 @@ function Gstr1View({ data, cid, meta }: { data: any; cid?: string; meta: string[
         <div className="px-4 py-3 border-b border-slate-100 font-semibold text-base text-slate-800">B2B Invoices (registered purchasers)</div>
         <table className="report-table">
           <thead>
+            {/* R-77: header for the per-row e-invoice / e-way action cell —
+                the B2B thead previously stopped at SGST while every row emitted
+                a 9th cell (the same phantom-column class as R-75's BS). */}
             <tr><th className="w-24">Date</th><th className="w-24">Invoice</th><th>Party</th><th className="w-32">GSTIN</th>
-              <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th></tr>
+              <th className="w-28 text-right">Taxable</th><th className="w-24 text-right">IGST</th><th className="w-24 text-right">CGST</th><th className="w-24 text-right">SGST</th><th className="w-56">E-invoice / E-way</th></tr>
           </thead>
           <tbody>
             {data.b2b.map((v: any) => (

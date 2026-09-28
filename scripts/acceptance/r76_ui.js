@@ -7,6 +7,12 @@
 //     Credit (+ Prev only with F12 compare) — header, tree rows, profit row
 //     and Total row ALL carry the same cell count (the phantom second Dr/Cr
 //     pair is gone).
+//  A2) R-77: the same phantom-column audit extended to P&L, Trial Balance and
+//     GSTR-1: TB header = 6 cols (7 with compare) with every row matching;
+//     P&L rows carry a uniform silhouette (3 condensed, 4 with compare, the
+//     Income Total row previously emitted TWO prev cells and swapped Dr/Cr
+//     values); GSTR-1 B2B header carries the e-invoice/e-way action column
+//     the rows always emitted (9, previously 8).
 //  B) Back-navigation: Gateway → Reports pane → Balance Sheet; browser Back
 //     reopens the Gateway WITH the Reports pane restored; the new Reports
 //     menu page (/company/:cid/reports) is the in-between surface — reachable
@@ -84,9 +90,14 @@ const stamp = Date.now().toString(36);
     let allMatch = true;
     let sample = [];
     for (let i = 0; i < rows; i++) {
-      const tds = await card.locator("tbody tr").nth(i).locator("td").count();
-      if (tds !== ths) allMatch = false;
-      if (sample.length < 4) sample.push(tds);
+      // colSpan-aware: a Totals row spanning 4 columns carries 3 td ELEMENTS
+      // but covers 6 columns — count columns covered, not elements.
+      const tds = await card.locator("tbody tr").nth(i).locator("td");
+      const n = await tds.count();
+      let covered = 0;
+      for (let j = 0; j < n; j++) covered += Number(await tds.nth(j).getAttribute("colspan")) || 1;
+      if (covered !== ths) allMatch = false;
+      if (sample.length < 4) sample.push(covered);
     }
     return { ths, rows, allMatch, sample };
   };
@@ -111,6 +122,138 @@ const stamp = Date.now().toString(36);
      liabC.allMatch && assetsC.allMatch, { liab: liabC.sample, assets: assetsC.sample });
   await page.keyboard.press("F12");
   await D.sleep(300);
+
+  // ---- A2) R-77: P&L / Trial Balance / GSTR-1 column integrity -------------
+  // P&L cards are intentionally header-less (Tally's statement look) — the
+  // check there is a uniform ROW silhouette instead of thead-vs-row.
+  const rowStats = async (cardTitle) => {
+    const card = page.locator(".card", { has: page.locator(`text=${cardTitle}`) }).first();
+    const rows = await card.locator("tbody tr").count();
+    const counts = [];
+    for (let i = 0; i < rows; i++) counts.push(await card.locator("tbody tr").nth(i).locator("td").count());
+    return { rows, uniq: [...new Set(counts)], counts };
+  };
+  await page.goto(`${BASE}/company/${cid}/reports/profit-loss`);
+  await page.waitForSelector("text=Expenses (Dr)");
+  await D.sleep(400);
+  const exp = await rowStats("Expenses (Dr)");
+  const inc = await rowStats("Income (Cr)");
+  ok("P&L Expenses: every row carries the same cell count (3 — header-less statement)",
+     exp.rows > 0 && exp.uniq.length === 1 && exp.uniq[0] === 3, exp);
+  ok("P&L Income: every row carries the same cell count (3)",
+     inc.rows > 0 && inc.uniq.length === 1 && inc.uniq[0] === 3, inc);
+
+  await page.keyboard.press("F12");
+  await D.sleep(500);
+  const expC = await rowStats("Expenses (Dr)");
+  const incC = await rowStats("Income (Cr)");
+  const indC = await rowStats("Indirect Expenses");
+  const indIC = await rowStats("Indirect Incomes");
+  ok("P&L Expenses with F12 compare: uniform 4-cell rows (Dr/Cr + ONE prev)",
+     expC.rows > 0 && expC.uniq.length === 1 && expC.uniq[0] === 4, expC);
+  ok("P&L Income with F12 compare: uniform 4-cell rows (was: Total emitted 5)",
+     incC.rows > 0 && incC.uniq.length === 1 && incC.uniq[0] === 4, incC);
+  ok("P&L Indirect Expenses/Incomes with F12 compare: uniform 4-cell rows",
+     indC.rows > 0 && indC.uniq.length === 1 && indC.uniq[0] === 4
+     && indIC.rows > 0 && indIC.uniq.length === 1 && indIC.uniq[0] === 4,
+     { ind: indC.uniq, indI: indIC.uniq });
+  await page.keyboard.press("Alt+F1"); // detailed: the ledger detail rows join
+  await D.sleep(400);
+  const expD = await rowStats("Expenses (Dr)");
+  ok("P&L Expenses detailed + compare: detail rows match the silhouette (4)",
+     expD.rows > 0 && expD.uniq.length === 1 && expD.uniq[0] === 4, expD);
+  await page.keyboard.press("F12");
+  await D.sleep(400);
+  const expD2 = await rowStats("Expenses (Dr)");
+  ok("P&L Expenses detailed, no compare: detail rows match the silhouette (3)",
+     expD2.rows > 0 && expD2.uniq.length === 1 && expD2.uniq[0] === 3, expD2);
+  await page.keyboard.press("Alt+F1"); // back to condensed
+  await D.sleep(300);
+
+  await page.goto(`${BASE}/company/${cid}/reports/trial-balance`);
+  await page.waitForSelector("table.report-table");
+  await D.sleep(400);
+  const tbCells = async (want) => {
+    const ths = await page.locator("thead th").count();
+    const rows = await page.locator("tbody tr").count();
+    let allMatch = true;
+    const sample = [];
+    for (let i = 0; i < rows; i++) {
+      const tr = page.locator("tbody tr").nth(i);
+      const tds = tr.locator("td");
+      const n = await tds.count();
+      let covered = 0;
+      for (let j = 0; j < n; j++) covered += Number(await tds.nth(j).getAttribute("colspan")) || 1;
+      if (covered !== want) allMatch = false;
+      if (sample.length < 3) sample.push(covered);
+    }
+    return { ths, rows, allMatch, sample };
+  };
+  const tb = await tbCells(6);
+  ok("TB: header has exactly 6 columns (no phantom)", tb.ths === 6, tb);
+  ok("TB: every row (incl. the colSpan Totals row) matches the header", tb.rows > 0 && tb.allMatch, tb);
+  await page.keyboard.press("F12");
+  await D.sleep(500);
+  const tbC = await tbCells(7);
+  ok("TB with F12 compare: 7 columns everywhere (header + every row)",
+     tbC.ths === 7 && tbC.rows > 0 && tbC.allMatch, tbC);
+  await page.keyboard.press("F12");
+  await D.sleep(200);
+
+  // GSTR-1 B2B: rows always emitted a 9th action cell (e-inv / e-way / …);
+  // the header previously stopped at SGST — pin the header at 9.
+  const gr = Object.fromEntries((await (await page.request.get(`${BASE}/api/c/${cid}/groups`)).json()).map((g) => [g.name, g.id]));
+  const units = await (await page.request.get(`${BASE}/api/c/${cid}/units`)).json();
+  const nos = units.find((u) => u.symbol === "Nos");
+  ok("seeded unit present (Nos)", !!nos, units?.map?.((u) => u.symbol));
+  const mkLedger = async (body) => (await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: body })).json());
+  const buyer = await mkLedger({ name: `R77 Buyer ${stamp}`, groupId: gr["Sundry Debtors"],
+    gstin: `29R77${stamp.toUpperCase()}BUYER0`.slice(0, 15), gstRegistrationType: "regular",
+    partyState: "Karnataka", partyPincode: "560001" });
+  const walkin = await mkLedger({ name: `R77 Walkin ${stamp}`, groupId: gr["Sundry Debtors"],
+    gstRegistrationType: "unregistered", partyState: "Maharashtra", partyPincode: "400001" });
+  const sales = await mkLedger({ name: `R77 Sales ${stamp}`, groupId: gr["Sales Accounts"], taxability: "taxable" });
+  const allLedgers = await (await page.request.get(`${BASE}/api/c/${cid}/ledgers`)).json();
+  const igst = allLedgers.find((l) => l.name === "IGST" && l.dutyHead === "IGST");
+  const cgst = allLedgers.find((l) => l.dutyHead === "CGST");
+  const sgst = allLedgers.find((l) => l.dutyHead === "SGST");
+  const itemRes = await page.request.post(`${BASE}/api/c/${cid}/stock-items`, { data: {
+    name: `R77 Widget ${stamp}`, groupId: null, unitId: nos.id, gstRate: 18, taxability: "taxable",
+    openingQty: 100, openingRate: 500, standardCost: 500, hsnSac: "8471" } });
+  const item = await itemRes.json();
+  ok("GST fixture ready (buyer / walkin / taxable sales / IGST / item)", !!buyer?.id && !!walkin?.id && !!sales?.id && !!igst?.id && !!cgst?.id && !!sgst?.id && !!item?.id,
+     { buyer: buyer?.id, walkin: walkin?.id, sales: sales?.id, igst: igst?.id, cgst: cgst?.id, sgst: sgst?.id, item: item?.id });
+  await post({
+    voucherTypeId: vtList.find((t) => t.name === "Sales").id, date: "2026-04-05",
+    partyLedgerId: buyer.id, placeOfSupply: "Karnataka",
+    entries: [
+      { ledgerId: sales.id, amount: -5000 },
+      { ledgerId: igst.id, amount: -900 },
+      { ledgerId: buyer.id, amount: 5900 },
+    ],
+    inventoryEntries: [{ itemId: item.id, qty: -10, rate: 500, amount: 5000, hsnSac: "8471", gstRate: 18 }],
+  });
+  // a B2C sale too (unregistered party, intra-state) so the B2C card has rows
+  await post({
+    voucherTypeId: vtList.find((t) => t.name === "Sales").id, date: "2026-04-06",
+    partyLedgerId: walkin.id, placeOfSupply: "Maharashtra",
+    entries: [
+      { ledgerId: sales.id, amount: -2000 },
+      { ledgerId: cgst.id, amount: -180 },
+      { ledgerId: sgst.id, amount: -180 },
+      { ledgerId: walkin.id, amount: 2360 },
+    ],
+    inventoryEntries: [{ itemId: item.id, qty: -4, rate: 500, amount: 2000, hsnSac: "8471", gstRate: 18 }],
+  });
+  await page.goto(`${BASE}/company/${cid}/reports/gstr1`);
+  await page.waitForSelector("text=B2B Invoices");
+  await D.sleep(400);
+  const b2b = await cardStats("B2B Invoices");
+  ok("GSTR-1 B2B: header carries the action column (9 columns, was 8)", b2b.ths === 9, b2b);
+  ok("GSTR-1 B2B: every row's cell count matches the header", b2b.rows > 0 && b2b.allMatch, { sample: b2b.sample });
+  const b2c = await cardStats("B2C (unregistered consumers)");
+  ok("GSTR-1 B2C: header carries its E-way bill column (8 columns, already clean)", b2c.ths === 8, b2c.ths);
+  ok("GSTR-1 B2C: every row's cell count matches the header", b2c.rows > 0 && b2c.allMatch, { sample: b2c.sample });
 
   // ---- B) Back-navigation ------------------------------------------------------
   // Gateway → Reports pane → Balance Sheet (the operator's exact path)
@@ -190,7 +333,7 @@ const stamp = Date.now().toString(36);
 
   ok("zero page errors across the R-75 scenario", pageErrors.length === 0, pageErrors);
 
-  console.log(`\n== R-75 RESULT: ${pass} passed, ${fail} failed ==`);
+  console.log(`\n== R-75/R-77 RESULT: ${pass} passed, ${fail} failed ==`);
   await D.close();
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
