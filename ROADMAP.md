@@ -1,11 +1,12 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.66.0 (R-77 P&L/GSTR-1 column integrity released).
+The permanent development roadmap. Current at v1.67.0 (R-78 Gateway arrow navigation released).
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
 | Release | R-item | Purpose |
 |---|---|---|
+| v1.67.0 | **R-78** | Tally level-model arrow navigation across the whole Gateway (operator request): Up/Down move a wrapping highlight on the headings column (mouse hover mirrors it), Right/Enter drill INTO the selected option (open its pane, or navigate directly for Day Book/Company Settings), Left backs OUT of a pane with the heading still picked (Esc same); pane arrows, letter nav, chips, R-75 restore unchanged; contract advertised on both levels | r78 27/27 new; full estate green fresh volume (run 153, final 952, smoke 39) | keyboard/Tally-parity | client-only (Gateway.tsx) + r78_ui.js; zero server change |
 | v1.66.0 | **R-77** | Proactive audit of every report table for the R-75 phantom-column class (thead vs body cell counts): P&L Income (Cr) Total row emitted TWO prev cells with F12 compare on and swapped its value cells (Cr total under Dr, gross loss under Cr) — now mirrors the card's row silhouette; GSTR-1 B2B rows' 9th e-invoice/e-way action cell finally has a header (B2C was already clean); Trial Balance audited CLEAN and pinned (colSpan-honest); every other report view clean by the same probe | r76 extended 20 → 36; full estate green fresh volume (run 153, final 952, smoke 39) | reports/UX | client-only (Reports.tsx + r76_ui.js); zero server change |
 |---|---|---|
 | v1.65.0 | **R-75** | Operator-reported pair: Balance Sheet both cards rendered a phantom second Dr/Cr column pair (thead vs body mismatch — thead now emits exactly what TreeRows/CSV emit, Prev under F12 only, row cells completed); back from a report re-mounted the Gateway CLOSED — the open pane now rides the current history entry's react-router `usr` state (key/idx preserved) and is restored on Back/Esc, plus a new Reports menu page (/company/:cid/reports) as the in-between surface and a real breadcrumb crumb; deep-link fallback unchanged | r76 20/20; full estate green fresh volume (run 153, final 952, smoke 39) | reports/UX | client-only (Reports.tsx theads, ReportsMenu.tsx new, Gateway.tsx pane restoration, App.tsx route); zero server change |

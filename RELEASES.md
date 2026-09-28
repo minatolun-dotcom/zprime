@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.67.0
+
+- **Released:** 2026-09-28
+- **R-item:** R-78 — operator request: "when we first open zprime and login and select a company it shows the gateway, after chosing a option in the gateway it shows the option for the next section like if choosen reports it shows the options for reports, in that new section we can keyboard up and down to move, now i want that up/down keyboard navigation in the gateway itself. up/down to move up/down the list and left/right to go into the option or go back"
+- **Commit:** `ba5ed1b022f1201095632ccc562bcd450acfc1d0` (annotated tag `6235b2c1ec8b12dbe472589e2c39d7edd4b53dec`)
+- **Purpose:** Tally's level model now covers the whole Gateway. The headings column gains a **highlight that moves with Up/Down** (wrapping both ways; mouse hover mirrors it — mouse and keyboard are one surface), **Right/Enter go INTO the selected option** (opens the pane for pane targets; navigates immediately for direct targets — Day Book, Company Settings), and **Left backs OUT** of an open pane to the headings with the heading it belonged to still picked (Esc unchanged and now also keeps the heading picked). Pane-level arrows (Up/Down/Enter), letter navigation, chips and the R-75 back-navigation pane restore are byte-unchanged; a restored pane re-picks its heading; letter-open and the multi-target fallback keep the heading highlight honest. The arrow contract is advertised on both levels (headings header when no pane; pane hint line updated). New `r78_ui.js` **27/27** (wrap both directions; Right drills pane targets AND direct targets without opening a pane; Left/Esc keep the heading picked; pane arrows + Enter pick; R-75 restore intact; letter nav unchanged; hover mirror; zero page errors).
+- **Verification:** typecheck server+client clean · build clean (bundle 434.75 kB / 122.93 kB gzip) · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r46_drill 42, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r34 20, r35 23, r20 12, r26 12, r27 15, **re-anchored and now in the gate: r07 14, r28 15, r30 17**), **new r78 27/27**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lesson: highlight assertions must match by `includes`, never `startsWith` — row innerText leads with the letter chip (`"C\nCreate"`); count the REAL list (7 headings — Day Book sits between Vouchers and Reports) before writing wrap loops.
+- **Immutability:** v1.67.0 and all prior tags are immutable
+
+---
+
 ## v1.66.0
 
 - **Released:** 2026-09-28
