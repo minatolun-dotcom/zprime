@@ -46,9 +46,18 @@ const ok = (name, cond, detail) => {
   let bodyTxt = await page.textContent("body");
   ok("AR lists debtor party", bodyTxt.includes("R07 UI Debtor"), null);
   ok("AR total includes the 50,000 opening", bodyTxt.includes("50,000"), null);
-  await page.click("button:has-text('R07 UI Debtor')"); // expand the party
+  // Re-anchored (R-77): R-70 made party bill tables default-EXPANDED — the
+  // old expand-click now COLLAPSES. Pin the new contract: the Opening Balance
+  // row is visible on arrival, collapses on click, re-expands on second click.
+  const partyHeader = page.locator("button", { hasText: "R07 UI Debtor" }).first();
   await page.waitForSelector("text=Opening Balance", { timeout: 10000 });
-  ok("AR shows the synthetic 'Opening Balance' bill row", true, null);
+  ok("AR shows the synthetic 'Opening Balance' bill row (default-expanded, R-70)", true, null);
+  await partyHeader.click();
+  await page.waitForSelector("text=Opening Balance", { state: "detached", timeout: 5000 });
+  ok("AR party collapses on click (collapse still available, R-70)", true, null);
+  await partyHeader.click();
+  await page.waitForSelector("text=Opening Balance", { timeout: 5000 });
+  ok("AR party re-expands on second click", true, null);
 
   // ---- F-07-1: Bills Payable shows the creditor's Cr opening ----
   await page.goto(`${D.BASE}/company/${cid}/reports/payables`, { waitUntil: "networkidle" });

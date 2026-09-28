@@ -44,17 +44,21 @@ const ok = (name, cond, detail) => {
   ok("empty secrets rejected with retype message", true);
 
   // ---- 3) fill + save; masked read-back ----
-  // Field renders <label><span>TEXT</span><input/></label> — target by span text.
-  const setByLabel = async (labelText, value) => {
-    const field = page.locator(`label:has(span:text-is("${labelText}")) input`).first();
-    await field.fill(value);
+  // Re-anchored (R-77): stored-secret labels now carry the mask
+  // ("Client Secret (stored: ••••9999 — retype to change)"), so exact-text
+  // "Client Secret *" matched nothing and the save 400'd — every later step
+  // cascaded. Scope to the IRP card and anchor on the label PREFIX, which is
+  // stable across both the fresh ("*") and stored ("— retype to change") forms.
+  const irpCard = page.locator(".card", { hasText: "IRP / e-Way Bill Connectivity" }).first();
+  const setByLabel = async (labelRe, value) => {
+    await irpCard.locator("label", { hasText: labelRe }).locator("input").first().fill(value);
   };
-  await setByLabel("Client ID", "r28ui-client");
-  await setByLabel("GSTIN (for this credential set)", "27R28IRPUI3C4D5");
-  await setByLabel("Username", "r28ui-user");
-  await setByLabel("Client Secret *", "ui-secret-9999");
-  await setByLabel("Password *", "ui-pass-8888");
-  await setByLabel("Endpoint override (mock/test IRP; production requires it)", `${D.BASE.replace(/\/$/, "")}/mock-irp-unreachable`);
+  await setByLabel(/^Client ID/, "r28ui-client");
+  await setByLabel(/^GSTIN/, "27R28IRPUI3C4D5");
+  await setByLabel(/^Username/, "r28ui-user");
+  await setByLabel(/^Client Secret/, "ui-secret-9999");
+  await setByLabel(/^Password/, "ui-pass-8888");
+  await setByLabel(/^Endpoint override/, `${D.BASE.replace(/\/$/, "")}/mock-irp-unreachable`);
   await page.locator('button:has-text("Save IRP credentials")').click();
   await page.waitForSelector("text=/IRP credentials saved|Invalid IRP credentials/", { timeout: 8000 });
   ok("credentials saved via settings UI", true);

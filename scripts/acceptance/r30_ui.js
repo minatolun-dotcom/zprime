@@ -91,9 +91,14 @@ const ok = (name, cond, detail) => {
   // retype rule through the real form: all three secrets retyped, save
   // succeeds — asserted by the API read-back (the settings banner carries no
   // role=status, so the outcome is the honest assertion target).
-  await page.locator('input[type="password"]').nth(0).fill("ui-secret-9999");
-  await page.locator('input[type="password"]').nth(1).fill("ui-pass-8888");
-  await page.locator('input[type="password"]').nth(2).fill("ui-ewb-8888");
+  // Re-anchored (R-77): fill by label, never by index — the R-58 Add-user
+  // row adds a 4th password input EARLIER in the DOM, so nth(0/1/2) filled
+  // the wrong trio (the EWB password never arrived, the stored pair was kept
+  // and the read-back stayed stale). Regex anchors: "Password (stored" also
+  // substring-matches the EWB label, so ^ anchors to the IRP pair only.
+  await page.locator("label", { hasText: /^Client Secret/ }).locator("input").fill("ui-secret-9999");
+  await page.locator("label", { hasText: /^Password \(stored/ }).locator("input").fill("ui-pass-8888");
+  await page.locator("label", { hasText: /^EWB portal password/ }).locator("input").fill("ui-ewb-8888");
   await page.locator('button:has-text("Save IRP credentials")').click();
   await D.sleep(1200);
   const afterSave = ((await api("get", `/companies/${cid}/irp-credentials`)).j ?? []).find((c) => c.environment === "sandbox") ?? {};
