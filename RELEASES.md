@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.66.0
+
+- **Released:** 2026-09-28
+- **R-item:** R-77 — proactive follow-up to v1.65.0: "Check the P&L and Trial Balance tables for the same phantom-column class of header-vs-body mismatch" (the BS bug class fixed in v1.65.0)
+- **Commit:** `2b076d9170e20c4cbc4514102949122f4597d07a` (annotated tag `530fae68b2a703a05ce45449877e2fd7b36611c6`)
+- **Purpose:** audit every report table's thead-vs-body cell counts and fix what the audit caught. **(1) P&L Income (Cr) Total row** — with F12 compare ON it emitted **two** prev-year cells (5-cell row against uniform 4-cell rows) and its value cells were swapped (the Cr total under Dr, gross loss under Cr); now mirrors the card's row silhouette ([Total][Dr][Cr] + one prev cell). Condensed/detail rows were already uniform (DrCr/CrOnly append the compare cell internally). **(2) GSTR-1 B2B** — rows always emitted a 9th cell (the e-invoice/e-way action cell) the thead never declared; the thead now carries `E-invoice / E-way` (B2C was already clean — its header IS the E-way bill column). **(3) Trial Balance audited CLEAN** — 6 columns (7 with compare), the Totals row's `colSpan={4}` + Dr + Cr + prev is colSpan-honest; pinned, not changed. r76 extended with 16 new column-integrity checks (20 → **36**): P&L uniform row silhouette (condensed 3 / compare 4 / detailed × compare 4 / detailed 3), TB thead-vs-row equality in both modes (colSpan-aware), GSTR-1 B2B 9/9 + B2C 8/8. Everything else (Group Summary, Cash/Bank, registers, stock, outstanding, GST-3B/9, TDS/TCS, payroll, cheque, BRS, order book, COA) audited clean by the same probe.
+- **Verification:** typecheck server+client clean · build clean · full estate green on a fresh volume, every suite exactly once: run.js **153/153**, smoke **39/39**, final_regression **952/952**, attack_test **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r46_drill 42, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r34 20, r35 23, r20 12, r26 12, r27 15), **r76 extended 36/36**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lessons: a Totals row spanning columns carries FEWER td elements than columns — equality probes must count colSpan-weighted coverage, not td elements (the BS pins were right only because BS has no spanning row); a probe ledger finder must match on `dutyHead`, not the literal name `SGST` (the seeded ledgers are `Output SGST`/`Input SGST`); docker's zprime-test-pg can exit once (255) mid-estate — `docker start` recovers it cleanly, the Python batteries reset the schema themselves.
+- **Immutability:** v1.66.0 and all prior tags are immutable
+
+---
+
 ## v1.65.0
 
 - **Released:** 2026-09-27
