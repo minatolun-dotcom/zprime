@@ -79,15 +79,25 @@ html, body, #root {
 .dark .fkey-chip {
   @apply border-indigo-200/70 bg-indigo-50 text-indigo-300;
 }
-/* v1.68.2: deep-indigo accent TEXT (links, section titles, selected rows) is
-   unreadable on dark surfaces (Tailwind's indigo-600/700/800 ≈ 1.6–2.2:1 vs the
-   dark page). The indigo VARIABLES cannot be remapped — the same tokens paint
-   btn-primary and the header bar — so the TEXT utilities are overridden here,
-   scoped to .dark and mapped to the slate-900 variable, which @media print
-   resets to dark ink (the print faces self-heal, same mechanism as the ramp).
-   text-indigo-200/300 and the GoTo/Gateway !text-indigo-800 rows already sit
-   on accent surfaces that go dark (bg-indigo-50 → navy) and are lightened too. */
+/* v1.68.2 + v1.68.3: deep-indigo accent TEXT (links, section titles, selected
+   rows) is unreadable on dark surfaces (Tailwind's indigo-600/700/800 ≈ 1.6–2.2:1
+   vs the dark page). The indigo VARIABLES cannot be remapped — the same tokens
+   paint btn-primary and the header bar — so the TEXT utilities are overridden
+   here, scoped to .dark and mapped to the slate-900 variable. Print self-heals
+   through the VARIABLE mechanism alone: @media print resets --color-slate-900
+   to dark ink inside .dark, so these very rules print dark — no print selector
+   needed (v1.68.2's explicit print selectors were dead code; removed v1.68.3).
+   The keyboard-walk/selected rows (Go To palette, Gateway headings + panes) use
+   the IMPORTANT variant !text-indigo-800. Cascade subtlety: for !important
+   declarations LAYER ORDER INVERTS — an important declaration inside
+   @layer utilities beats an unlayered important one regardless of specificity,
+   so the !-variant override must live INSIDE the utilities layer (below), where
+   its higher specificity (.dark + class vs bare class) decides. All these sites
+   sit on surfaces that go dark (bg-indigo-50 → navy) — lightening is safe. */
 .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800 { color: var(--color-slate-900); }
+@layer utilities {
+  .dark .\!text-indigo-800 { color: var(--color-slate-900) !important; }
+}
 .dark .hover\:text-indigo-600:hover, .dark .hover\:text-indigo-800:hover { color: var(--color-slate-950); }
 .dark .focus\:text-indigo-700:focus { color: var(--color-slate-950); }
 .dark .text-indigo-100 { color: var(--color-slate-800); } /* the header-bar title span — near-white per the white-tone contract */
@@ -269,8 +279,9 @@ input:disabled { @apply bg-slate-100 text-slate-400 cursor-not-allowed; }
     --color-red-500: #ef4444; --color-red-600: #dc2626; --color-red-700: #b91c1c;
     --color-teal-100: #ccfbf1; --color-teal-700: #0f766e;
     --color-violet-100: #ede9fe; --color-violet-600: #7c3aed; --color-violet-700: #6d28d9;
-    /* v1.68.2: the .dark utility overrides must self-heal on paper too */
-    .dark .text-indigo-600, .dark .text-indigo-700, .dark .text-indigo-800 { color: var(--color-indigo-700); }
+    /* v1.68.3: the .dark accent-text overrides self-heal on paper through the
+       variable mechanism (--color-slate-900 resets to dark ink above) — no
+       selector needed here; keep this block variables-only. */
   }
   main {
     overflow: visible !important;

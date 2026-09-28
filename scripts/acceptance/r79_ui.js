@@ -135,6 +135,30 @@ const BASE = D.BASE.replace(/\/$/, "");
   await D.sleep(400);
   ok("Dark applies html.dark", (await htmlClasses()).includes("dark"), await htmlClasses());
 
+  // v1.68.3: the keyboard-walk highlight (Gateway headings/panes, Go To palette)
+  // paints !text-indigo-800 on bg-indigo-50 — the IMPORTANT variant escaped the
+  // plain-class override, so the operator's "arrowing through options turns the
+  // text blue" complaint lived exactly here. Pin: highlight text near-white.
+  const walkRow = async () => page.evaluate(() => {
+    const el = [...document.querySelectorAll('[class*="!text-indigo-800"]')].find((e) => e.offsetParent !== null);
+    return el ? { color: getComputedStyle(el).color, cls: el.className } : null;
+  });
+  await page.keyboard.press("ArrowDown");
+  await D.sleep(300);
+  const walk = await walkRow();
+  const walkL = await rgbToHsl(walk?.color ?? null);
+  ok("Gateway keyboard-walk row carries the highlight classes", !!walk && walk.cls.includes("!text-indigo-800") && walk.cls.includes("bg-indigo-50"), walk?.cls);
+  ok("Gateway keyboard-walk highlight text is WHITE/LIGHT", walkL !== null && walkL.l > 85, { color: walk?.color, hsl: walkL });
+  await page.keyboard.press("Alt+g");
+  await D.sleep(400);
+  await page.keyboard.press("ArrowDown");
+  await D.sleep(300);
+  const goToColor = await walkRow();
+  const goToL = await rgbToHsl(goToColor?.color ?? null);
+  ok("Go To palette keyboard highlight text is WHITE/LIGHT", goToL !== null && goToL.l > 85, { color: goToColor?.color, hsl: goToL });
+  await page.keyboard.press("Escape");
+  await D.sleep(200);
+
   // paint probes run on the Day Book — one page carrying body, cards, native
   // inputs AND a report table (the Gateway has none of the latter two).
   await page.goto(`${BASE}/company/${cid}/daybook`);
