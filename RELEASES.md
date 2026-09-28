@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.68.3
+
+- **Released:** 2026-09-28
+- **R-item:** R-82 — operator clarification of R-81: "one thing still left. when i say selected text i mean when moving through the options using keyboard the text turn blue shade, i want that to be a white/light shade"
+- **Commit:** `3f3866991d4d4489d790d0a3c656830aad886187` (annotated tag `902b9e17c8a1985f86f6a6cd61ee37ddec8651a2`)
+- **Purpose:** the operator's "selected text" meant the KEYBOARD-WALK highlight (Gateway headings/panes via R-78 arrows, the Go To palette) — those rows paint `bg-indigo-50` with the IMPORTANT variant `!text-indigo-800`, which escaped v1.68.2's plain-class override: the highlighted row's text stayed raw deep indigo (≈1.6:1 on the navy highlight — the blue shade the operator saw). **Cascade subtlety, suite-proven:** for `!important` declarations LAYER ORDER INVERTS — an important declaration inside `@layer utilities` beats an unlayered important one regardless of specificity, so the new `.dark .\!text-indigo-800` override lives INSIDE `@layer utilities`, where its higher specificity (`.dark` + class vs bare class) decides. En-route cleanup: v1.68.2's explicit print self-heal selectors were dead code (the override colors reference `var(--color-slate-900)`, which the `@media print` variable reset already turns dark ink; LightningCSS had also merged them into a dead `:is(.dark,.warm)` form) — removed, print block back to variables-only. r79 extended **31 → 34**: Gateway walk-row highlight-classes pin + white/light highlight-text pins on the Gateway walk AND the Go To palette.
+- **Verification:** typecheck client clean · build clean · full estate green on a fresh volume, every suite exactly once: run.js ALL CHECKS PASSED (153), smoke **39/39**, final_regression **952/952**, attack **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r03 12, r04 9, r05 12, r07 14, r10 10, r14 11, r18 11, r20 12, r21 13, r23 14, r24 16, r25 13, r26 12, r27 15, r28 15, r30 17, r31 15, r33 13, r34 20, r35 23, r36 25, r38 14, r43 12, r44 11, r46_drill 42, r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r76 58, r78 27), **r79 34/34**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lessons: `!important` beats layers only when it ALSO lives in the winning layer — for important declarations the layer comparison inverts (unlayered < utilities), so overrides of Tailwind `!`-variants must be declared inside `@layer utilities`; one r46_drill invocation died with the bare Node version banner mid-estate (second occurrence — known environment flake) and passed **42/42** on the isolated re-run.
+- **Immutability:** v1.68.3 and all prior tags are immutable
+
+---
+
 ## v1.68.2
 
 - **Released:** 2026-09-28
