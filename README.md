@@ -83,6 +83,8 @@ Vouchers accept with `Ctrl+A` — and since R-72 masters accept the same way: in
 | `F3` | Change company (company select) |
 | `+` / `-` | Next / previous report day (period length kept) |
 | `Alt+F1` | Detailed / condensed report view |
+| `↑` / `↓` | Gateway: move the selection (headings level; inside an open pane: its options) — Tally's menu walk |
+| `→` / `←` | Gateway: go INTO the selected option (open its pane or navigate) / back OUT to the menu level — Tally's level model |
 | `Esc` | Back the way you came; closes modals; the Gateway is the last stop |
 | (chip) | A few chips are click-only conveniences, not keyboard keys — e.g. the voucher screen's `F12` Ref/Party chip (F12 is browser-reserved in tab view). Everything listed in the table above fires from the physical keyboard. |
 | `Enter` | Drill down / add entry row · type-ahead ledger & item search |

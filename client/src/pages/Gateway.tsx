@@ -94,15 +94,34 @@ export default function Gateway() {
   }, [open]);
   const [hl, setHl] = useState<number | null>(null);
 
-  const stateRef = useRef({ open, entries, hl });
-  stateRef.current = { open, entries, hl };
+  // R-78: Tally's level model on the headings column itself — the heading
+  // highlight moves with Up/Down, Right/Enter drills IN (opens the pane, or
+  // navigates for direct targets like Day Book), Left backs OUT (closes the
+  // pane). Mouse hover mirrors the heading highlight so mouse and keyboard
+  // stay one surface. Initial selection follows a restored pane on back-nav.
+  const [hlHeading, setHlHeading] = useState<number | null>(() => {
+    const title = (window.history.state as any)?.usr?.gatewayPane ?? null;
+    const i = buildGatewayMenu("", []).findIndex((s) => s.title === title);
+    return i >= 0 ? i : null;
+  });
+  useEffect(() => {
+    if (!open) return;
+    setHlHeading((prev) => {
+      const i = entries.findIndex((s) => s.title === open);
+      return i >= 0 ? i : prev;
+    });
+  }, [open, entries]);
+
+  const stateRef = useRef({ open, entries, hl, hlHeading });
+  stateRef.current = { open, entries, hl, hlHeading };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      const { open, entries, hl } = stateRef.current;
+      const { open, entries, hl, hlHeading } = stateRef.current;
+      const openEntry = open ? entries.find((s) => s.title === open) ?? null : null;
 
       if (e.key === "Escape") {
         // Claim the key whenever a pane is open so Shell's history-back does
@@ -111,28 +130,82 @@ export default function Gateway() {
           e.preventDefault();
           setOpen(null);
           setHl(null);
+          setHlHeading(entries.findIndex((s) => s.title === open)); // R-78: the heading stays picked
         }
         return;
       }
+      // R-78: Tally's level model. With a pane open the arrows serve the pane
+      // items; without one they serve the headings column.
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        if (!open) return;
-        const items = entries.find((s) => s.title === open)?.items ?? [];
-        if (!items.length) return;
         e.preventDefault();
-        setHl((prev) => {
-          const n = items.length;
-          const cur = prev == null ? -1 : prev;
-          return e.key === "ArrowDown" ? (cur + 1) % n : (cur - 1 + n) % n;
-        });
+        if (open) {
+          const items = openEntry?.items ?? [];
+          if (!items.length) return;
+          setHl((prev) => {
+            const n = items.length;
+            const cur = prev == null ? -1 : prev;
+            return e.key === "ArrowDown" ? (cur + 1) % n : (cur - 1 + n) % n;
+          });
+        } else {
+          setHlHeading((prev) => {
+            const n = entries.length;
+            const cur = prev == null ? -1 : prev;
+            return e.key === "ArrowDown" ? (cur + 1) % n : (cur - 1 + n) % n;
+          });
+        }
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        // Tally's Right = go INTO the selected option. With the pane already
+        // open the items own the arrows — Right just pins the first item so
+        // Enter has a target (idempotent while a pane is open).
+        if (open) {
+          if ((openEntry?.items ?? []).length) {
+            e.preventDefault();
+            setHl((prev) => prev ?? 0);
+          }
+          return;
+        }
+        const sel = hlHeading != null ? entries[hlHeading] : null;
+        if (!sel) return;
+        e.preventDefault();
+        if (sel.to) nav(sel.to);
+        else {
+          setOpen(sel.title);
+          setHl(0);
+        }
         return;
       }
       if (e.key === "Enter") {
-        if (!open) return;
-        const items = entries.find((s) => s.title === open)?.items ?? [];
-        const it = hl != null ? items[hl] : null;
-        if (it) {
+        // Pane open: pick the highlighted item (the pre-R-78 contract).
+        // Headings: drill into the selected heading — same as Right.
+        if (open) {
+          const items = openEntry?.items ?? [];
+          const it = hl != null ? items[hl] : null;
+          if (it) {
+            e.preventDefault();
+            nav(it.to);
+          }
+          return;
+        }
+        const sel = hlHeading != null ? entries[hlHeading] : null;
+        if (!sel) return;
+        e.preventDefault();
+        if (sel.to) nav(sel.to);
+        else {
+          setOpen(sel.title);
+          setHl(0);
+        }
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        // Tally's Left = go BACK to the menu level (close the pane; the
+        // heading it belonged to stays picked).
+        if (open) {
           e.preventDefault();
-          nav(it.to);
+          setOpen(null);
+          setHl(null);
+          setHlHeading(entries.findIndex((s) => s.title === open));
         }
         return;
       }
@@ -147,7 +220,7 @@ export default function Gateway() {
       // letter still fires. A genuine multi-target letter drills into the
       // first matching heading with the item highlighted instead of guessing.
       if (open) {
-        const items = entries.find((s) => s.title === open)?.items ?? [];
+        const items = openEntry?.items ?? [];
         const idxs = items.map((it, i) => ({ it, i })).filter(({ it }) => it.letter === k).map(({ i }) => i);
         if (idxs.length === 1) {
           e.preventDefault();
@@ -174,6 +247,7 @@ export default function Gateway() {
         e.preventDefault();
         setOpen(sec.title);
         setHl(0);
+        setHlHeading(entries.indexOf(sec)); // R-78: keep the heading highlight honest
         return;
       }
       const hits = entries
@@ -187,6 +261,7 @@ export default function Gateway() {
         e.preventDefault();
         setOpen(hits[0].s.title);
         setHl(hits[0].s.items!.indexOf(hits[0].it));
+        setHlHeading(entries.indexOf(hits[0].s));
       }
     };
     window.addEventListener("keydown", handler, true);
@@ -279,16 +354,24 @@ export default function Gateway() {
 
         {/* ---- Level 1: general headings only (middle) ---- */}
         <div className="card p-2">
-          <div className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Gateway of zprime
+          <div className="px-2 pt-1 pb-2 flex items-baseline justify-between gap-2 flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Gateway of zprime</span>
+            {/* R-78: the arrow contract, advertised where it applies (headings
+                level only — once a pane is open its own hint line takes over). */}
+            {!open && (
+              <span className="text-[10px] font-normal normal-case tracking-normal text-slate-400">
+                ↑ ↓ move · → enter · ← back
+              </span>
+            )}
           </div>
-          {entries.map((s) =>
+          {entries.map((s, i) =>
             s.to ? (
               <Link
                 key={s.title}
                 to={s.to}
                 title={s.chord ? `${s.title} (${s.chord})` : undefined}
-                className="fkey-item !min-h-[2.5rem]"
+                onMouseEnter={() => setHlHeading(i)}
+                className={`fkey-item !min-h-[2.5rem] ${hlHeading === i ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
               >
                 {/* R-64: chord vs letter chip variants via the one Kbd component. */}
                 <Kbd wide={!!s.chord}>{s.chord ?? s.letter}</Kbd>
@@ -301,7 +384,8 @@ export default function Gateway() {
                   setOpen(open === s.title ? null : s.title);
                   setHl(0);
                 }}
-                className={`fkey-item !min-h-[2.5rem] ${open === s.title ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
+                onMouseEnter={() => setHlHeading(i)}
+                className={`fkey-item !min-h-[2.5rem] ${open === s.title || hlHeading === i ? "bg-indigo-50 !text-indigo-800 ring-1 ring-indigo-200" : ""}`}
               >
                 <Kbd>{s.letter}</Kbd>
                 <span className="flex-1 text-left font-medium">{s.title}</span>
@@ -319,7 +403,7 @@ export default function Gateway() {
                   {openEntry.title}
                 </span>
                 <span className="text-xs text-slate-400">
-                  letter = open · arrows = move · Enter = select · Esc = close
+                  ↑ ↓ move · Enter select · ← back · Esc close · letter = open
                 </span>
               </div>
               <ul>
@@ -354,8 +438,9 @@ export default function Gateway() {
           ) : (
             <div className="h-full min-h-[260px] grid place-items-center text-center p-8 text-sm text-slate-400 leading-relaxed">
               <div>
-                Select a menu — or press its letter (<b>V</b> · <b>K</b> · <b>C</b> · <b>A</b> ·{" "}
-                <b>R</b> · <b>U</b>).
+                Select a menu — ↑ ↓ to move, → or Enter to open, or press its
+                letter (<b>V</b> · <b>K</b> · <b>C</b> · <b>A</b> · <b>R</b> ·{" "}
+                <b>U</b>).
                 <br />
                 <b>K</b> opens the Day Book from anywhere.
               </div>
