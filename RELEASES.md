@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.68.2
+
+- **Released:** 2026-09-28
+- **R-item:** R-81 — operator feedback on v1.68.1: "text in night/dark mode is hardly visible. make the text light/white tone for selected text(maybe just make them bold with white tone) and the headers text also white tone."
+- **Commit:** `588f95be1c5f732412541fd83a7a53c528dae02a` (annotated tag `a2a1deabf6e53f0d4ff82698cbc8cd346d678ec0`)
+- **Purpose:** the operator's visibility intent pressed further — the v1.68.1 bright-band-with-dark-ink selection still read as hard to see, and header/accent text had to go white-tone too. **(1) Selection:** dark `::selection` flips to the native dark-selection convention — WHITE text on a DEEP indigo band `#4338ca` (7.9:1 against its white text; the v1.68.1 bright band would have dropped white text to ~2:1); `font-weight` is not an author-selectable `::selection` property (spec limits authors to color/background/text-shadow), so "bold" is not appliable — the white/accent pair IS the emphasis; `-moz-` alias synced. **(2) Headers/accent text:** the deep-indigo accent TEXT utilities (`text-indigo-600/700/800` + `hover:`/`focus:` variants — links, section titles, table emphasis rows, GoTo/Gateway selected rows, header-bar title `text-indigo-100`) are overridden scoped to `.dark` onto the slate-900 variable — near-white on dark (Tailwind's deep indigo sat at ≈1.6–2.2:1 on the dark surfaces; the indigo VARIABLES cannot move — `btn-primary` and the header bar paint with them); indigo-200/300 header-bar accent tokens lightened (`#8fa8f5`/`#a5b8f8`); `@media print` self-heals the overrides to dark ink through the same variable mechanism as the ramp; the active theme chip is pinned to literal indigo `#312e81` (arbitrary value) so the white-pill exception survives the override. r79 extended **28 → 31**.
+- **Verification:** typecheck client clean · build clean · full estate green on a fresh volume, every suite exactly once: run.js ALL CHECKS PASSED (153), smoke **39/39**, final_regression **952/952**, attack **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r03 12, r04 9, r05 12, r07 14, r10 10, r14 11, r18 11, r20 12, r21 13, r23 14, r24 16, r25 13, r26 12, r27 15, r28 15, r30 17, r31 15, r33 13, r34 20, r35 23, r36 25, r38 14, r43 12, r44 11, r46_drill 42, r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r76 58, r78 27), **r79 31/31**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lessons: HSL lightness misjudges vivid mid-tones (`#4338ca` has HSL-L 51 yet reads deep — selection-band assertions must pin WCAG contrast, which is 7.9:1 here); a `className` substring match false-matches `hover:text-indigo-600` (the breadcrumb link, base slate-500) — anchor with exact `classList` tokens; one r46_drill invocation died with a bare Node version banner mid-estate and passed **42/42** on the isolated re-run — environment flake, suite untouched.
+- **Immutability:** v1.68.2 and all prior tags are immutable
+
+---
+
 ## v1.68.1
 
 - **Released:** 2026-09-28
