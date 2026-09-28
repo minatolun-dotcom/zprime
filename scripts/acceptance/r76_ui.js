@@ -13,6 +13,18 @@
 //     Income Total row previously emitted TWO prev cells and swapped Dr/Cr
 //     values); GSTR-1 B2B header carries the e-invoice/e-way action column
 //     the rows always emitted (9, previously 8).
+//  A3) R-77 STANDING SWEEP: the same invariants walked across EVERY report
+//     table on ALL 21 report routes, so any future thead/body drift on any
+//     report fails here and not in production:
+//     (a) a table WITH a thead — every body row's column coverage (colSpan,
+//         with rowSpan occupancy tracked per column, the honest HTML grid
+//         model) must equal the thead's column count;
+//     (b) a header-less table (the P&L's Tally-style statement cards and
+//         GSTR-3B's summary tables) — every body row must carry the same
+//         cell count (uniform silhouette).
+//     Each route also declares a minimum report-table count (the fixture
+//     guarantees structure everywhere except payables, which is legitimately
+//     empty), so a table disappearing entirely fails the sweep too.
 //  B) Back-navigation: Gateway → Reports pane → Balance Sheet; browser Back
 //     reopens the Gateway WITH the Reports pane restored; the new Reports
 //     menu page (/company/:cid/reports) is the in-between surface — reachable
@@ -254,6 +266,100 @@ const stamp = Date.now().toString(36);
   const b2c = await cardStats("B2C (unregistered consumers)");
   ok("GSTR-1 B2C: header carries its E-way bill column (8 columns, already clean)", b2c.ths === 8, b2c.ths);
   ok("GSTR-1 B2C: every row's cell count matches the header", b2c.rows > 0 && b2c.allMatch, { sample: b2c.sample });
+
+  // ---- A3) R-77 standing sweep: EVERY report table, ALL 21 report routes ---
+  const SWEEP = [
+    { key: "balance-sheet", wait: "text=Liabilities", min: 2 },
+    { key: "chart-of-accounts", wait: '[data-testid="coa-tree"]', min: 1 },
+    { key: "profit-loss", wait: "text=Expenses (Dr)", min: 4 },
+    { key: "trial-balance", wait: "table.report-table", min: 1 },
+    { key: "group-summary", wait: "table.report-table", min: 1, select: { label: "Sales Accounts" } },
+    { key: "cash-bank", wait: "text=Period Dr", min: 1 },
+    { key: "register-sales", wait: "table.report-table", min: 1 },
+    { key: "register-purchase", wait: "table.report-table", min: 1 },
+    { key: "stock-summary", wait: "text=Total Stock Value", min: 1 },
+    { key: "receivables", wait: "table.report-table", min: 1 },
+    { key: "payables", wait: '[data-testid="report-actions"]', min: 0 }, // no creditors in this fixture — legitimately table-less (empty state renders no table)
+    { key: "gstr1", wait: "text=B2B Invoices", min: 3 },
+    { key: "gstr3b", wait: "table.report-table", min: 3 },
+    { key: "gstr9", wait: "text=Table 4", min: 6 },
+    { key: "tds", wait: "table.report-table", min: 3 },
+    { key: "tcs", wait: "table.report-table", min: 3 },
+    { key: "salary-register", wait: "table.report-table", min: 1 },
+    { key: "cheque-register", wait: "table.report-table", min: 1 },
+    { key: "bank-reconciliation", wait: "table.report-table", min: 1 }, // server defaults to the first bank/cash ledger (Cash)
+    { key: "order-book", wait: "table.report-table", min: 1 },
+    { key: "ledger-vouchers", wait: "table.report-table", min: 1, select: { label: "Cash" } },
+  ];
+  const sweepTable = async (tb) => {
+    const ths = await tb.locator("thead th").count();
+    const rows = tb.locator("tbody tr");
+    const rc = await rows.count();
+    if (ths > 0) {
+      // (a) grid equality: colSpan coverage per row, with rowSpan occupancy
+      // tracked per column — a row under a rowSpan legitimately covers fewer
+      // columns (Order Book's per-line rows).
+      const occupied = new Map(); // rowIndex -> Set(columnIndex occupied from above)
+      for (let r = 0; r < rc; r++) {
+        const cells = rows.nth(r).locator("td");
+        const cc = await cells.count();
+        const occ = occupied.get(r) ?? new Set();
+        let col = 0, covered = 0;
+        for (let c = 0; c < cc; c++) {
+          while (occ.has(col)) col++;
+          const cs = Number(await cells.nth(c).getAttribute("colspan")) || 1;
+          const rs = Number(await cells.nth(c).getAttribute("rowspan")) || 1;
+          covered += cs;
+          for (let rr = r + 1; rr < r + rs; rr++) {
+            const s = occupied.get(rr) ?? new Set();
+            for (let k = col; k < col + cs; k++) s.add(k);
+            occupied.set(rr, s);
+          }
+          col += cs;
+        }
+        if (covered !== ths - occ.size)
+          return { ok: false, why: "grid", ths, row: r, covered, expected: ths - occ.size, rows: rc };
+      }
+    } else if (rc > 0) {
+      // (b) header-less table: uniform row silhouette (P&L statement cards)
+      const first = await rows.nth(0).locator("td").count();
+      for (let r = 1; r < rc; r++) {
+        const cc = await rows.nth(r).locator("td").count();
+        if (cc !== first) return { ok: false, why: "uniform", row: r, cc, first, rows: rc };
+      }
+    }
+    return { ok: true, ths, rows: rc };
+  };
+  let sweepOk = 0, sweepFail = 0;
+  for (const route of SWEEP) {
+    await page.goto(`${BASE}/company/${cid}/reports/${route.key}`);
+    if (route.select) {
+      // picker-gated views (group-summary, ledger-vouchers) have NO data URL
+      // until a pick is made — wait for the toolbar select first.
+      await page.waitForSelector("select", { timeout: 15000 });
+      await page.locator("select").selectOption({ label: route.select.label });
+      await page.waitForSelector("table.report-table", { timeout: 15000 });
+    } else {
+      await page.waitForSelector(route.wait, { timeout: 15000 });
+    }
+    await D.sleep(350);
+    const tables = page.locator("table.report-table");
+    const n = await tables.count();
+    if (n < route.min) {
+      sweepFail++;
+      ok(`sweep ${route.key}: table presence`, false, { tables: n, min: route.min });
+      continue;
+    }
+    const bad = [];
+    for (let i = 0; i < n; i++) {
+      const res = await sweepTable(tables.nth(i));
+      if (!res.ok) bad.push({ table: i, ...res });
+    }
+    if (bad.length === 0) { sweepOk++; ok(`sweep ${route.key}: ${n} table(s) grid-consistent`, true, null); }
+    else { sweepFail++; ok(`sweep ${route.key}: ${n} table(s) grid-consistent`, false, bad); }
+  }
+  ok("standing sweep covered all 21 report routes", sweepOk + sweepFail === SWEEP.length && sweepFail === 0,
+     { ok: sweepOk, fail: sweepFail, routes: SWEEP.length });
 
   // ---- B) Back-navigation ------------------------------------------------------
   // Gateway → Reports pane → Balance Sheet (the operator's exact path)
