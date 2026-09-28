@@ -89,6 +89,14 @@ const BASE = D.BASE.replace(/\/$/, "");
     return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
   }, rgb);
   const lightness = async (sel) => rgbToHsl(await bgOf(sel));
+  // v1.68.1: author ::selection colors — the browser default is translucent
+  // blue with a light-blue text tint (blue-on-blue on the dark page); every
+  // theme must pin a light bg + dark-ink pair (Chromium exposes author
+  // ::selection via getComputedStyle's pseudo-arg).
+  const selectionColors = () => page.evaluate(() => {
+    const cs = getComputedStyle(document.body, "::selection");
+    return { bg: cs.backgroundColor, color: cs.color };
+  });
 
   const gotoGateway = async () => {
     await page.goto(`${BASE}/company/${cid}`);
@@ -133,6 +141,14 @@ const BASE = D.BASE.replace(/\/$/, "");
   const textL = await rgbToHsl(textColor);
   ok("dark body text is light (readable)", textL !== null && textL.l > 70, textColor);
 
+  // explicit selection: light highlight + dark ink, well clear of the page
+  const darkSel = await selectionColors();
+  const darkSelBg = await rgbToHsl(darkSel.bg);
+  const darkSelText = await rgbToHsl(darkSel.color);
+  ok("dark selection highlight is LIGHT (visible against the dark page)", darkSelBg !== null && darkSelBg.l > 60, { sel: darkSel, hsl: darkSelBg });
+  ok("dark selection text is dark ink (readable inside the highlight)", darkSelText !== null && darkSelText.l < 35, darkSelText);
+  ok("dark selection beats the page — no blue-on-blue", darkSelBg && bodyL && darkSelBg.l - bodyL.l > 25, { selBg: darkSelBg, body: bodyL });
+
   // header bar stays accent-tinted with WHITE text (the white-text contract)
   const headerColor = await page.evaluate(() => getComputedStyle(document.querySelector("header .bg-indigo-700")).color);
   ok("header bar keeps white text in dark mode", /rgb\(255,\s*255,\s*255\)/.test(headerColor), headerColor);
@@ -147,6 +163,12 @@ const BASE = D.BASE.replace(/\/$/, "");
   ok("warm body carries a warm hue (orange/yellow family, s > 15%)",
      warmBody !== null && warmBody.h >= 20 && warmBody.h <= 70 && warmBody.s >= 15, warmBody);
   ok("warm cards stay near-white paper", warmCard !== null && warmCard.l > 85, warmCard);
+  const warmSel = await selectionColors();
+  const warmSelBg = await rgbToHsl(warmSel.bg);
+  const warmSelText = await rgbToHsl(warmSel.color);
+  ok("warm selection is ochre with dark ink (theme-consistent)",
+     warmSelBg !== null && warmSelText !== null && warmSelBg.h >= 25 && warmSelBg.h <= 60 &&
+     warmSelBg.s >= 15 && warmSelText.l < 35, { bg: warmSelBg, text: warmSelText });
 
   // ---- 4) back to Light: stock palette returns ---------------------------
   await themeToggle().locator('button[title^="Light theme"]').click();
@@ -154,6 +176,12 @@ const BASE = D.BASE.replace(/\/$/, "");
   ok("Light restores the stock palette (no class)", (await htmlClasses()) === "", await htmlClasses());
   const stockBody = await lightness("body");
   ok("stock body is the cool slate light grey", stockBody !== null && stockBody.l > 85, stockBody);
+  const lightSel = await selectionColors();
+  const lightSelBg = await rgbToHsl(lightSel.bg);
+  const lightSelText = await rgbToHsl(lightSel.color);
+  ok("light selection is soft indigo with dark ink",
+     lightSelBg !== null && lightSelText !== null && lightSelBg.l > 80 &&
+     lightSelBg.h >= 200 && lightSelBg.h <= 260 && lightSelText.l < 40, { bg: lightSelBg, text: lightSelText });
 
   // ---- 5) persistence across a full reload -------------------------------
   await themeToggle().locator('button[title^="Dark theme"]').click();

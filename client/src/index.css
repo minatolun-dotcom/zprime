@@ -79,6 +79,31 @@ html, body, #root {
   @apply border-indigo-200/70 bg-indigo-50 text-indigo-300;
 }
 
+/* ---- Text selection (v1.68.1) --------------------------------------
+   The browser's default selection palette is translucent blue with a
+   light-blue text tint — on the dark page that is blue-on-blue. The rules
+   use LITERAL colors, not palette tokens: inside .dark the indigo/slate
+   variables are INVERTED, so e.g. bg-indigo-200 would resolve to the dark
+   navy tint and recreate the bug. Contract: light selection bg + dark text
+   (high contrast against both the dark page and the text inside the
+   highlight); warm ochre in Reading; soft indigo in light. Chromium applies
+   author ::selection colors; Firefox needs the -moz- alias. */
+::selection {
+  background: #c7d2fe; /* indigo-200, light */
+  color: #1e1b4b;      /* indigo-950 ink */
+}
+.dark ::selection {
+  background: #a5b4fc; /* indigo-300 — bright on the dark page */
+  color: #0f172a;      /* slate-900 ink */
+}
+.warm ::selection {
+  background: #d9c58a; /* warm ochre paper */
+  color: #2b2517;      /* warm ink (slate-900 of the warm ramp) */
+}
+::-moz-selection { background: #c7d2fe; color: #1e1b4b; }
+.dark ::-moz-selection { background: #a5b4fc; color: #0f172a; }
+.warm ::-moz-selection { background: #d9c58a; color: #2b2517; }
+
 .warm {
   color-scheme: light;
   /* reading mode: warm paper ramp — sepia surfaces, ink-brown text */
