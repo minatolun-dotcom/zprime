@@ -1,11 +1,12 @@
 # ROADMAP.md — Where zprime Is Going
 
-The permanent development roadmap. Current at v1.67.0 (R-78 Gateway arrow navigation released).
+The permanent development roadmap. Current at v1.68.0 (R-79 Light/Dark/Reading themes released).
 
 ## Released history (immutable — see RELEASES.md for the full ledger)
 
 | Release | R-item | Purpose |
 |---|---|---|
+| v1.68.0 | **R-79** | Dedicated Light / Dark / Reading theme toggle in the top bar (operator request for "a full switch dark mode, not just a dark background"): one `.dark` class on `<html>` remaps Tailwind v4 palette variables — inverted blue-grey ramp with cards LIGHTER than the page, dark surfaces + on-dark text across all families in use, `color-scheme: dark` native controls, scoped chip/focus overrides; Reading = warm sepia paper + ochre accent; white-as-surface moved to remappable bg-slate-50 (12 sites), print faces stay literal white and @media print hard-resets the palette (paper always black-on-white); localStorage theme applied pre-hydration (no flash) | r79 23/23 new (paint-level, rgb+oklch-aware; caught the first ramp's inverted elevation); full estate green fresh volume (run 153, final 952, smoke 39) | theming/UX | client-only (index.css theme blocks, theme.ts new, index.html pre-hydration, Shell toggle, TypeAhead/MasterPage surface tokens) + r79_ui.js; zero server change |
 | v1.67.0 | **R-78** | Tally level-model arrow navigation across the whole Gateway (operator request): Up/Down move a wrapping highlight on the headings column (mouse hover mirrors it), Right/Enter drill INTO the selected option (open its pane, or navigate directly for Day Book/Company Settings), Left backs OUT of a pane with the heading still picked (Esc same); pane arrows, letter nav, chips, R-75 restore unchanged; contract advertised on both levels | r78 27/27 new; full estate green fresh volume (run 153, final 952, smoke 39) | keyboard/Tally-parity | client-only (Gateway.tsx) + r78_ui.js; zero server change |
 | v1.66.0 | **R-77** | Proactive audit of every report table for the R-75 phantom-column class (thead vs body cell counts): P&L Income (Cr) Total row emitted TWO prev cells with F12 compare on and swapped its value cells (Cr total under Dr, gross loss under Cr) — now mirrors the card's row silhouette; GSTR-1 B2B rows' 9th e-invoice/e-way action cell finally has a header (B2C was already clean); Trial Balance audited CLEAN and pinned (colSpan-honest); every other report view clean by the same probe | r76 extended 20 → 36; full estate green fresh volume (run 153, final 952, smoke 39) | reports/UX | client-only (Reports.tsx + r76_ui.js); zero server change |
 |---|---|---|
