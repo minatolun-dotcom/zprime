@@ -32,6 +32,7 @@ migrates cleanly instead of staying dead).
 - All accounting vouchers: Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9), Credit Note (Alt+F6), Debit Note (Alt+F5), Sale Order, Purchase Order
 - Double-entry validation, automatic voucher numbering with prefix/suffix
 - **Tally-style invoice details** — a collapsible "Party / Dispatch / Order details" section on Sales/Purchase/Credit/Debit Notes captures the descriptive invoice face per voucher: buyer-address override, consignee ship-to, dispatch (doc no, through, destination, carrier LR-RR, vehicle no, ports, marks/container no, packages), buyer order no/date and payment/delivery terms; everything prints on the invoice face when captured, nothing changes when not
+- **F12 voucher configuration + Ctrl+H mode switch (Tally)** — per-company voucher settings: entry mode (classic Dr/Cr "As Voucher" or Tally's "As Invoice" To/By presentation — bookings identical), display toggles for the party balance, bills list and invoice-details section, negative-cash and long-number warnings
 - **During-entry context (Tally parity)** — the Against Bill column offers the party's OPEN bills as a picker (allocations land on real bills), Party A/c shows the live balance as of the voucher date, and a negative-cash warning advises (never blocks) when a voucher would overdraw Cash
 - Narration, cheque numbers, bill references (New Ref / Against Ref / Advance / On Account)
 - **Light / Dark / Reading themes** — a dedicated toggle in the top bar: a proper dark mode (every surface, input and table re-themes, native controls included; accent text and links read near-white, selected text is white on a deep indigo band, and keyboard-highlighted options stay white/light) and a warm sepia **Reading** light; persisted per browser, and prints stay black-on-white under any theme
@@ -80,6 +81,8 @@ Vouchers accept with `Ctrl+A` — and since R-72 masters accept the same way: in
 | `Ctrl+L` | Save the half-entered voucher as an **Optional** draft (Tally's optional class) — excluded from all reports, no serial number consumed; Accept from the Day Book to post |
 | `Alt+2` | Duplicate the open voucher into a new one (Tally) — body copied, number re-peeks |
 | `Ctrl+S` | Save the open master (Create/Alter slide-over) — an alias of Ctrl+A there; claimed so the browser's Save dialog never interrupts master editing |
+| `Ctrl+H` | **Change Mode** on the open voucher (Tally) — flips As Voucher (Dr/Cr columns) ↔ As Invoice (To/By + single Amount); bookings are identical in both modes |
+| `F12` | **Configure** the voucher screen (Tally) — entry mode, party-balance / bills-list / invoice-details display, warnings; per company (in app-window mode; browser DevTools owns F12 in a plain tab — `Ctrl+H` covers mode switching everywhere) |
 | `Alt+G` | **Go To** — type-to-filter jump to any report, master, voucher or utility |
 | `Alt+S` | Company Settings (Tally's Stock-Query chord, unused here) — from any screen |
 | `Alt+O` | Chart of Accounts explorer — every group & ledger, one tree |

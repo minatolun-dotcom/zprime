@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.70.0
+
+- **Released:** 2026-09-29
+- **R-item:** R-83 Option B — in-entry F12 Configure surface + Ctrl+H mode switch, implementing findings F-83-5 + F-83-3 approved by the operator from `R-83_INVESTIGATION.md` (completing the muscle-memory tail of the Tally parity program)
+- **Commit:** `e04cb88`
+- **Purpose:** **(1) F12 Configure (Tally's slot)** — a modal on every voucher screen exposing Entry mode (As Voucher Dr/Cr | As Invoice To/By), the Option A context toggles (party balance, bills list, invoice-details expansion), the warnings (negative cash; voucher number > 16 chars — Tally's own F12 warning), and reset-to-defaults; persisted PER COMPANY in `localStorage` (`zprime_voucher_cfg_<cid>` via the new `client/src/lib/voucherCfg.ts` — Tally scopes F12 per company too); defaults restore today's behaviour byte-identically. F12 is browser-reserved in plain-tab view (README's documented posture, same class as F1/F11) — **Ctrl+H is the working chord everywhere**, and the F12 chip works in app-window mode; the old F12 Ref/Party click chip retired. **(2) Ctrl+H Change Mode (Tally's chord)** — flips As Voucher ↔ As Invoice live; As Invoice renders ONE Amount column with a To/By select per row while the row's signed amount still books (To = Dr, By = Cr) — postings byte-identical in both modes, proven by an invoice-mode SAVE whose posted rows are asserted equal. Suite-proven en-route defect: selecting By on a fresh zero row stored `-0` and `-0 < 0` is FALSE — the typed amount would have booked Dr despite By; sign detection now treats negative zero as Cr (`Object.is`). **(3)** >16-char voucher-number warning as an amber advisory. Zero server/schema/accounting change.
+- **Verification:** typecheck client clean · build clean (457.79 kB / 128.50 kB gzip) · r83 extended **21 → 36** (rail advertisement; default-mode Dr/Cr pins; F12 modal open/Esc-close; Ctrl+H flip both ways — th counts scoped to the LEDGER table, the inventory grid also has an Amount th; per-company persistence across reloads; invoice-mode SAVE byte-identical on posted rows; toggles OFF hide the bills picker + balance line; reset restores; long-number warning on/off) · full estate green fresh volume, every suite exactly once: run.js ALL CHECKS PASSED (153), smoke **39/39**, final_regression **970/970**, attack **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r03 12, r04 9, r05 12, r07 14, r10 10, r14 11, r18 11, r20 12, r21 13, r23 14, r24 16, r25 13, r26 12, r27 15, r28 15, r30 17, r31 15, r33 13, r34 20, r35 23, r36 25, r38 14, r43 12, r44 11, r46_drill 42, r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r76 58, r78 27, r79 34), **r83 36/36**, personas: beginner **23/23**, pro **26/26**, hacker **25/25** · `git diff --check` clean. Suite lesson: `-Math.abs(0)` is `-0` and `-0 < 0` is false — UI sign picks must be negative-zero-safe (`Object.is`) or a zero-default row flips booking side; table-shape assertions must scope to the specific table when two tables share column names.
+- **Immutability:** v1.70.0 and all prior tags are immutable
+
+---
+
 ## v1.69.0
 
 - **Released:** 2026-09-29
