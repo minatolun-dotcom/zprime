@@ -18,6 +18,12 @@
 //     row on Sales with the live Dr outstanding.
 //  E) Negative cash warning (F-83-6): over-payment fires the advisory strip
 //     AND the save still succeeds; the API response carries warnings[].
+//  F) Option B — F12 Configure (F-83-5) + Ctrl+H mode switch (F-83-3):
+//     F12 chip/modal, Ctrl+H flips As Voucher <-> As Invoice (To/By + single
+//     Amount column, bookings BYTE-IDENTICAL — proven by saving in invoice
+//     mode and reading the posted rows), mode persists per company in
+//     localStorage, the toggles gate the Option A surfaces (bills picker,
+//     party balance), reset-to-defaults restores, >16-char number warns.
 // Prereqs: compose stack at localhost:3000 (admin/admin123).
 const D = require("./driver.js");
 
@@ -232,6 +238,113 @@ const BASE = D.BASE.replace(/\/$/, "");
   const j2 = await res2.json();
   ok("API save with negative cash returns warnings[] including the advisory",
      res2.ok() && Array.isArray(j2.warnings) && j2.warnings.some((w) => w.includes("Negative cash")), j2.warnings);
+
+  // ---------------- F) Option B: F12 Configure + Ctrl+H mode -----------------
+  console.log("-- F) F12 configure surface + Ctrl+H mode switch --");
+  // Rail advertises both chords
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Sales"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  const railText = await page.locator("body").innerText();
+  ok("rail advertises Ctrl+H (As Voucher) and F12 Configure",
+     railText.includes("Mode: As Voucher") && railText.includes("Configure"), railText.slice(0, 60));
+  // Default grid: Dr/Cr pair, no To/By selects
+  ok("default mode is As Voucher (Debit + Credit columns)",
+     (await page.locator('th:has-text("Debit")').count()) === 1 &&
+     (await page.locator('th:has-text("Credit")').count()) === 1);
+
+  // F12 opens the Configure modal (physical key press through the page)
+  await page.keyboard.press("F12");
+  await page.waitForSelector('[data-testid="voucher-configure-modal"]');
+  ok("F12 opens the Configure modal", true);
+  ok("modal exposes mode radios + toggles",
+     (await page.locator('[data-testid="cfg-mode-voucher"]').count()) === 1 &&
+     (await page.locator('[data-testid="cfg-bills-list"]').count()) === 1);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  ok("Esc closes the modal", !(await page.locator('[data-testid="voucher-configure-modal"]').isVisible().catch(() => false)));
+
+  // Ctrl+H flips to As Invoice; fill a sale through To/By; postings identical
+  await page.keyboard.press("Control+h");
+  await page.waitForTimeout(250);
+  // th counts scoped to the LEDGER table (the inventory grid also has an Amount th)
+  const lthead = page.locator("table").filter({ hasText: "Against Bill" }).last();
+  ok("Ctrl+H flips to As Invoice (Amount column + To/By selects)",
+     (await lthead.locator("th").filter({ hasText: "Debit" }).count()) === 0 &&
+     (await lthead.locator("th").filter({ hasText: "Amount" }).count()) === 1 &&
+     (await page.locator('select[aria-label="To (Dr) or By (Cr)"]').count()) >= 1);
+  const railText2 = await page.locator("body").innerText();
+  ok("rail chip now reads Mode: As Invoice", railText2.includes("Mode: As Invoice"), railText2.slice(0, 60));
+  // Persist: reload a fresh form — still invoice mode
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Sales"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  ok("mode persists per company across reloads (localStorage)",
+     (await page.locator("table").filter({ hasText: "Against Bill" }).last().locator("th").filter({ hasText: "Debit" }).count()) === 0);
+  // Fill + save in invoice mode: party To 5000, sales By 5000
+  const partyFieldF = page.locator('xpath=//span[text()="Party A/c"]/following::input[1]');
+  await ahead(partyFieldF, `R83 Buyer ${stamp}`);
+  const ltableF = page.locator("table").filter({ hasText: "Ledger" }).last();
+  await page.click('button:has-text("+ Add Ledger")');
+  const frow1 = ltableF.locator("tbody tr").nth(1);
+  await ahead(frow1.locator("input").first(), "R83 Local Sales");
+  // rows: 0 = party (To/Dr), 1 = sales -> flip its select to Cr (By)
+  await frow1.locator('select[aria-label="To (Dr) or By (Cr)"]').selectOption("Cr");
+  await frow1.locator('input[type="number"]').fill("5000");
+  await ltableF.locator("tbody tr").nth(0).locator('input[type="number"]').fill("5000");
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 12000 });
+  const invSaleList = await get(`/api/c/${cid}/vouchers`);
+  const invSaleId = Math.max(...invSaleList.map((v) => v.id));
+  const invSale = await get(`/api/c/${cid}/vouchers/${invSaleId}`);
+  const pRow = (invSale.entries ?? []).find((e) => e.ledgerId === buyer.id);
+  const sRow = (invSale.entries ?? []).find((e) => e.ledgerId === salesL.id);
+  ok("invoice-mode save books BYTE-IDENTICAL rows (party +5000 Dr, sales -5000 Cr)",
+     invSale.type?.name === "Sales" && pRow && sRow && Math.abs(pRow.amount - 5000) < 0.01 && Math.abs(sRow.amount + 5000) < 0.01,
+     invSale.entries?.map((e) => [e.ledgerName, e.amount]));
+
+  // Ctrl+H back to As Voucher; the classic columns return
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Sales"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  await page.keyboard.press("Control+h");
+  await page.waitForTimeout(250);
+  const lthead2 = page.locator("table").filter({ hasText: "Against Bill" }).last();
+  ok("Ctrl+H flips back (Debit + Credit columns restored)",
+     (await lthead2.locator("th").filter({ hasText: "Debit" }).count()) === 1 &&
+     (await lthead2.locator("th").filter({ hasText: "Credit" }).count()) === 1);
+
+  // Toggles gate the Option A surfaces: bills picker OFF -> gone; ON -> back
+  await ahead(page.locator('xpath=//span[text()="Party A/c"]/following::input[1]'), `R83 Buyer ${stamp}`);
+  await page.waitForTimeout(600); // bill queries settle
+  const pickerSel = `[data-testid="bills-picker-${buyer.id}"]`;
+  ok("bills picker visible with default config", (await page.locator(pickerSel).count()) >= 1);
+  await page.keyboard.press("F12");
+  await page.waitForSelector('[data-testid="voucher-configure-modal"]');
+  await page.locator('[data-testid="cfg-bills-list"]').uncheck();
+  await page.locator('[data-testid="cfg-party-balance"]').uncheck();
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  ok("toggles OFF hide the bills picker AND the party-balance line",
+     (await page.locator(pickerSel).count()) === 0 &&
+     !(await page.locator('[data-testid="party-balance-inline"]').isVisible().catch(() => false)));
+  await page.keyboard.press("F12");
+  await page.waitForSelector('[data-testid="voucher-configure-modal"]');
+  await page.locator("[data-testid='cfg-reset']").click();
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  ok("reset to defaults restores both surfaces",
+     (await page.locator(pickerSel).count()) >= 1 &&
+     (await page.locator('[data-testid="party-balance-inline"]').isVisible().catch(() => false)));
+
+  // >16-char voucher number warning (F12 config, Tally parity)
+  await page.locator('[data-testid="v-number"]').fill("INVC-2026-0000123456789");
+  await page.waitForSelector('[data-testid="long-number-warning"]');
+  ok("long voucher number fires the >16-char warning",
+     (await page.locator('[data-testid="long-number-warning"]').textContent()).includes("23"));
+  await page.locator('[data-testid="v-number"]').fill("");
+  await page.waitForTimeout(300);
+  ok("warning clears when the number shortens",
+     !(await page.locator('[data-testid="long-number-warning"]').isVisible().catch(() => false)));
+  await page.keyboard.press("Escape");
+  await page.waitForURL("**/daybook", { timeout: 10000 }).catch(() => {});
 
   ok("zero page errors across the suite", pageErrors.length === 0, pageErrors);
   D.record(fail === 0, "r83", `summary pass=${pass} fail=${fail}`);

@@ -8,6 +8,7 @@ import { get, post, put, del } from "../lib/api";
 import { useCompany } from "../store";
 import { useHotkeys } from "../lib/hotkeys";
 import { num, r2, today, fmtDate } from "../lib/format";
+import { loadVoucherCfg, saveVoucherCfg, DEFAULT_VOUCHER_CFG, type VoucherCfg } from "../lib/voucherCfg";
 import InvoicePrint from "../components/InvoicePrint";
 
 interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; narration?: string; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
@@ -67,6 +68,24 @@ export default function VoucherScreen() {
   // dispatch / order screens) + the collapsed-by-default section toggle.
   const [invoiceDetails, setInvoiceDetails] = useState<InvDetails>({});
   const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
+  // R-83 Option B (F-83-5 + F-83-3): Tally's in-entry F12 configuration —
+  // per-company, localStorage-persisted, defaults = today's behaviour
+  // byte-identically. Mode "invoice" flips the ledger grid to Tally's
+  // As-Invoice presentation (To/By + single Amount); postings are unchanged
+  // (the row's signed amount still carries Dr/Cr — pure presentation).
+  const [cfg, setCfg] = useState<VoucherCfg>(() => loadVoucherCfg(cid));
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const cfgNumberWarnRef = useRef<string | null>(null);
+  const setCfgPersist = (patch: Partial<VoucherCfg>) => {
+    setCfg((c) => {
+      const next = { ...c, ...patch };
+      saveVoucherCfg(cid, next);
+      return next;
+    });
+  };
+  // Option A's per-voucher expand still wins over the config default: the
+  // auto-expand effect (below) sets it explicitly on load.
+  const cfgShowDetails = showInvoiceDetails || cfg.showInvoiceDetails;
   const [party, setParty] = useState<{ id: number | null; name: string }>({ id: null, name: "" });
   const [entries, setEntries] = useState<LedgerRow[]>([{ ledgerId: null, ledgerName: "", amount: 0 }]);
   const [inv, setInv] = useState<InvRow[]>([]);
@@ -136,6 +155,12 @@ export default function VoucherScreen() {
   });
 
   const ledgerInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // R-83 Option B: refs so the F12/Ctrl+H capture listener reads live state
+  // without re-binding on every keystroke (R-10 savingRef precedent).
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const cfgOpenRef = useRef(cfgOpen);
+  cfgOpenRef.current = cfgOpen;
 
   // R-43 (F-42-1): the options queries' initial-load flags feed TypeAhead's
   // create-path guard — an empty list during the fetch window must not read
@@ -319,6 +344,31 @@ export default function VoucherScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, typeId, voucherId]);
 
+  // R-83 Option B: F12 opens the Configure modal (Tally's slot — the browser
+  // reserves F12 DevTools in plain-tab view, so Ctrl+H is the working chord
+  // everywhere; the README documents the same posture as F1/F11/F12). Ctrl+H
+  // is Tally's Change-Mode chord: it flips As Voucher <-> As Invoice directly.
+  // Both are suppressed while a modal is open (Esc closes first).
+  const voucherTypeReady = !!vType;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!voucherTypeReady || cancelledView) return;
+      const k = e.key;
+      if (k === "F12") {
+        e.preventDefault();
+        setCfgOpen((o) => !o);
+      } else if (e.ctrlKey && (k === "h" || k === "H")) {
+        e.preventDefault();
+        setCfgOpen(false);
+        setCfgPersist({ mode: cfgRef.current.mode === "invoice" ? "voucher" : "invoice" });
+      } else if (k === "Escape" && cfgOpenRef.current) {
+        setCfgOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [voucherTypeReady, cancelledView]);
+
   // R-83 (F-83-4): an alter view whose saved voucher carries invoice details
   // auto-expands the section once on load (the operator is there to see or
   // adjust the face data); manual collapse afterwards is respected.
@@ -337,6 +387,15 @@ export default function VoucherScreen() {
   const totalDr = r2(entries.reduce((s, e) => s + Math.max(e.amount, 0), 0));
   const totalCr = r2(entries.reduce((s, e) => s + Math.max(-e.amount, 0), 0));
   const diff = r2(totalDr - totalCr);
+  // R-83 Option B (F-83-3): Tally's As-Invoice presentation — To/By select +
+  // one Amount column. PURE PRESENTATION: the row's signed amount still books
+  // (positive = Dr/To, negative = Cr/By), so both modes produce identical
+  // postings, balances and reports.
+  const isInvoiceMode = cfg.mode === "invoice";
+  // Suite-proven: -Math.abs(0) is -0 and `-0 < 0` is FALSE — an operator who
+  // picks By on a fresh (zero) row would silently book Dr when typing the
+  // amount. Sign detection must treat negative zero as Cr (Object.is).
+  const isCrAmt = (a: number) => a < 0 || Object.is(a, -0);
 
   // R-21: compute the would-be quantity per outward item (client deltas on top
   // of the as-of-date running qty). Physical rows are absolute counts — skip.
@@ -866,7 +925,8 @@ export default function VoucherScreen() {
   const fkeys: FKeyButton[] = [
     { key: "Ctrl+A", label: "Accept / Save", onClick: save },
     { key: "F2", label: "Date", onClick: () => (document.getElementById("v-date") as HTMLInputElement)?.focus() },
-    ...(hasParty ? [{ key: "F12", label: "Ref / Party (click)", onClick: () => (document.getElementById("v-ref") as HTMLInputElement)?.focus() }] : []),
+    { key: "Ctrl+H", label: cfg.mode === "invoice" ? "Mode: As Invoice" : "Mode: As Voucher", onClick: () => { setCfgOpen(false); setCfgPersist({ mode: cfg.mode === "invoice" ? "voucher" : "invoice" }); } },
+    { key: "F12", label: "Configure", onClick: () => setCfgOpen((o) => !o) },
     ...(vType && ["Sales", "Purchase", "Credit Note", "Debit Note"].includes(vType.name) ? [{ key: "Alt+J", label: "Apply GST", onClick: applyGst }] : []),
     ...(isEdit && !cancelledView ? [
       { key: "Ctrl+D", label: "Duplicate", onClick: duplicateIntoNew },
@@ -886,6 +946,80 @@ export default function VoucherScreen() {
       fkeys={fkeys}
     >
       <ErrorBanner error={error} />
+      {/* R-83 Option B (F-83-5): Tally's F12 Configure — in-entry, per-company.
+          Ctrl+H (Change Mode) and Ctrl+Q-class Esc close it. */}
+      {cfgOpen && vType && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" data-testid="voucher-configure-modal">
+          <div className="card shadow-raised w-[560px] max-w-[95vw]">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl text-base font-semibold text-indigo-700">
+              Voucher Configuration <span className="ml-2 text-xs font-normal text-slate-400">{vType.name} · per company</span>
+            </div>
+            <div className="px-5 py-4 space-y-4 text-sm">
+              <div className="grid grid-cols-[minmax(140px,180px)_1fr] gap-3 items-center">
+                <span className="font-medium text-slate-600">Entry mode</span>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="radio" name="vmode" checked={cfg.mode === "voucher"} onChange={() => setCfgPersist({ mode: "voucher" })} data-testid="cfg-mode-voucher" />
+                    <span>As Voucher <span className="text-xs text-slate-400">(Dr/Cr)</span></span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="radio" name="vmode" checked={cfg.mode === "invoice"} onChange={() => setCfgPersist({ mode: "invoice" })} data-testid="cfg-mode-invoice" />
+                    <span>As Invoice <span className="text-xs text-slate-400">(To/By)</span></span>
+                  </label>
+                </div>
+              </div>
+              <div className="grid grid-cols-[minmax(140px,180px)_1fr] gap-3 items-center">
+                <span className="font-medium text-slate-600">Party balance</span>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={cfg.showPartyBalance} onChange={(e) => setCfgPersist({ showPartyBalance: e.target.checked })} data-testid="cfg-party-balance" />
+                  <span>Show the party's closing balance during entry</span>
+                </label>
+              </div>
+              <div className="grid grid-cols-[minmax(140px,180px)_1fr] gap-3 items-center">
+                <span className="font-medium text-slate-600">Bills list</span>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={cfg.showBillsList} onChange={(e) => setCfgPersist({ showBillsList: e.target.checked })} data-testid="cfg-bills-list" />
+                  <span>Show open bills during bill allocation</span>
+                </label>
+              </div>
+              <div className="grid grid-cols-[minmax(140px,180px)_1fr] gap-3 items-center">
+                <span className="font-medium text-slate-600">Invoice details</span>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={cfg.showInvoiceDetails} onChange={(e) => setCfgPersist({ showInvoiceDetails: e.target.checked })} data-testid="cfg-invoice-details" />
+                  <span>Expand the Party / Dispatch / Order section by default</span>
+                </label>
+              </div>
+              <div className="grid grid-cols-[minmax(140px,180px)_1fr] gap-3 items-center">
+                <span className="font-medium text-slate-600">Warnings</span>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={cfg.warnNegativeCash} onChange={(e) => setCfgPersist({ warnNegativeCash: e.target.checked })} data-testid="cfg-neg-cash" />
+                    <span>Warn on negative cash balance</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={cfg.warnLongNumber} onChange={(e) => setCfgPersist({ warnLongNumber: e.target.checked })} data-testid="cfg-long-number" />
+                    <span>Warn when the voucher number exceeds 16 characters</span>
+                  </label>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                These settings are presentation and context only — bookings, balances and reports are identical in both modes. They persist per company in this browser. F12 is reserved by the browser in tab view — Ctrl+H switches modes anywhere; the F12 chip works in app-window mode.
+              </p>
+            </div>
+            <div className="flex gap-2.5 px-5 py-3.5 border-t border-slate-100">
+              <button className="btn-ghost" onClick={() => { setCfgPersist({ ...DEFAULT_VOUCHER_CFG }); }} data-testid="cfg-reset">Reset to defaults</button>
+              <span className="flex-1" />
+              <button className="btn-primary" onClick={() => setCfgOpen(false)}>Close (Esc)</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* R-83 Option B (Tally F12): voucher number > 16 chars warning. */}
+      {cfg.warnLongNumber && number.length > 16 && (
+        <div data-testid="long-number-warning" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm px-4 py-2.5 leading-relaxed">
+          ⚠ Voucher number is {number.length} characters — numbers longer than 16 characters can collide with bank/import formats.
+        </div>
+      )}
       {/* R-33: threshold advisories — honest amber nudges; nothing blocks. */}
       {thresholdAdvisories.length > 0 && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm px-4 py-2.5 leading-relaxed">
@@ -965,7 +1099,7 @@ export default function VoucherScreen() {
                 createLabel="ledger" loading={ledgersLoading} onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
                 <span className="text-sm font-medium text-slate-600">Invoice No.</span>
                 <input id="v-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Party invoice no." />
-                {isPartyContext && partyBalance && (
+                {isPartyContext && cfg.showPartyBalance && partyBalance && (
                   <span data-testid="party-balance-inline" className="col-span-4 -mt-2 text-xs text-slate-500">
                     {"Balancing: "}
                     <b className={partyBalance.drCr === "Cr" ? "text-red-600" : "text-slate-700"}>
@@ -1162,8 +1296,14 @@ export default function VoucherScreen() {
                       <th>Ledger</th>
                       {detailed && <th className="w-36">Against Bill</th>}
                       {detailed && !isOrder && <th className="w-40">Line Narration</th>}
-                      <th className="w-32 text-right">Debit</th>
-                      <th className="w-32 text-right">Credit</th>
+                      {isInvoiceMode ? (
+                        <th className="w-44 text-right">Amount <span className="font-normal normal-case text-slate-400 text-[10px]">(To/By · Ctrl+H)</span></th>
+                      ) : (
+                        <>
+                          <th className="w-32 text-right">Debit</th>
+                          <th className="w-32 text-right">Credit</th>
+                        </>
+                      )}
                       <th className="w-8"></th>
                     </tr>
                 </thead>
@@ -1199,7 +1339,7 @@ export default function VoucherScreen() {
                                 value={row.againstBill ?? ""}
                                 onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, againstBill: e.target.value } : r)))}
                               />
-                              {l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
+                              {cfg.showBillsList && l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
                                 <select
                                   className="w-8 shrink-0 text-xs"
                                   title="Open bills for this party — pick to allocate against"
@@ -1213,7 +1353,7 @@ export default function VoucherScreen() {
                                   ))}
                                 </select>
                               )}
-                              {l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
+                              {cfg.showBillsList && l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
                                 <datalist id={`bills-dl-${row.ledgerId}`}>
                                   {openBillsFor(row.ledgerId).map((b: any) => <option key={b.billName} value={b.billName} />)}
                                 </datalist>
@@ -1232,30 +1372,65 @@ export default function VoucherScreen() {
                             />
                           </td>
                         )}
-                        <td>
-                          <input
-                            className="w-full text-right"
-                            type="number" step="any"
-                            data-col="dr"
-                            value={row.amount > 0 ? row.amount : ""}
-                            onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: Math.abs(num(e.target.value)) } : r)))}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && i === entries.length - 1) {
-                                setEntries([...entries, { ledgerId: null, ledgerName: "", amount: 0 }]);
-                                setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
-                              }
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="w-full text-right"
-                            type="number" step="any"
-                            data-col="cr"
-                            value={row.amount < 0 ? -row.amount : ""}
-                            onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: -Math.abs(num(e.target.value)) } : r)))}
-                          />
-                        </td>
+                        {isInvoiceMode ? (
+                          <td>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <select
+                                className="w-14 shrink-0 text-xs"
+                                title="To (Dr) / By (Cr) — presentation only; bookings are identical"
+                                aria-label="To (Dr) or By (Cr)"
+                                value={isCrAmt(row.amount) ? "Cr" : "Dr"}
+                                onChange={(e) => {
+                                  const dr = e.target.value === "Dr";
+                                  setEntries(entries.map((r, j) => (j === i ? { ...r, amount: dr ? Math.abs(r.amount) : -Math.abs(r.amount) } : r)));
+                                }}
+                              >
+                                <option value="Dr">Dr</option>
+                                <option value="Cr">Cr</option>
+                              </select>
+                              <input
+                                className="w-full text-right"
+                                type="number" step="any"
+                                data-col="dr"
+                                value={Math.abs(row.amount) || ""}
+                                onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: isCrAmt(r.amount) ? -Math.abs(num(e.target.value)) : Math.abs(num(e.target.value)) } : r)))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && i === entries.length - 1) {
+                                    setEntries([...entries, { ledgerId: null, ledgerName: "", amount: 0 }]);
+                                    setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td>
+                              <input
+                                className="w-full text-right"
+                                type="number" step="any"
+                                data-col="dr"
+                                value={row.amount > 0 ? row.amount : ""}
+                                onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: Math.abs(num(e.target.value)) } : r)))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && i === entries.length - 1) {
+                                    setEntries([...entries, { ledgerId: null, ledgerName: "", amount: 0 }]);
+                                    setTimeout(() => ledgerInputRefs.current[i + 1]?.focus(), 0);
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="w-full text-right"
+                                type="number" step="any"
+                                data-col="cr"
+                                value={row.amount < 0 ? -row.amount : ""}
+                                onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, amount: -Math.abs(num(e.target.value)) } : r)))}
+                              />
+                            </td>
+                          </>
+                        )}
                         <td><button className="text-slate-400 hover:text-red-500" onClick={() => setEntries(entries.length > 1 ? entries.filter((_, j) => j !== i) : entries)}>✕</button></td>
                       </tr>
                     );
@@ -1264,8 +1439,14 @@ export default function VoucherScreen() {
                     <td className="text-right pr-3 text-base">Total</td>
                     {detailed && <td />}
                     {detailed && !isOrder && <td />}
-                    <td className="num">{totalDr.toLocaleString("en-IN")}</td>
-                    <td className="num">{totalCr.toLocaleString("en-IN")}</td>
+                    {isInvoiceMode ? (
+                      <td className="num">{totalDr.toLocaleString("en-IN")}</td>
+                    ) : (
+                      <>
+                        <td className="num">{totalDr.toLocaleString("en-IN")}</td>
+                        <td className="num">{totalCr.toLocaleString("en-IN")}</td>
+                      </>
+                    )}
                     <td className={Math.abs(diff) > 0.004 ? "num text-red-600" : "num text-green-600"}>
                       {Math.abs(diff) > 0.004 ? diff.toFixed(2) : "✓"}
                     </td>
@@ -1290,7 +1471,7 @@ export default function VoucherScreen() {
                 only, fires on any voucher whose entry chain would drive the Cash
                 ledger negative as of the voucher date. The server attaches the
                 same advisory to the save response (warnings[]). */}
-            {cashWarning && (
+            {cfg.warnNegativeCash && cashWarning && (
               <div data-testid="negative-cash-warning" className="px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm leading-relaxed">
                 Negative cash balance: this voucher would take Cash {Math.abs(cashWarning).toLocaleString("en-IN")} {"Cr"} on {fmtDate(date)}. It will still save (advisory only — Tally parity).
               </div>
