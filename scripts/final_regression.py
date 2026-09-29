@@ -3810,5 +3810,95 @@ _tb37 = tb37 if isinstance(tb37, list) else (tb37.get("rows") or tb37.get("accou
 _dr37 = round(sum(abs(r.get("debit", 0)) for r in _tb37), 2); _cr37 = round(sum(abs(r.get("credit", 0)) for r in _tb37), 2)
 check("R37: trial balance balances (no accounting drift)", _dr37 == _cr37, (_dr37, _cr37))
 
+# ================= R-83: Option A invoice-face completeness (F-83-4 + F-83-6) =================
+print("-- R-83: invoice details + party context + negative-cash advisory --")
+s, co83 = req("POST", "/api/companies", {"name": "R83 Co", "state": "Maharashtra", "stateCode": "27",
+    "gstin": "27R83CO00A1B2Z3", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R83: company created", s == 200 and co83.get("id"), (s, str(co83)[:120]))
+cid83 = co83["id"]; C83 = f"/api/c/{cid83}"
+s, groups83 = req("GET", f"{C83}/groups"); g83 = {gr["name"]: gr["id"] for gr in groups83}
+s, vt83l = req("GET", f"{C83}/voucher-types"); vt83 = {v["name"]: v["id"] for v in vt83l}
+s, sales83 = req("POST", f"{C83}/ledgers", {"name": "Sales 83", "groupId": g83["Sales Accounts"]})
+s, buyer83 = req("POST", f"{C83}/ledgers", {"name": "Buyer 83", "groupId": g83["Sundry Debtors"], "billWise": True})
+s, purch83 = req("POST", f"{C83}/ledgers", {"name": "Purchases 83", "groupId": g83["Purchase Accounts"]})
+s, ledgers83 = req("GET", f"{C83}/ledgers")
+cash83 = next(l for l in ledgers83 if l["name"] == "Cash")
+
+# 1) invoiceDetails round-trip (all 16 Tally fields)
+det83 = {"buyerAddress": "9 Bond St", "consigneeName": "Site 2", "consigneeAddress": "MG Road",
+    "dispatchDocNo": "D-1", "dispatchedThrough": "VRL", "destination": "Belgaum",
+    "carrierLrRrNo": "LR-1", "vehicleNo": "KA22", "portOfLoading": "Nhava", "portOfDischarge": "Mumbai",
+    "marksContainerNo": "M-1", "numberOfPackages": "4",
+    "buyerOrderNo": "BO/9", "buyerOrderDate": "2026-04-01", "modeTermsOfPayment": "Net 30",
+    "otherReferences": "Bid 12", "termsOfDelivery": "FOR"}
+s, v83 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Sales"], "date": "2026-04-15", "partyLedgerId": buyer83["id"],
+    "invoiceDetails": det83,
+    "entries": [{"ledgerId": buyer83["id"], "amount": 1000, "bills": [{"billType": "new_ref", "billName": "B1", "amount": 1000}]},
+                {"ledgerId": sales83["id"], "amount": -1000}]})
+check("R83: sale with invoiceDetails posts", s == 200, (s, str(v83)[:140]))
+s, back83 = req("GET", f"{C83}/vouchers/{v83['id']}")
+d83 = back83.get("invoiceDetails") or {}
+check("R83: all detail fields round-trip", all(d83.get(k) == v for k, v in det83.items()), d83)
+
+# 2) validation: bad order date and over-length fields -> 400
+s, e83 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Sales"], "date": "2026-04-16", "partyLedgerId": buyer83["id"],
+    "invoiceDetails": {"buyerOrderDate": "not-a-date"},
+    "entries": [{"ledgerId": buyer83["id"], "amount": 10}, {"ledgerId": sales83["id"], "amount": -10}]})
+check("R83: invalid buyerOrderDate -> 400", s == 400, (s, str(e83)[:110]))
+s, e83b = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Sales"], "date": "2026-04-16", "partyLedgerId": buyer83["id"],
+    "invoiceDetails": {"vehicleNo": "x" * 51},
+    "entries": [{"ledgerId": buyer83["id"], "amount": 10}, {"ledgerId": sales83["id"], "amount": -10}]})
+check("R83: over-length vehicleNo -> 400", s == 400, (s, str(e83b)[:110]))
+
+# 3) party-open-bills + against-ref receipt + party-balance
+s, ob83 = req("GET", f"{C83}/reports/party-open-bills?ledgerId={buyer83['id']}")
+check("R83: party-open-bills lists B1 at 1000", s == 200 and any(b["billName"] == "B1" and abs(b["amount"] - 1000) < 0.01 for b in ob83.get("bills", [])), ob83)
+s, v83r = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Receipt"], "date": "2026-04-20",
+    "entries": [{"ledgerId": cash83["id"], "amount": 500}, {"ledgerId": buyer83["id"], "amount": -500,
+        "bills": [{"billType": "against_ref", "billName": "B1", "amount": -500}]}]})
+check("R83: against-ref receipt posts", s == 200, (s, str(v83r)[:120]))
+s, ob83b = req("GET", f"{C83}/reports/party-open-bills?ledgerId={buyer83['id']}")
+b1_83 = next((b for b in ob83b.get("bills", []) if b["billName"] == "B1"), None)
+check("R83: receipt reduces the NAMED bill to 500 (no duplicate)", b1_83 is not None and abs(b1_83["amount"] - 500) < 0.01, ob83b)
+s, pb83 = req("GET", f"{C83}/reports/party-balance?ledgerId={buyer83['id']}&to=2026-04-20")
+check("R83: party-balance closing = 500 Dr", s == 200 and abs(pb83["closing"] - 500) < 0.01 and pb83["drCr"] == "Dr", pb83)
+s, pb83b = req("GET", f"{C83}/reports/party-balance?ledgerId={buyer83['id']}&to=2026-04-01")
+check("R83: party-balance as-of opening honest (0)", s == 200 and abs(pb83b["closing"]) < 0.005, pb83b)
+s, pb83c = req("GET", f"{C83}/reports/party-balance?ledgerId=999999")
+check("R83: party-balance unknown ledger -> 404", s == 404, s)
+s, ob83c = req("GET", f"{C83}/reports/party-open-bills?ledgerId=999999")
+check("R83: party-open-bills unknown ledger -> 404", s == 404, s)
+
+# 4) negative-cash advisory: empty till + 75000 payment -> warnings[], save proceeds
+s, v83p = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-25",
+    "entries": [{"ledgerId": purch83["id"], "amount": 75000}, {"ledgerId": cash83["id"], "amount": -75000}]})
+check("R83: negative-cash payment posts WITH warnings[]", s == 200 and isinstance(v83p.get("warnings"), list) and any("Negative cash" in w for w in v83p["warnings"]), v83p.get("warnings"))
+# precision: park cash in first (04-22 on-account receipt — no bill refs to
+# over-allocate), then a small 04-23 payment stays cash-positive -> NO advisory
+# (the warning must not false-fire)
+s, v83rec = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Receipt"], "date": "2026-04-22",
+    "entries": [{"ledgerId": cash83["id"], "amount": 2000}, {"ledgerId": buyer83["id"], "amount": -2000}]})
+check("R83: cash-in receipt posts clean", s == 200 and not any("Negative cash" in w for w in (v83rec.get("warnings") or [])), v83rec.get("warnings"))
+s, v83p2 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-23",
+    "entries": [{"ledgerId": purch83["id"], "amount": 100}, {"ledgerId": cash83["id"], "amount": -100}]})
+check("R83: cash-positive payment carries no negative-cash warning", s == 200 and not any("Negative cash" in w for w in (v83p2.get("warnings") or [])), v83p2.get("warnings"))
+
+# 5) edit is full-body: omitting invoiceDetails clears it (second, unsettled voucher)
+s, v83b = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Sales"], "date": "2026-04-18", "partyLedgerId": buyer83["id"],
+    "invoiceDetails": {"dispatchDocNo": "D-2"},
+    "entries": [{"ledgerId": buyer83["id"], "amount": 59, "bills": [{"billType": "new_ref", "billName": "B2", "amount": 59}]},
+                {"ledgerId": sales83["id"], "amount": -59}]})
+check("R83: second details sale posts", s == 200, (s, str(v83b)[:120]))
+s, _ = req("PUT", f"{C83}/vouchers/{v83b['id']}", {"voucherTypeId": vt83["Sales"], "date": "2026-04-18", "partyLedgerId": buyer83["id"],
+    "entries": [{"ledgerId": buyer83["id"], "amount": 59, "bills": [{"billType": "new_ref", "billName": "B2", "amount": 59}]},
+                {"ledgerId": sales83["id"], "amount": -59}]})
+s, cleared83 = req("GET", f"{C83}/vouchers/{v83b['id']}")
+check("R83: edit omitting invoiceDetails clears it", s == 200 and cleared83.get("invoiceDetails") is None, cleared83.get("invoiceDetails"))
+
+# 6) accounting invariant: the R83 books balance
+s, tb83 = req("GET", f"{C83}/reports/trial-balance")
+_dr83 = round(sum(float(r["debit"]) for r in tb83["rows"]), 2); _cr83 = round(sum(float(r["credit"]) for r in tb83["rows"]), 2)
+check("R83: trial balance balances", abs(_dr83 - _cr83) < 0.02, (_dr83, _cr83))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

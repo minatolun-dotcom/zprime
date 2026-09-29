@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import TypeAhead, { Option } from "../components/TypeAhead";
 import { ErrorBanner } from "../components/ui";
@@ -13,6 +13,16 @@ import InvoicePrint from "../components/InvoicePrint";
 interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; narration?: string; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
 interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; discountPct: number; amount: number; kind: string; }
 interface VoucherType { id: number; name: string; category: string; affectsStock: boolean; shortCode: string; allowZeroValueEntries?: boolean; }
+// R-83 (Option A, F-83-4): Tally's per-voucher descriptive invoice details —
+// all fields optional; absent/empty = the voucher carries none.
+interface InvDetails {
+  buyerAddress?: string | null; consigneeName?: string | null; consigneeAddress?: string | null;
+  dispatchDocNo?: string | null; dispatchedThrough?: string | null; destination?: string | null;
+  carrierLrRrNo?: string | null; vehicleNo?: string | null; portOfLoading?: string | null; portOfDischarge?: string | null;
+  marksContainerNo?: string | null; numberOfPackages?: string | null;
+  buyerOrderNo?: string | null; buyerOrderDate?: string | null; modeTermsOfPayment?: string | null;
+  otherReferences?: string | null; termsOfDelivery?: string | null;
+}
 
 const PARTY_TYPES = ["Sales", "Purchase", "Credit Note", "Debit Note"];
 const STOCK_FLOW: Record<string, 1 | -1> = { Sales: -1, "Delivery Note": -1, "Credit Note": 1, Purchase: 1, "Receipt Note": 1, "Debit Note": -1 };
@@ -53,6 +63,10 @@ export default function VoucherScreen() {
   const [bankTxnType, setBankTxnType] = useState("");
   // R-73 (F-73-4): the order this invoice/note fulfils.
   const [orderVoucherId, setOrderVoucherId] = useState<number | null>(null);
+  // R-83 (Option A, F-83-4): Tally's descriptive invoice details (party /
+  // dispatch / order screens) + the collapsed-by-default section toggle.
+  const [invoiceDetails, setInvoiceDetails] = useState<InvDetails>({});
+  const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
   const [party, setParty] = useState<{ id: number | null; name: string }>({ id: null, name: "" });
   const [entries, setEntries] = useState<LedgerRow[]>([{ ledgerId: null, ledgerName: "", amount: 0 }]);
   const [inv, setInv] = useState<InvRow[]>([]);
@@ -187,9 +201,45 @@ export default function VoucherScreen() {
     };
   }, [isInvoicePrintable, isEdit, savedVoucher, partyDetail]);
 
+  // R-83 (Option A, F-83-6): the party's CLOSING balance as of the voucher
+  // date ("show current/final balance of party during entry"). The client
+  // adds the current voucher's own party leg so the display previews the
+  // would-be balance exactly like Tally's final-balance field.
+  const isPartyContext = hasParty && !!party.id;
+  const { data: partyBalance } = useQuery({
+    queryKey: ["party-balance", cid, party.id, date],
+    queryFn: () => get<any>(`/api/c/${cid}/reports/party-balance?ledgerId=${party.id}&to=${date}`),
+    enabled: isPartyContext,
+    retry: false,
+  });
   const ledgerOptions: Option[] = (allLedgers ?? []).map((l) => ({ id: l.id, name: l.name }));
   const itemOptions: Option[] = (allItems ?? []).map((l) => ({ id: l.id, name: l.name }));
   const ledgerById = useMemo(() => new Map((allLedgers ?? []).map((l: any) => [l.id, l])), [allLedgers]);
+
+  // R-83 (Option A, F-83-6): party OPEN BILLS during entry — Tally's bill
+  // list at allocation. One source of truth: the R-69/R-70 outstanding
+  // service. Feeds the Against-Bill picker (free-text still works; a pick
+  // guarantees the name matches a real open bill). Fetched per bill-wise
+  // ledger actually present in the grid — the party row on invoice-class
+  // vouchers AND Receipt/Payment/Journal allocation rows alike.
+  const billWiseEntryIds = useMemo(
+    () => [...new Set(entries.filter((e) => e.ledgerId && ledgerById.get(e.ledgerId)?.billWise).map((e) => e.ledgerId!))],
+    [entries, ledgerById],
+  );
+  const billQueries = useQueries({
+    queries: billWiseEntryIds.map((id) => ({
+      queryKey: ["party-open-bills", cid, id],
+      queryFn: () => get<any>(`/api/c/${cid}/reports/party-open-bills?ledgerId=${id}`),
+      retry: false,
+      enabled: !!cid,
+    })),
+  });
+  const openBillsFor = (ledgerId: number | null): any[] => {
+    if (!ledgerId) return [];
+    const idx = billWiseEntryIds.indexOf(ledgerId);
+    const bills = idx >= 0 ? billQueries[idx]?.data?.bills : null;
+    return Array.isArray(bills) ? bills.filter((b: any) => b.ledgerId === ledgerId) : [];
+  };
 
   // Load type (new) or full voucher (edit)
   useEffect(() => {
@@ -209,6 +259,7 @@ export default function VoucherScreen() {
           setIsOptional(!!v.isOptional); // R-73: draft flag on alter (Accept endpoint flips it)
           setBankTxnType(v.bankTxnType ?? ""); // R-73 (F-73-5)
           setOrderVoucherId(v.orderVoucherId ?? null); // R-73 (F-73-4)
+          setInvoiceDetails((v.invoiceDetails ?? {}) as InvDetails); // R-83 (F-83-4)
           const rows: LedgerRow[] = v.entries.map((e: any) => ({
             ledgerId: e.ledgerId, ledgerName: e.ledgerName, amount: num(e.amount),
             narration: e.narration ?? "", // R-73 (F-73-6)
@@ -242,6 +293,7 @@ export default function VoucherScreen() {
             setRefDate(dup.refDate?.slice(0, 10) ?? "");
             setNarration(dup.narration ?? "");
             setBankTxnType(dup.bankTxnType ?? "");
+            setInvoiceDetails((dup.invoiceDetails ?? {}) as InvDetails); // R-83: duplicate copies the face too
             if (dup.partyLedgerId) {
               const pl = (dup.entries ?? []).find((e: any) => e.ledgerId === dup.partyLedgerId);
               setParty({ id: dup.partyLedgerId, name: pl?.ledgerName ?? "" });
@@ -266,6 +318,17 @@ export default function VoucherScreen() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, typeId, voucherId]);
+
+  // R-83 (F-83-4): an alter view whose saved voucher carries invoice details
+  // auto-expands the section once on load (the operator is there to see or
+  // adjust the face data); manual collapse afterwards is respected.
+  const detailsAutoExpandedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit && !detailsAutoExpandedRef.current && Object.values(invoiceDetails).some((v) => v != null && v !== "")) {
+      detailsAutoExpandedRef.current = true;
+      setShowInvoiceDetails(true);
+    }
+  }, [isEdit, invoiceDetails]);
 
   function newInvRow(): InvRow {
     return { itemId: null, itemName: "", godownId: null, qty: 0, rate: 0, discountPct: 0, amount: 0, kind: "stock" };
@@ -302,6 +365,29 @@ export default function VoucherScreen() {
       }
     }
     return offender;
+  })();
+
+  // R-83 (Option A, F-83-6): Tally's negative-cash warning — client mirror of
+  // the server advisory. Cash's closing as of the voucher date, plus this
+  // voucher's own Cash legs (explicit Cash rows; other rows booked against a
+  // ledger NAMED Cash). Advisory only — the voucher saves either way; the
+  // server attaches the same warning to the saved voucher's response.
+  const cashLedgerId = useMemo(() => (allLedgers ?? []).find((l: any) => l.name === "Cash")?.id ?? null, [allLedgers]);
+  const { data: cashBalance } = useQuery({
+    queryKey: ["cash-balance", cid, date],
+    queryFn: () => get<any>(`/api/c/${cid}/reports/party-balance?ledgerId=${cashLedgerId}&to=${date}`),
+    enabled: !!cashLedgerId,
+    retry: false,
+  });
+  const cashWarning = (() => {
+    if (!cashLedgerId || !cashBalance) return null;
+    let proj = num(cashBalance.closing);
+    for (const e of entries) {
+      if (!e.ledgerId) continue;
+      if (e.ledgerId === cashLedgerId) proj = r2(proj + e.amount);
+      else if (e.ledgerName === "Cash") proj = r2(proj - e.amount);
+    }
+    return proj < -0.004 ? r2(Math.abs(proj)) : null;
   })();
 
   // ---- GST helper ----
@@ -590,6 +676,8 @@ export default function VoucherScreen() {
       bankTxnType: bankTxnType || null,
       // R-73 (F-73-4): order linkage for invoices/notes.
       orderVoucherId: orderVoucherId || null,
+      // R-83 (F-83-4): per-voucher descriptive invoice details (omitted when empty).
+      invoiceDetails: hasParty && Object.values(invoiceDetails).some((v) => v != null && v !== "") ? invoiceDetails : null,
       entries: validEntries.map((e, i) => {
         const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
         const isPartyRow = hasParty && e.ledgerId === party.id;
@@ -877,6 +965,16 @@ export default function VoucherScreen() {
                 createLabel="ledger" loading={ledgersLoading} onCreate={(t) => openQuickCreate(t, { row: 0, kind: "party" })} />
                 <span className="text-sm font-medium text-slate-600">Invoice No.</span>
                 <input id="v-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Party invoice no." />
+                {isPartyContext && partyBalance && (
+                  <span data-testid="party-balance-inline" className="col-span-4 -mt-2 text-xs text-slate-500">
+                    {"Balancing: "}
+                    <b className={partyBalance.drCr === "Cr" ? "text-red-600" : "text-slate-700"}>
+                      {Math.abs(num(partyBalance.closing)).toLocaleString("en-IN")} {partyBalance.drCr || "(settled)"}
+                    </b>
+                    {partyBalance.drCr === "Cr" ? " — you owe" : partyBalance.drCr === "Dr" ? " — owes you" : ""}
+                    {" · as of "}{fmtDate(date)}
+                  </span>
+                )}
               </div>
             )}
             {hasParty && (
@@ -902,6 +1000,74 @@ export default function VoucherScreen() {
                     </optgroup>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* R-83 (Option A, F-83-4): Tally's per-voucher invoice details —
+                Party (buyer address override / consignee ship-to), Dispatch
+                (doc no, through, destination, carrier, vehicle, ports,
+                marks/packages) and Order (buyer order no/date, payment terms,
+                other refs, delivery terms). Collapsed by default — untouched,
+                the voucher and its printed face are byte-identical to before. */}
+            {hasParty && (
+              <div>
+                <button type="button" className="btn-ghost text-sm" data-testid="toggle-invoice-details" disabled={cancelledView} onClick={() => setShowInvoiceDetails(!showInvoiceDetails)}>
+                  {showInvoiceDetails ? "− Hide" : "+ Party / Dispatch / Order details"}
+                </button>
+                <span className="ml-3 text-xs text-slate-400">descriptive invoice face (Tally) — optional, per voucher</span>
+                {showInvoiceDetails && (
+                  <div data-testid="invoice-details-panel" className="mt-3 rounded-lg border border-slate-200 p-4 space-y-4">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Party details</div>
+                      <div className="grid grid-cols-[minmax(120px,160px)_1fr_minmax(120px,160px)_1fr] gap-x-4 gap-y-3 items-center">
+                        <span className="text-sm font-medium text-slate-600">Buyer Address</span>
+                        <input className="col-span-3" data-testid="id-buyer-address" value={invoiceDetails.buyerAddress ?? ""} disabled={cancelledView} placeholder="Overrides the ledger's address on the printed face (optional)" onChange={(e) => setInvoiceDetails({ ...invoiceDetails, buyerAddress: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Consignee (Ship to)</span>
+                        <input data-testid="id-consignee-name" value={invoiceDetails.consigneeName ?? ""} disabled={cancelledView} placeholder="Name (optional)" onChange={(e) => setInvoiceDetails({ ...invoiceDetails, consigneeName: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Address</span>
+                        <input data-testid="id-consignee-address" value={invoiceDetails.consigneeAddress ?? ""} disabled={cancelledView} placeholder="Shipping address (optional)" onChange={(e) => setInvoiceDetails({ ...invoiceDetails, consigneeAddress: e.target.value || null })} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Dispatch details</div>
+                      <div className="grid grid-cols-[minmax(120px,160px)_1fr_minmax(120px,160px)_1fr] gap-x-4 gap-y-3 items-center">
+                        <span className="text-sm font-medium text-slate-600">Dispatch Doc No.</span>
+                        <input data-testid="id-dispatch-doc" value={invoiceDetails.dispatchDocNo ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, dispatchDocNo: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Dispatched Through</span>
+                        <input data-testid="id-dispatched-through" value={invoiceDetails.dispatchedThrough ?? ""} disabled={cancelledView} placeholder="Transport / courier" onChange={(e) => setInvoiceDetails({ ...invoiceDetails, dispatchedThrough: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Destination</span>
+                        <input data-testid="id-destination" value={invoiceDetails.destination ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, destination: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Carrier LR-RR No.</span>
+                        <input data-testid="id-carrier-lr" value={invoiceDetails.carrierLrRrNo ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, carrierLrRrNo: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Vehicle No.</span>
+                        <input data-testid="id-vehicle-no" value={invoiceDetails.vehicleNo ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, vehicleNo: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Port of Loading</span>
+                        <input data-testid="id-port-loading" value={invoiceDetails.portOfLoading ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, portOfLoading: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Port of Discharge</span>
+                        <input data-testid="id-port-discharge" value={invoiceDetails.portOfDischarge ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, portOfDischarge: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Marks / Container No.</span>
+                        <input data-testid="id-marks" value={invoiceDetails.marksContainerNo ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, marksContainerNo: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">No. of Packages</span>
+                        <input data-testid="id-packages" value={invoiceDetails.numberOfPackages ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, numberOfPackages: e.target.value || null })} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Order details</div>
+                      <div className="grid grid-cols-[minmax(120px,160px)_1fr_minmax(120px,160px)_1fr] gap-x-4 gap-y-3 items-center">
+                        <span className="text-sm font-medium text-slate-600">Buyer Order No.</span>
+                        <input data-testid="id-buyer-order-no" value={invoiceDetails.buyerOrderNo ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, buyerOrderNo: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Order Date</span>
+                        <input type="date" data-testid="id-buyer-order-date" value={invoiceDetails.buyerOrderDate ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, buyerOrderDate: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Mode / Terms of Payment</span>
+                        <input data-testid="id-payment-terms" value={invoiceDetails.modeTermsOfPayment ?? ""} disabled={cancelledView} placeholder="e.g. 30 days credit" onChange={(e) => setInvoiceDetails({ ...invoiceDetails, modeTermsOfPayment: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Other References</span>
+                        <input data-testid="id-other-refs" value={invoiceDetails.otherReferences ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, otherReferences: e.target.value || null })} />
+                        <span className="text-sm font-medium text-slate-600">Terms of Delivery</span>
+                        <input className="col-span-3" data-testid="id-delivery-terms" value={invoiceDetails.termsOfDelivery ?? ""} disabled={cancelledView} onChange={(e) => setInvoiceDetails({ ...invoiceDetails, termsOfDelivery: e.target.value || null })} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1023,14 +1189,36 @@ export default function VoucherScreen() {
                         </td>
                         {detailed && (
                           <td>
-                            <input
-                              className="w-full"
-                              data-col="bill"
-                              placeholder={l?.billWise ? "bill ref / blank = on account" : "—"}
-                              disabled={!l?.billWise}
-                              value={row.againstBill ?? ""}
-                              onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, againstBill: e.target.value } : r)))}
-                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                className="w-full"
+                                data-col="bill"
+                                list={l?.billWise && openBillsFor(row.ledgerId).length ? `bills-dl-${row.ledgerId}` : undefined}
+                                placeholder={l?.billWise ? "bill ref / blank = on account" : "—"}
+                                disabled={!l?.billWise}
+                                value={row.againstBill ?? ""}
+                                onChange={(e) => setEntries(entries.map((r, j) => (j === i ? { ...r, againstBill: e.target.value } : r)))}
+                              />
+                              {l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
+                                <select
+                                  className="w-8 shrink-0 text-xs"
+                                  title="Open bills for this party — pick to allocate against"
+                                  data-testid={`bills-picker-${row.ledgerId}`}
+                                  value=""
+                                  onChange={(e) => { const name = e.target.value; if (name) setEntries(entries.map((r, j) => (j === i ? { ...r, againstBill: name } : r))); }}
+                                >
+                                  <option value="">▾</option>
+                                  {openBillsFor(row.ledgerId).map((b: any) => (
+                                    <option key={b.billName} value={b.billName}>{b.billName} · {Math.abs(b.amount).toLocaleString("en-IN")}</option>
+                                  ))}
+                                </select>
+                              )}
+                              {l?.billWise && openBillsFor(row.ledgerId).length > 0 && (
+                                <datalist id={`bills-dl-${row.ledgerId}`}>
+                                  {openBillsFor(row.ledgerId).map((b: any) => <option key={b.billName} value={b.billName} />)}
+                                </datalist>
+                              )}
+                            </div>
                           </td>
                         )}
                         {detailed && !isOrder && (
@@ -1097,6 +1285,16 @@ export default function VoucherScreen() {
                 )}
               </div>
             </div>
+
+            {/* R-83 (Option A, F-83-6): Tally's negative-cash warning — advisory
+                only, fires on any voucher whose entry chain would drive the Cash
+                ledger negative as of the voucher date. The server attaches the
+                same advisory to the save response (warnings[]). */}
+            {cashWarning && (
+              <div data-testid="negative-cash-warning" className="px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm leading-relaxed">
+                Negative cash balance: this voucher would take Cash {Math.abs(cashWarning).toLocaleString("en-IN")} {"Cr"} on {fmtDate(date)}. It will still save (advisory only — Tally parity).
+              </div>
+            )}
 
             {/* narration */}
             <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">

@@ -114,6 +114,38 @@ export const voucherSchema = z.object({
   chequeNumber: shortText(50).nullable().optional(),
   chequeDate: calendarDate("chequeDate must be a valid calendar date").nullable().optional(),
   placeOfSupply: shortText(100).nullable().optional(),
+  // R-83 (Option A, F-83-4): Tally's descriptive invoice-details screens —
+  // Party (buyer address override + consignee ship-to), Dispatch (doc no,
+  // through, destination, carrier, vehicle, ports, marks/packages) and Order
+  // (buyer order no/date, payment terms, other refs, delivery terms). All
+  // fields nullable/optional: omit or null = absent. Purely descriptive —
+  // stored verbatim (per-voucher override, never written back to masters),
+  // rendered on the printable invoice face, ignored by the accounting engine.
+  invoiceDetails: z
+    .object({
+      // Party details screen (Tally F12 "provide separate buyer/consignee")
+      buyerAddress: z.string().max(300).nullable().optional(),
+      consigneeName: shortText(200).nullable().optional(),
+      consigneeAddress: z.string().max(300).nullable().optional(),
+      // Dispatch details screen
+      dispatchDocNo: shortText(100).nullable().optional(),
+      dispatchedThrough: shortText(200).nullable().optional(),
+      destination: shortText(200).nullable().optional(),
+      carrierLrRrNo: shortText(100).nullable().optional(),
+      vehicleNo: shortText(50).nullable().optional(),
+      portOfLoading: shortText(100).nullable().optional(),
+      portOfDischarge: shortText(100).nullable().optional(),
+      marksContainerNo: shortText(200).nullable().optional(),
+      numberOfPackages: shortText(50).nullable().optional(),
+      // Order details screen (buyer order + terms)
+      buyerOrderNo: shortText(100).nullable().optional(),
+      buyerOrderDate: calendarDate("buyerOrderDate must be a valid calendar date").nullable().optional(),
+      modeTermsOfPayment: shortText(200).nullable().optional(),
+      otherReferences: shortText(200).nullable().optional(),
+      termsOfDelivery: shortText(300).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   // R-23: reverse charge — the recipient self-accounts the GST on this inward
   // (s. 9(3)/9(4)). Server truth only; client-supplied values beyond the
   // boolean are meaningless. Import path does not set it (later scope).

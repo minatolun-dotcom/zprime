@@ -1,0 +1,11 @@
+-- R-83 (Option A, F-83-4): Tally's descriptive invoice details —
+-- the Party (buyer address override / consignee ship-to), Dispatch (dispatch
+-- doc no, through, destination, carrier LR-RR, vehicle no., ports of
+-- loading/discharge, marks/container no., no. of packages) and Order (buyer
+-- order no/date, mode/terms of payment, other references, terms of delivery)
+-- screens Tally toggles per voucher on invoice-class entries. ADDITIVE ONLY,
+-- no destructive SQL, no backfill: NULL = the voucher carries none (every
+-- pre-R-83 row). Purely descriptive — validated/shaped by routes.lib, never
+-- read by the accounting engine; the printable invoice face renders it.
+-- Generated via drizzle-kit's programmatic API (see scripts/gen-0020.ts).
+ALTER TABLE "vouchers" ADD COLUMN "invoice_details" jsonb;

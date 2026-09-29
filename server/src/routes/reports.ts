@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, inventoryEntries, stockItems, units, payslips, employees, irpEwbOps } from "../db/schema.js";
-import { and, eq, gte, lte, lt, gt, asc, inArray, desc, isNull } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, asc, inArray, desc, isNull, sql } from "drizzle-orm";
 import { cid, bad } from "../lib/routes.js";
 import { num, r2, today, fyStart, d } from "../lib/util.js";
 import {
@@ -280,6 +280,84 @@ export default async function reportRoutes(app: FastifyInstance) {
     const c = await cid(req);
     const asOf = (req.query as any).to ?? today();
     return billWiseOutstanding(c, "Sundry Debtors", asOf);
+  });
+
+  // R-83 (Option A, F-83-6): Tally's bill-allocation context during entry —
+  // the OPEN bills of one party (named new_ref residuals + the R-69 On
+  // Account/Opening classes). Feeds the VoucherScreen bills picker so a
+  // Against-Ref allocation picks a REAL open bill instead of free-typing a
+  // name (typos had fragmented outstanding into dangling bills). Reuses the
+  // R-69/R-70 outstanding service — one truth for what is open.
+  app.get("/party-open-bills", async (req) => {
+    const c = await cid(req);
+    const ledgerId = parseInt((req.query as any).ledgerId, 10);
+    if (!Number.isFinite(ledgerId) || ledgerId <= 0) throw bad("ledgerId is required");
+    const asOf = (req.query as any).to ?? today();
+    const [party] = await db
+      .select({ id: ledgers.id, name: ledgers.name })
+      .from(ledgers)
+      .where(and(eq(ledgers.companyId, c), eq(ledgers.id, ledgerId)));
+    if (!party) throw bad("Ledger not found", 404);
+    const [group] = await db
+      .select({ name: groups.name })
+      .from(ledgers)
+      .innerJoin(groups, eq(groups.id, ledgers.groupId))
+      .where(eq(ledgers.id, ledgerId));
+    // Sign convention: the party ledger's nature decides which outstanding
+    // view feeds the picker — a Sundry Debtor's open bills are positive
+    // receivables, a Sundry Creditor's are negative payables. Any other group
+    // (odd but legal) falls back to the debtor view honestly.
+    const partyGroup = group?.name === "Sundry Creditors" ? "Sundry Creditors" : "Sundry Debtors";
+    const all = await billWiseOutstanding(c, partyGroup, asOf);
+    const card = all.parties.find((g: any) => g.ledgerId === ledgerId);
+    return {
+      ledgerId,
+      ledgerName: party.name,
+      partyGroup,
+      total: card?.total ?? 0,
+      bills: (card?.bills ?? []).filter((b: any) => Math.abs(b.amount) > 0.004),
+    };
+  });
+
+  // R-83 (Option A, F-83-6): Tally's "show current/final balance of the party
+  // during entry" — the party ledger's closing balance as of the voucher
+  // date, signed Dr(+)/Cr(−). The client renders "Balancing: ₹X Dr/Cr" beside
+  // the Party A/c row while typing. Same signed net the ledger report closes
+  // with (R-56: pre-books vouchers count, no silent lower bound).
+  app.get("/party-balance", async (req) => {
+    const c = await cid(req);
+    const ledgerId = parseInt((req.query as any).ledgerId, 10);
+    const asOf = (req.query as any).to ?? today();
+    if (!Number.isFinite(ledgerId) || ledgerId <= 0) throw bad("ledgerId is required");
+    const [party] = await db
+      .select({ id: ledgers.id, name: ledgers.name, opening: ledgers.openingBalance })
+      .from(ledgers)
+      .where(and(eq(ledgers.companyId, c), eq(ledgers.id, ledgerId)));
+    if (!party) throw bad("Ledger not found", 404);
+    const [{ sumDr, sumCr }] = await db
+      .select({
+        sumDr: sql<string>`coalesce(sum(case when ${voucherEntries.amount} > 0 then ${voucherEntries.amount} else 0 end), 0)`,
+        sumCr: sql<string>`coalesce(sum(case when ${voucherEntries.amount} < 0 then -${voucherEntries.amount} else 0 end), 0)`,
+      })
+      .from(voucherEntries)
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .where(
+        and(
+          eq(voucherEntries.ledgerId, ledgerId),
+          eq(vouchers.companyId, c),
+          eq(vouchers.isCancelled, false),
+          eq(vouchers.isOptional, false),
+          lte(vouchers.date, asOf),
+        ),
+      );
+    const closing = r2(num(party.opening) + num(sumDr) - num(sumCr));
+    return {
+      ledgerId,
+      ledgerName: party.name,
+      asOf,
+      closing,
+      drCr: closing > 0.004 ? "Dr" : closing < -0.004 ? "Cr" : "",
+    };
   });
 
   app.get("/payables", async (req) => {

@@ -76,7 +76,9 @@ const ok = (name, cond, detail) => {
 
   await page.locator('button:has-text("Deduct TDS")').first().click();
   await page.waitForSelector("div.bg-amber-50", { timeout: 10000 });
-  const bannerText = (await page.locator("div.bg-amber-50").innerText().catch(() => "")) || "";
+  // R-83: the voucher screen now also carries an amber negative-cash advisory
+  // strip — anchor the TDS banner by its section content, not by class alone.
+  const bannerText = (await page.locator("div.bg-amber-50").filter({ hasText: "194J" }).first().innerText().catch(() => "")) || "";
   ok("amber advisory appears on Deduct TDS", /⚠/.test(bannerText) && /194J/.test(bannerText), bannerText);
   ok("advisory wording: FY base + over-threshold action", /72,000/.test(bannerText) && /TDS\/TCS due/.test(bannerText), bannerText);
 
@@ -102,7 +104,8 @@ const ok = (name, cond, detail) => {
   await page.waitForSelector("div.bg-amber-50", { timeout: 10000 });
   // 194J is STILL over (82,000 now) so its advisory legitimately shows again;
   // the honest filter is about 194I: no threshold → never over/near → absent.
-  const banner2 = (await page.locator("div.bg-amber-50").innerText().catch(() => "")) || "";
+  // (R-83: filter by content — the amber negative-cash strip may also show.)
+  const banner2 = (await page.locator("div.bg-amber-50").filter({ hasText: "194J" }).first().innerText().catch(() => "")) || "";
   ok("no-threshold section never enters the advisory banner", /194J/.test(banner2) && !/194I/.test(banner2) && !/no threshold recorded/.test(banner2), banner2);
   // the helper itself still computed the deduction (TDS line present at 10%)
   const grid = await D.readGrid();

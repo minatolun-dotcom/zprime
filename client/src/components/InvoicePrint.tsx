@@ -94,6 +94,24 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
   const despatch = (voucher.inventoryEntries ?? []).map((i: any) => ({
     ...i, qtyAbs: Math.abs(num(i.qty)), amount: Math.abs(num(i.amount)),
   }));
+  // R-83 (Option A, F-83-4): the voucher's own descriptive invoice details —
+  // buyer address override, consignee ship-to, dispatch and order screens.
+  // Everything renders ONLY when the voucher carries it: untouched vouchers
+  // produce a byte-identical face (off-state contract, suite-pinned).
+  const d = (voucher.invoiceDetails ?? {}) as any;
+  const hasConsignee = !!(d.consigneeName || d.consigneeAddress);
+  const dispatchRows: [string, any][] = [
+    ["Dispatch Doc No.", d.dispatchDocNo], ["Dispatched Through", d.dispatchedThrough], ["Destination", d.destination],
+    ["Carrier LR-RR No.", d.carrierLrRrNo], ["Vehicle No.", d.vehicleNo],
+    ["Port of Loading", d.portOfLoading], ["Port of Discharge", d.portOfDischarge],
+    ["Marks / Container No.", d.marksContainerNo], ["No. of Packages", d.numberOfPackages],
+  ];
+  const orderRows: [string, any][] = [
+    ["Buyer Order No.", d.buyerOrderNo], ["Order Date", d.buyerOrderDate ? fmtDate(d.buyerOrderDate) : null],
+    ["Mode / Terms of Payment", d.modeTermsOfPayment], ["Other References", d.otherReferences],
+    ["Terms of Delivery", d.termsOfDelivery],
+  ];
+  const hasDetails = dispatchRows.some(([, v]) => v) || orderRows.some(([, v]) => v);
 
   return (
     <div className="border border-slate-700 rounded-lg w-[760px] bg-white text-slate-900 mx-auto">
@@ -124,19 +142,45 @@ function InvoiceFace({ cid, voucherId, voucher }: { cid: string; voucherId: stri
         </div>
       </div>
 
-      {/* party */}
-      <div className="grid grid-cols-2 border-b border-slate-400">
+      {/* party — R-83: the voucher's buyer-address override wins over the
+          ledger master; a consignee adds Tally's Ship-to column. */}
+      <div className={`grid ${hasConsignee ? "grid-cols-3" : "grid-cols-2"} border-b border-slate-400`}>
         <div className="px-6 py-3 border-r border-slate-400">
           <div className="text-[11px] uppercase tracking-wider text-slate-500">Billed to</div>
           <div className="font-semibold text-sm">{voucher.partyName || "—"}</div>
-          {(voucher.partyAddress ? [voucher.partyAddress] : []).map((l: string, i: number) => <div key={i} className="text-xs text-slate-600">{l}</div>)}
+          {(d.buyerAddress ? [d.buyerAddress] : voucher.partyAddress ? [voucher.partyAddress] : []).map((l: string, i: number) => <div key={i} className="text-xs text-slate-600">{l}</div>)}
           {voucher.partyGstin ? <div className="text-xs text-slate-600">GSTIN: {voucher.partyGstin}</div> : null}
         </div>
-        <div className="px-6 py-3">
+        <div className={`px-6 py-3 ${hasConsignee ? "border-r border-slate-400" : ""}`}>
           <div className="text-[11px] uppercase tracking-wider text-slate-500">Place of supply</div>
           <div className="text-sm">{voucher.placeOfSupply || voucher.partyState || "—"}</div>
         </div>
+        {hasConsignee && (
+          <div className="px-6 py-3" data-testid="invoice-ship-to">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Ship to (consignee)</div>
+            <div className="font-semibold text-sm">{d.consigneeName || voucher.partyName || "—"}</div>
+            {(d.consigneeAddress ? [d.consigneeAddress] : []).map((l: string, i: number) => <div key={i} className="text-xs text-slate-600">{l}</div>)}
+          </div>
+        )}
       </div>
+
+      {/* R-83: dispatch + order details — two columns, only the filled rows,
+          only when the voucher carries any (Tally's face order: after the
+          party block, before the inventory rows). */}
+      {hasDetails && (
+        <div className="grid grid-cols-2 border-b border-slate-400 text-xs" data-testid="invoice-details-face">
+          <div className="px-6 py-2 border-r border-slate-400 space-y-0.5">
+            {dispatchRows.filter(([, v]) => v).map(([k, v]) => (
+              <div key={k}><span className="text-slate-500">{k}: </span><b>{v}</b></div>
+            ))}
+          </div>
+          <div className="px-6 py-2 space-y-0.5">
+            {orderRows.filter(([, v]) => v).map(([k, v]) => (
+              <div key={k}><span className="text-slate-500">{k}: </span><b>{v}</b></div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* inventory rows (when the voucher carries stock movements) */}
       {despatch.length > 0 && (

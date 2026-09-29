@@ -535,6 +535,41 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
   }
   validateEntries(input.entries, validInventoryCount(input), type.category === "Inventory", type.allowZeroValueEntries, isOrderType);
   await assertStockAvailabilityTx(tx, companyId, input);
+  // R-83 (Option A, F-83-6): Tally's negative-cash warning. When the voucher's
+  // would-be entry chain drives the Cash ledger's projected closing negative
+  // as of the voucher date, attach an ADVISORY warning (the voucher saves —
+  // nothing blocks; same class as the R-56 date-window advisories and the
+  // client-side R-21 negative-stock hint, whose hard guard lives in R-06).
+  // mirrors = entries explicitly against Cash; rewrites = the voucher's own
+  // OTHER party-row deltas that roll into Cash's balance (Cash↔Bank, cash
+  // payments booked party-direct). Advisory-only, cheap, and date-accurate
+  // (strictly-before vouchers + this voucher's own leg).
+  const cashRow = (await tx
+    .select({ id: ledgers.id, name: ledgers.name, opening: ledgers.openingBalance })
+    .from(ledgers)
+    .where(and(eq(ledgers.companyId, companyId), eq(ledgers.name, "Cash"))))[0];
+  if (cashRow && !input.isOptional) {
+    const before = await tx
+      .select({ dr: sql<string>`coalesce(sum(case when ${voucherEntries.amount} > 0 then ${voucherEntries.amount} else 0 end), 0)`, cr: sql<string>`coalesce(sum(case when ${voucherEntries.amount} < 0 then -${voucherEntries.amount} else 0 end), 0)` })
+      .from(voucherEntries)
+      .innerJoin(vouchers, eq(vouchers.id, voucherEntries.voucherId))
+      .where(and(eq(voucherEntries.ledgerId, cashRow.id), eq(vouchers.companyId, companyId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), lt(vouchers.date, input.date)));
+    const [{ dr, cr }] = before;
+    let projected = r2(num(cashRow.opening) + num(dr) - num(cr));
+    for (const e of input.entries) {
+      if (e.ledgerId === cashRow.id) {
+        projected = r2(projected + r2(e.amount));
+      } else if (e.ledgerId != null) {
+        const [l] = await tx.select({ name: ledgers.name }).from(ledgers).where(eq(ledgers.id, e.ledgerId));
+        if (l?.name === "Cash") projected = r2(projected - r2(e.amount));
+      }
+    }
+    if (projected < -0.004 && warnings) {
+      warnings.push(
+        `Negative cash balance on ${input.date}: this voucher would take Cash to ${Math.abs(projected).toLocaleString("en-IN")} Cr. Saved anyway — enable/adjust at your discretion (Tally parity: negative-cash warning).`,
+      );
+    }
+  }
   // R-73 (F-73-1): an OPTIONAL voucher must not consume the serial counter —
   // Tally numbers optional vouchers on Accept. The number is unique among
   // optional vouchers of the type (the number column still carries the display
@@ -568,6 +603,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       chequeNumber: input.chequeNumber ?? null,
       chequeDate: input.chequeDate ?? null,
       placeOfSupply: input.placeOfSupply ?? null,
+      invoiceDetails: input.invoiceDetails ?? null, // R-83 (F-83-4): per-voucher descriptive face
     })
     .returning();
 
@@ -842,6 +878,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
             placeOfSupply: input.placeOfSupply ?? null,
+            invoiceDetails: input.invoiceDetails ?? null, // R-83 (F-83-4): omitted = cleared (edit is full-body)
             // R-17: actor provance on edit — created_by stays untouched.
             updatedBy: typeof req.userId === "number" && req.userId > 0 ? req.userId : null,
             updatedAt: new Date(),

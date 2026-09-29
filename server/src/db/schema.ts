@@ -308,6 +308,16 @@ export const vouchers = pgTable("vouchers", {
   // deleted without stranding invoices; pending-qty queries validate
   // company/type themselves).
   orderVoucherId: integer("order_voucher_id"),
+  // R-83 (Option A, F-83-4): Tally's descriptive invoice details — the Party
+  // (buyer address override / consignee ship-to), Dispatch (doc no, through,
+  // destination, carrier LR-RR, vehicle, ports, marks/packages) and Order
+  // (buyer order no/date, payment terms, other refs, delivery terms) screens
+  // Tally toggles per voucher. One JSONB of all-nullable fields — additive,
+  // no backfill; NULL = the voucher carries none (every pre-R-83 row, and
+  // every voucher whose operator left the section untouched). Purely
+  // descriptive: validateEntries/accounting never reads it; the printable
+  // invoice face and the voucher payload render it as stored.
+  invoiceDetails: jsonb("invoice_details"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("vouchers_company_date_idx").on(t.companyId, t.date),
