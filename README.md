@@ -31,6 +31,8 @@ migrates cleanly instead of staying dead).
 - 28 pre-defined account groups + unlimited custom groups & ledgers (GSTIN, taxability, bill-wise, bank, TDS)
 - All accounting vouchers: Contra (F4), Payment (F5), Receipt (F6), Journal (F7), Sales (F8), Purchase (F9), Credit Note (Alt+F6), Debit Note (Alt+F5), Sale Order, Purchase Order
 - Double-entry validation, automatic voucher numbering with prefix/suffix
+- **Tally-style invoice details** — a collapsible "Party / Dispatch / Order details" section on Sales/Purchase/Credit/Debit Notes captures the descriptive invoice face per voucher: buyer-address override, consignee ship-to, dispatch (doc no, through, destination, carrier LR-RR, vehicle no, ports, marks/container no, packages), buyer order no/date and payment/delivery terms; everything prints on the invoice face when captured, nothing changes when not
+- **During-entry context (Tally parity)** — the Against Bill column offers the party's OPEN bills as a picker (allocations land on real bills), Party A/c shows the live balance as of the voucher date, and a negative-cash warning advises (never blocks) when a voucher would overdraw Cash
 - Narration, cheque numbers, bill references (New Ref / Against Ref / Advance / On Account)
 - **Light / Dark / Reading themes** — a dedicated toggle in the top bar: a proper dark mode (every surface, input and table re-themes, native controls included; accent text and links read near-white, selected text is white on a deep indigo band, and keyboard-highlighted options stay white/light) and a warm sepia **Reading** light; persisted per browser, and prints stay black-on-white under any theme
 
@@ -55,7 +57,7 @@ migrates cleanly instead of staying dead).
 **Utilities**
 - **XML import** — masters (groups/ledgers/stock items/units/godowns) + vouchers (all types, bill refs, GSTIN) from standard accounting XML exports; duplicates skipped
 - Cheque printing (printable cheque face with amount in words)
-- **Invoice printing** — Sales and Delivery Note vouchers (alter mode) render a GST-ready invoice face with the party's master details and amount in words; report pages print clean via a print stylesheet (chrome and buttons hidden)
+- **Invoice printing** — Sales and Delivery Note vouchers (alter mode) render a GST-ready invoice face with the party's master details and amount in words; captured invoice details (ship-to consignee, dispatch, order terms) print in Tally's layout order; report pages print clean via a print stylesheet (chrome and buttons hidden)
 - **Company logo on prints** — upload any image in Company Settings (auto-converted to a crisp ≤512 px PNG); it prints top-left on the invoice face and on every report print-out
 - Company settings, simple JWT login
 - **Company users** — the company creator adds/removes users and resets passwords in Company Settings → Users; every user has full access to the company (no permission levels, Tally-style)
