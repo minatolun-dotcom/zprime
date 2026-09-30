@@ -62,6 +62,13 @@ export default function VoucherScreen() {
   const [isOptional, setIsOptional] = useState(false);
   // R-73 (F-73-5): banking instrument (Payment/Receipt/Contra).
   const [bankTxnType, setBankTxnType] = useState("");
+  // R-83 (F-83-7): Tally's Bank Allocation screen — instrument no/date (date
+  // pre-fills with the voucher date like Tally), bank-side Ref ID and the
+  // post-dated class (Ctrl+T).
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [bankRefId, setBankRefId] = useState("");
+  const [isPostDated, setIsPostDated] = useState(false);
   // R-73 (F-73-4): the order this invoice/note fulfils.
   const [orderVoucherId, setOrderVoucherId] = useState<number | null>(null);
   // R-83 (Option A, F-83-4): Tally's descriptive invoice details (party /
@@ -283,6 +290,10 @@ export default function VoucherScreen() {
           setIsRcm(!!v.isRcm); // R-23: restore the reverse-charge flag on alter
           setIsOptional(!!v.isOptional); // R-73: draft flag on alter (Accept endpoint flips it)
           setBankTxnType(v.bankTxnType ?? ""); // R-73 (F-73-5)
+          setChequeNumber(v.chequeNumber ?? ""); // R-83 (F-83-7)
+          setChequeDate(v.chequeDate ? v.chequeDate.slice(0, 10) : "");
+          setBankRefId(v.bankRefId ?? "");
+          setIsPostDated(!!v.isPostDated);
           setOrderVoucherId(v.orderVoucherId ?? null); // R-73 (F-73-4)
           setInvoiceDetails((v.invoiceDetails ?? {}) as InvDetails); // R-83 (F-83-4)
           const rows: LedgerRow[] = v.entries.map((e: any) => ({
@@ -318,6 +329,10 @@ export default function VoucherScreen() {
             setRefDate(dup.refDate?.slice(0, 10) ?? "");
             setNarration(dup.narration ?? "");
             setBankTxnType(dup.bankTxnType ?? "");
+            setChequeNumber(dup.chequeNumber ?? ""); // R-83 (F-83-7)
+            setChequeDate(dup.chequeDate ? dup.chequeDate.slice(0, 10) : "");
+            setBankRefId(dup.bankRefId ?? "");
+            setIsPostDated(!!dup.isPostDated);
             setInvoiceDetails((dup.invoiceDetails ?? {}) as InvDetails); // R-83: duplicate copies the face too
             if (dup.partyLedgerId) {
               const pl = (dup.entries ?? []).find((e: any) => e.ledgerId === dup.partyLedgerId);
@@ -731,8 +746,12 @@ export default function VoucherScreen() {
       // R-73: Ctrl+L parks the voucher as an optional draft (create); on edit
       // the flag is preserved server-side when omitted.
       ...(isEdit ? {} : { isOptional: pendingOptionalRef.current }),
-      // R-73 (F-73-5): banking instrument on Payment/Receipt/Contra.
+      // R-73 (F-73-5) + R-83 (F-83-7): banking instrument on Payment/Receipt/Contra.
       bankTxnType: bankTxnType || null,
+      chequeNumber: chequeNumber || null,
+      chequeDate: chequeDate || (chequeNumber ? date : null), // Tally Bank Allocation prefill
+      bankRefId: bankRefId || null,
+      isPostDated,
       // R-73 (F-73-4): order linkage for invoices/notes.
       orderVoucherId: orderVoucherId || null,
       // R-83 (F-83-4): per-voucher descriptive invoice details (omitted when empty).
@@ -1483,15 +1502,46 @@ export default function VoucherScreen() {
               <input value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Being…" />
             </div>
 
-            {/* R-73 (F-73-5): banking instrument on Payment/Receipt/Contra */}
+            {/* R-73 (F-73-5) + R-83 (F-83-7): Tally's Bank Allocation screen on
+                Payment/Receipt/Contra — instrument taxonomy, instrument no/date
+                (date pre-fills with the voucher date like Tally), the bank-side
+                Ref ID and the post-dated class. Ctrl+T is browser-reserved
+                (new tab) — the checkbox carries the muscle-memory label, per
+                zprime's documented reserved-chord posture. */}
             {vType && ["Payment", "Receipt", "Contra"].includes(vType.name) && (
-              <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
-                <span className="text-sm font-medium text-slate-600">Transaction Type</span>
-                <select value={bankTxnType} onChange={(e) => setBankTxnType(e.target.value)}>
-                  <option value="">— not specified —</option>
-                  {BANK_TXN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
-                </select>
-              </div>
+              <>
+                <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                  <span className="text-sm font-medium text-slate-600">Transaction Type</span>
+                  <select value={bankTxnType} onChange={(e) => setBankTxnType(e.target.value)}>
+                    <option value="">— not specified —</option>
+                    {BANK_TXN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                  <span className="text-sm font-medium text-slate-600">Cheque / Inst. No.</span>
+                  <input data-testid="v-cheque-number" value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} placeholder="Instrument number" />
+                </div>
+                <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                  <span className="text-sm font-medium text-slate-600">Inst. Date</span>
+                  <input data-testid="v-cheque-date" type="date" value={chequeDate || date} onChange={(e) => setChequeDate(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                  <span className="text-sm font-medium text-slate-600">Ref ID</span>
+                  <input data-testid="v-bank-ref-id" value={bankRefId} onChange={(e) => setBankRefId(e.target.value)} placeholder="Bank reference / transaction id" />
+                </div>
+                <div className="grid grid-cols-[minmax(120px,140px)_1fr] gap-4 items-center">
+                  <span className="text-sm font-medium text-slate-600">Post-dated</span>
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input data-testid="v-post-dated" type="checkbox" checked={isPostDated} onChange={(e) => setIsPostDated(e.target.checked)} />
+                    <span>Post-dated cheque <span className="text-slate-400">(Ctrl+T is browser-reserved — use this box)</span></span>
+                  </label>
+                </div>
+                {isPostDated && chequeDate && chequeDate <= date && (
+                  <div data-testid="pdc-advisory" className="px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm leading-relaxed">
+                    Post-dated cheque has instrument date on/before the voucher date ({fmtDate(date)}) — the post-dated marking has no effect.
+                  </div>
+                )}
+              </>
             )}
 
             <div className="flex gap-2.5 pt-2 flex-wrap items-center">

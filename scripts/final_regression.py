@@ -3900,5 +3900,63 @@ s, tb83 = req("GET", f"{C83}/reports/trial-balance")
 _dr83 = round(sum(float(r["debit"]) for r in tb83["rows"]), 2); _cr83 = round(sum(float(r["credit"]) for r in tb83["rows"]), 2)
 check("R83: trial balance balances", abs(_dr83 - _cr83) < 0.02, (_dr83, _cr83))
 
+# ================= R-83 (F-83-7): Bank Allocation depth — Ref ID + post-dated =================
+print("-- R-83 F-83-7: bank Ref ID + post-dated class --")
+
+# 7) Ref ID + post-dated round-trip on both write paths
+# The instrument date must be in the FUTURE relative to the machine clock for
+# the register to derive 'pdc' (not 'due') — compute it dynamically.
+from datetime import date as _date, timedelta as _td
+_pdc_due = (_date.today() + _td(days=30)).isoformat()
+s, v83pdc = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-21",
+    "bankTxnType": "cheque", "chequeNumber": "CH-83", "chequeDate": _pdc_due, "bankRefId": "UTR83X1",
+    "isPostDated": True,
+    "entries": [{"ledgerId": purch83["id"], "amount": 300}, {"ledgerId": cash83["id"], "amount": -300}]})
+check("F83-7: PDC payment with Ref ID posts", s == 200, (s, str(v83pdc)[:140]))
+s, back83pdc = req("GET", f"{C83}/vouchers/{v83pdc['id']}")
+check("F83-7: bankRefId/isPostDated round-trip",
+      back83pdc.get("bankRefId") == "UTR83X1" and back83pdc.get("isPostDated") is True
+      and back83pdc.get("chequeDate", "")[:10] == _pdc_due, back83pdc)
+
+# 8) post-dated with a non-future instrument date warns (advisory, still 200)
+s, j83warn = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-22",
+    "chequeNumber": "CH-84", "chequeDate": "2026-04-22", "isPostDated": True,
+    "entries": [{"ledgerId": purch83["id"], "amount": 10}, {"ledgerId": cash83["id"], "amount": -10}]})
+check("F83-7: non-future PDC warns but saves", s == 200
+      and any("post-dated marking has no effect" in w for w in (j83warn.get("warnings") or [])),
+      (s, j83warn.get("warnings")))
+
+# 9) Cheque Register: status derivation + status filter + bankRefId in rows
+s, cr83 = req("GET", f"{C83}/cheque-register")
+_pdcRow = next((r for r in cr83 if r["chequeNumber"] == "CH-83"), None)
+check("F83-7: register derives pdc status + carries Ref ID",
+      _pdcRow is not None and _pdcRow.get("status") == "pdc" and _pdcRow.get("bankRefId") == "UTR83X1", _pdcRow)
+s, cr83f = req("GET", f"{C83}/cheque-register?status=pdc")
+check("F83-7: status=pdc filter narrows to the PDC row",
+      all(r.get("status") == "pdc" for r in cr83f) and any(r["chequeNumber"] == "CH-83" for r in cr83f), cr83f)
+s, cr83o = req("GET", f"{C83}/cheque-register?status=open")
+check("F83-7: status=open excludes the PDC row",
+      all(r.get("status") != "pdc" for r in cr83o), len(cr83o))
+
+# 10) PDC reconciliation flow: BRS mark flips the class to cleared
+s, _ = req("PATCH", f"{C83}/vouchers/{v83pdc['id']}/reconcile", {"reconciled": True, "date": "2026-05-25"})
+s, cr83c = req("GET", f"{C83}/cheque-register")
+_pdcCleared = next((r for r in cr83c if r["chequeNumber"] == "CH-83"), None)
+check("F83-7: reconciled PDC reports cleared", _pdcCleared is not None and _pdcCleared.get("status") == "cleared", _pdcCleared)
+s, _ = req("PATCH", f"{C83}/vouchers/{v83pdc['id']}/reconcile", {"reconciled": False})
+s, cr83b = req("GET", f"{C83}/cheque-register")
+_pdcBack = next((r for r in cr83b if r["chequeNumber"] == "CH-83"), None)
+check("F83-7: unreconcile returns the row to pdc", _pdcBack is not None and _pdcBack.get("status") == "pdc", _pdcBack)
+
+# 11) edit path: bankRefId/isPostDated change on PUT (full-body)
+s, _ = req("PUT", f"{C83}/vouchers/{v83pdc['id']}", {"voucherTypeId": vt83["Payment"], "date": "2026-04-21",
+    "bankTxnType": "neft", "chequeNumber": "CH-83", "chequeDate": _pdc_due, "bankRefId": "UTR83X2",
+    "isPostDated": False,
+    "entries": [{"ledgerId": purch83["id"], "amount": 300}, {"ledgerId": cash83["id"], "amount": -300}]})
+s, back83p2 = req("GET", f"{C83}/vouchers/{v83pdc['id']}")
+check("F83-7: edit updates Ref ID + clears post-dated",
+      s == 200 and back83p2.get("bankRefId") == "UTR83X2" and back83p2.get("isPostDated") is False,
+      back83p2)
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

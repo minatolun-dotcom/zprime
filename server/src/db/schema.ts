@@ -302,6 +302,13 @@ export const vouchers = pgTable("vouchers", {
   source: text("source").notNull().default("manual"), // manual | import | payroll
   chequeNumber: text("cheque_number"),
   chequeDate: date("cheque_date"),
+  // R-83 (F-83-7): Tally's Bank Allocation "Ref ID" — bank-side reference
+  // (transaction/reference id on RTGS/NEFT/UPI/other instruments) alongside
+  // the instrument no/date; feeds the Cheque Register and the BRS view.
+  bankRefId: text("bank_ref_id"),
+  // R-83 (F-83-7): Tally's post-dated class (Ctrl+T) — advisory-only metadata;
+  // the voucher posts normally, the Cheque Register derives pdc/due from it.
+  isPostDated: boolean("is_post_dated").notNull().default(false),
   placeOfSupply: text("place_of_supply"),
   // R-73 (F-73-4): order linkage. orderVoucherId = the Sale/Purchase Order
   // this invoice/credit note fulfils (nullable; NOT a hard FK — orders can be

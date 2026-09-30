@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Fragment } from "react";
 import { useLocation } from "react-router-dom";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Shell, { FKeyButton } from "../components/Shell";
 import { Card, ErrorBanner } from "../components/ui";
@@ -1383,31 +1383,58 @@ function SalaryRegisterView({ data, meta }: { data: any; meta: string[][] }) {
 }
 
 // ---------- Cheque register ----------
+// R-83 (F-83-7): Tally's register classes — Status (cleared / pdc / due /
+// open) derived server-side from reconciledAt + isPostDated + chequeDate, and
+// the Bank Allocation Ref ID column. ?status= narrows to one class.
 function ChequeRegisterView({ data, meta }: { data: any; meta: string[][] }) {
+  const { cid } = useParams();
+  const [search, setSearch] = useSearchParams();
+  const status = search.get("status") ?? "";
+  const setStatus = (s: string) => (s ? search.set("status", s) : search.delete("status"));
+  const statuses = ["", "open", "pdc", "due", "cleared"];
   return (
     <>
     <ReportActions
       name="cheque-register"
       meta={meta}
-      headers={["Date", "Txn Type", "Cheque No.", "Bank", "Party / Narration", "Amount", "Direction"]}
-      rows={() => data.map((c: any) => [fmtDate(c.date), (c.txnType ?? "cheque").toUpperCase(), c.chequeNumber, c.bankLedger, c.narration ?? "", c.amount, c.direction])}
+      headers={["Date", "Txn Type", "Cheque No.", "Ref ID", "Bank", "Party / Narration", "Amount", "Direction", "Status"]}
+      rows={() => data.map((c: any) => [fmtDate(c.date), (c.txnType ?? "cheque").toUpperCase(), c.chequeNumber, c.bankRefId ?? "", c.bankLedger, c.narration ?? "", c.amount, c.direction, c.status])}
     />
     <Card>
+      <div className="flex items-center gap-3 mb-3">
+        <span className="text-sm text-slate-500">Status</span>
+        {statuses.map((s) => (
+          <button
+            key={s || "all"}
+            data-testid={`cr-status-${s || "all"}`}
+            onClick={() => {
+              setStatus(s);
+              setSearch(search, { replace: true });
+            }}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium border ${s === status ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+          >
+            {s ? s.toUpperCase() : "ALL"}
+          </button>
+        ))}
+      </div>
       <table className="report-table">
-        <thead><tr><th className="w-24">Date</th><th className="w-20">Txn Type</th><th className="w-24">Cheque No.</th><th>Bank</th><th>Party / Narration</th>
-          <th className="w-28 text-right">Amount</th><th className="w-24">Direction</th></tr></thead>
+        <thead><tr><th className="w-24">Date</th><th className="w-20">Txn Type</th><th className="w-24">Cheque No.</th><th className="w-28">Ref ID</th><th>Bank</th><th>Party / Narration</th>
+          <th className="w-28 text-right">Amount</th><th className="w-24">Direction</th><th className="w-20">Status</th></tr></thead>
         <tbody>
           {data.map((c: any, i: number) => (
             <tr key={i}>
               <td className="cell-nowrap">{fmtDate(c.date)}</td>
               <td className="cell-nowrap text-slate-500">{c.txnType ? c.txnType.toUpperCase() : "—"}</td>
               <td className="font-mono cell-nowrap">{c.chequeNumber}</td>
+              <td className="font-mono cell-nowrap text-slate-500">{c.bankRefId || "—"}</td>
               <td>{c.bankLedger}</td><td className="text-slate-500 min-w-[180px] line-clamp-2 leading-snug">{c.narration}</td>
               <td className="num">{c.amount.toLocaleString("en-IN")}</td>
               <td>{c.direction}</td>
+              <td className="cell-nowrap"><span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${c.status === "cleared" ? "bg-emerald-100 text-emerald-700" : c.status === "pdc" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{c.status.toUpperCase()}</span></td>
             </tr>
           ))}
-          {data.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-4">No cheques recorded — enter cheque numbers on Payment/Receipt vouchers</td></tr>}
+          {data.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-4">No cheques recorded — enter instrument details on Payment/Receipt vouchers</td></tr>
+          }
         </tbody>
       </table>
     </Card>

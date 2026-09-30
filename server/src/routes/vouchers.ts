@@ -570,6 +570,15 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       );
     }
   }
+  // R-83 (F-83-7): Tally's post-dated class (Ctrl+T) — ADVISORY ONLY. The
+  // voucher posts normally (post-dated cheques are real obligations; Tally
+  // also books them, surfacing the class in registers). If the instrument
+  // date lands on/before the voucher date the flag is meaningless — warn.
+  if (input.isPostDated && input.chequeDate && input.chequeDate <= input.date && warnings) {
+    warnings.push(
+      `Post-dated cheque has instrument date ${input.chequeDate} on/before the voucher date ${input.date} — the post-dated marking has no effect. Saved anyway.`,
+    );
+  }
   // R-73 (F-73-1): an OPTIONAL voucher must not consume the serial counter —
   // Tally numbers optional vouchers on Accept. The number is unique among
   // optional vouchers of the type (the number column still carries the display
@@ -602,6 +611,9 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
       createdBy: typeof actor === "number" && actor > 0 ? actor : null,
       chequeNumber: input.chequeNumber ?? null,
       chequeDate: input.chequeDate ?? null,
+      // R-83 (F-83-7): Bank Allocation Ref ID + post-dated class.
+      bankRefId: input.bankRefId ?? null,
+      isPostDated: input.isPostDated ?? false,
       placeOfSupply: input.placeOfSupply ?? null,
       invoiceDetails: input.invoiceDetails ?? null, // R-83 (F-83-4): per-voucher descriptive face
     })
@@ -877,6 +889,9 @@ export default async function voucherRoutes(app: FastifyInstance) {
             orderVoucherId: input.orderVoucherId ?? null, // R-73 (F-73-4)
             chequeNumber: input.chequeNumber ?? null,
             chequeDate: input.chequeDate ?? null,
+            // R-83 (F-83-7): Bank Allocation Ref ID + post-dated class.
+            bankRefId: input.bankRefId ?? null,
+            isPostDated: input.isPostDated ?? existing.isPostDated,
             placeOfSupply: input.placeOfSupply ?? null,
             invoiceDetails: input.invoiceDetails ?? null, // R-83 (F-83-4): omitted = cleared (edit is full-body)
             // R-17: actor provance on edit — created_by stays untouched.

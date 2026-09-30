@@ -158,6 +158,13 @@ export const voucherSchema = z.object({
   isOptional: z.boolean().optional(),
   // R-73 (F-73-5): banking instrument taxonomy (cheque|rtgs|neft|upi|other).
   bankTxnType: shortText(20).nullable().optional(),
+  // R-83 (F-83-7): Tally's Bank Allocation "Ref ID" — the bank-side reference
+  // (transaction/reference id on RTGS/NEFT/UPI/other instruments). Free short
+  // text; zprime never parses or verifies it (no third-party banking).
+  bankRefId: shortText(100).nullable().optional(),
+  // R-83 (F-83-7): Tally's post-dated flag (Ctrl+T). Advisory-only metadata —
+  // the voucher posts normally; the Cheque Register surfaces pdc/due rows.
+  isPostDated: z.boolean().nullable().optional(),
   // R-73 (F-73-4): the order this invoice/credit note fulfils.
   orderVoucherId: z.number().int().positive().nullable().optional(),
   // R-10 (B-10): optional client-generated idempotency key. One key = one

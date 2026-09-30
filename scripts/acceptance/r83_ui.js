@@ -346,6 +346,71 @@ const BASE = D.BASE.replace(/\/$/, "");
   await page.keyboard.press("Escape");
   await page.waitForURL("**/daybook", { timeout: 10000 }).catch(() => {});
 
+  // ---------------- G) F-83-7: Bank Allocation depth -------------------------
+  // Tally's Bank Allocation screen on Payment: instrument no/date (date
+  // pre-fills with the voucher date), bank-side Ref ID, post-dated class; the
+  // Cheque Register grows a Ref ID column + Status classes (open/pdc/due/
+  // cleared) with a ?status= filter; a PDC reconciles via BRS to cleared.
+  console.log("-- G) F-83-7: Bank Allocation (Ref ID + post-dated) --");
+  const payL = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 Bank Vendor ${stamp}`, groupId: g["Purchase Accounts"] } })).json();
+  const payToday = new Date().toISOString().slice(0, 10);
+  const pdcDue = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Payment"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  await page.waitForSelector('[data-testid="v-cheque-number"]');
+  ok("Bank Allocation block renders on Payment", true);
+  ok("instrument date pre-fills with the voucher date (Tally Bank Allocation)",
+     (await page.locator('[data-testid="v-cheque-date"]').inputValue()) === payToday);
+  const gtable = page.locator("table").filter({ hasText: "Ledger" }).last();
+  const grow0 = gtable.locator("tbody tr").nth(0);
+  await ahead(grow0.locator("input").first(), `R83 Bank Vendor ${stamp}`);
+  await grow0.locator('input[type="number"]').nth(0).fill("1250");
+  await page.click('button:has-text("+ Add Ledger")');
+  const grow1 = gtable.locator("tbody tr").nth(1);
+  await ahead(grow1.locator("input").first(), "Cash");
+  await grow1.locator('input[type="number"]').nth(1).fill("1250");
+  await page.locator('[data-testid="v-cheque-number"]').fill("CH-UI-83");
+  await page.locator('[data-testid="v-bank-ref-id"]').fill("UTR-UI-83");
+  await page.locator('[data-testid="v-post-dated"]').check();
+  await page.locator('[data-testid="v-cheque-date"]').fill(pdcDue);
+  ok("PDC with future instrument date fires NO advisory",
+     !(await page.locator('[data-testid="pdc-advisory"]').isVisible().catch(() => false)));
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 12000 });
+  const uiPdcList = await get(`/api/c/${cid}/vouchers`);
+  const uiPdc = (await Promise.all(uiPdcList.filter((v) => v.typeName === "Payment" && !v.isCancelled && !v.isOptional).map((v) => get(`/api/c/${cid}/vouchers/${v.id}`))))
+    .find((v) => v.chequeNumber === "CH-UI-83");
+  ok("UI PDC payment saved with Ref ID + post-dated",
+     !!uiPdc && uiPdc.bankRefId === "UTR-UI-83" && uiPdc.isPostDated === true && uiPdc.chequeDate?.slice(0, 10) === pdcDue, uiPdc);
+
+  // Register: status derives pdc; the Ref ID column carries it
+  const crList = await get(`/api/c/${cid}/cheque-register`);
+  const crPdc = crList.find((r) => r.chequeNumber === "CH-UI-83");
+  ok("register derives PDC status for the UI cheque", crPdc && crPdc.status === "pdc", crPdc);
+  await page.goto(`${BASE}/company/${cid}/reports/cheque-register`);
+  await page.waitForSelector("table");
+  ok("register page shows Ref ID and PDC status chips",
+     (await page.locator("th", { hasText: "Ref ID" }).count()) === 1
+     && crPdc && (await page.locator("td", { hasText: "UTR-UI-83" }).count()) >= 1
+     && (await page.locator("text=PDC").count()) >= 1);
+  ok("status filter narrows to PDC rows",
+     (await page.locator("[data-testid='cr-status-pdc']").count()) === 1
+     && (await page.locator("table tbody tr").count()) >= 1);
+
+  // BRS flow: reconcile the PDC -> status flips to cleared
+  await page.request.patch(`${BASE}/api/c/${cid}/vouchers/${uiPdc.id}/reconcile`, { data: { reconciled: true } });
+  const crCleared = (await get(`/api/c/${cid}/cheque-register`)).find((r) => r.chequeNumber === "CH-UI-83");
+  ok("reconciled PDC reports cleared", crCleared && crCleared.status === "cleared", crCleared);
+  await page.request.patch(`${BASE}/api/c/${cid}/vouchers/${uiPdc.id}/reconcile`, { data: { reconciled: false } });
+
+  // Alter: the saved fields restore on the edit screen
+  await page.goto(`${BASE}/company/${cid}/voucher/${uiPdc.id}/edit`);
+  await page.waitForSelector('[data-testid="v-cheque-number"]');
+  ok("alter restores instrument/Ref ID/PDC state",
+     (await page.locator('[data-testid="v-cheque-number"]').inputValue()) === "CH-UI-83"
+     && (await page.locator('[data-testid="v-bank-ref-id"]').inputValue()) === "UTR-UI-83"
+     && (await page.locator('[data-testid="v-post-dated"]').isChecked()));
+
   ok("zero page errors across the suite", pageErrors.length === 0, pageErrors);
   D.record(fail === 0, "r83", `summary pass=${pass} fail=${fail}`);
   D.summary();

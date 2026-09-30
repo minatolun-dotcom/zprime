@@ -25,6 +25,9 @@ export default async function bankingRoutes(app: FastifyInstance) {
         txnType: vouchers.bankTxnType,
         // R-73 (F-73-5): reconciliation date for the BRS view (null = unreconciled).
         reconciledAt: vouchers.reconciledAt,
+        // R-83 (F-83-7): Bank Allocation Ref ID + Tally's post-dated class.
+        bankRefId: vouchers.bankRefId,
+        isPostDated: vouchers.isPostDated,
       })
       .from(vouchers)
       .innerJoin(voucherTypes, eq(voucherTypes.id, vouchers.voucherTypeId))
@@ -39,10 +42,24 @@ export default async function bankingRoutes(app: FastifyInstance) {
         .innerJoin(ledgers, eq(ledgers.id, voucherEntries.ledgerId))
         .where(and(eq(voucherEntries.voucherId, r.voucherId), eq(ledgers.isBankCash, true)));
       for (const b of bankLines) {
-        result.push({ ...r, bankLedger: b.ledgerName, bankAccount: b.bankAccount, amount: r2(Math.abs(num(b.amount))), direction: num(b.amount) > 0 ? "issued" : "received" });
+        // R-83 (F-83-7): Tally's register classes — cleared (operator-confirmed
+        // BRS reconciliation), pdc (post-dated, instrument not yet due), due
+        // (post-dated whose instrument date has arrived — treat like a normal
+        // open cheque), open (plain unreconciled). Derived, never stored.
+        const status =
+          r.reconciledAt != null
+            ? "cleared"
+            : r.isPostDated && r.chequeDate && r.chequeDate > today()
+              ? "pdc"
+              : r.isPostDated
+                ? "due"
+                : "open";
+        result.push({ ...r, status, bankLedger: b.ledgerName, bankAccount: b.bankAccount, amount: r2(Math.abs(num(b.amount))), direction: num(b.amount) > 0 ? "issued" : "received" });
       }
     }
-    return result;
+    // R-83 (F-83-7): optional class filter (?status=pdc|due|cleared|open).
+    const st = String((req.query as any)?.status ?? "");
+    return ["pdc", "due", "cleared", "open"].includes(st) ? result.filter((x) => x.status === st) : result;
   });
 
   // ---- R-73 (F-73-5): Bank Reconciliation statement data ----
