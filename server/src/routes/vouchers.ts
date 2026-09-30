@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import {
   vouchers, voucherEntries, billAllocations, inventoryEntries, voucherTypes, ledgers,
   stockItems, godowns, tdsSections, tcsSections, voucherCounters, payslips, companies, idempotencyKeys,
-  auditEvents, users,
+  auditEvents, users, costCentres, voucherCostAllocations,
 } from "../db/schema.js";
 import { and, asc, desc, eq, gte, lte, ne, lt, sql, inArray, isNull } from "drizzle-orm";
 import { cid, bad, voucherSchema, pgFriendly, pgCode, type VoucherInput } from "../lib/routes.js";
@@ -434,8 +434,8 @@ async function validateBillsTx(tx: Tx, companyId: number, entries: VoucherInput[
   }
 }
 
-// ---------- body writer (entries, bills, inventory) ----------
-async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
+// ---------- body writer (entries, bills, cost allocations, inventory) ----------
+async function writeBody(tx: Tx, voucherId: number, companyId: number, input: VoucherInput) {
   for (let i = 0; i < input.entries.length; i++) {
     const e = input.entries[i];
     const [row] = await tx
@@ -460,6 +460,32 @@ async function writeBody(tx: Tx, voucherId: number, input: VoucherInput) {
         amount: String(r2(b.amount)),
         dueDate: b.dueDate ?? null,
       });
+    }
+    // R-83 (F-83-8): cost-centre allocations — a DIMENSION of the posting,
+    // never a second posting. The allocations must sum to the row's signed
+    // amount (±0.01) and every centre must belong to this company; otherwise
+    // department profitability would drift from the books. Rows without
+    // allocations (the default) write nothing — pre-F-83-8 clients are
+    // byte-identical.
+    const allocs: { costCentreId: number; amount: number }[] = (e as any).costAllocations ?? [];
+    if (allocs.length > 0) {
+      const sum = r2(allocs.reduce((s: number, a: any) => s + num(a.amount), 0));
+      if (Math.abs(sum - r2(e.amount)) > 0.01) {
+        throw bad(`Cost-centre allocations on entry ${i + 1} sum to ${sum} but the row is ${r2(e.amount)} — they must add up exactly (allocation is a dimension of the posting, not an extra posting).`);
+      }
+      const centreIds: number[] = [...new Set(allocs.map((a) => Number(a.costCentreId)))];
+      const known = await tx.select({ id: costCentres.id }).from(costCentres)
+        .where(and(eq(costCentres.companyId, companyId), inArray(costCentres.id, centreIds)));
+      if (known.length !== centreIds.length) {
+        throw bad("One or more cost centres do not exist in this company", 404);
+      }
+      for (const a of allocs) {
+        await tx.insert(voucherCostAllocations).values({
+          entryId: row.id,
+          costCentreId: a.costCentreId,
+          amount: String(r2(a.amount)),
+        });
+      }
     }
   }
 
@@ -619,7 +645,7 @@ async function insertVoucherTx(tx: Tx, companyId: number, input: VoucherInput, s
     })
     .returning();
 
-  await writeBody(tx, v.id, input);
+  await writeBody(tx, v.id, companyId, input);
   await recordAuditEvent(tx, companyId, v.id, actor, "create");
   return v;
 }
@@ -688,6 +714,13 @@ export default async function voucherRoutes(app: FastifyInstance) {
       .from(billAllocations)
       .innerJoin(voucherEntries, eq(voucherEntries.id, billAllocations.entryId))
       .where(eq(voucherEntries.voucherId, id));
+    // R-83 (F-83-8): cost-centre allocations ride each entry on alter.
+    const costAllocs = await db
+      .select({ entryId: voucherCostAllocations.entryId, costCentreId: voucherCostAllocations.costCentreId, amount: voucherCostAllocations.amount, centreName: costCentres.name })
+      .from(voucherCostAllocations)
+      .innerJoin(voucherEntries, eq(voucherEntries.id, voucherCostAllocations.entryId))
+      .innerJoin(costCentres, eq(costCentres.id, voucherCostAllocations.costCentreId))
+      .where(eq(voucherEntries.voucherId, id));
     const inv = await db
       .select()
       .from(inventoryEntries)
@@ -702,7 +735,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
       type,
       createdByUsername: createdByUser?.username ?? null,
       updatedByUsername: updatedByUser?.username ?? null,
-      entries: entries.map((e) => ({ ...e, amount: num(e.amount), bills: bills.filter((b) => b.entryId === e.id) })),
+      entries: entries.map((e) => ({ ...e, amount: num(e.amount), bills: bills.filter((b) => b.entryId === e.id), costAllocations: costAllocs.filter((a) => a.entryId === e.id).map((a) => ({ costCentreId: a.costCentreId, amount: num(a.amount), centreName: a.centreName })) })),
       inventoryEntries: inv.map((e) => ({ ...e, qty: num(e.qty), rate: num(e.rate), amount: num(e.amount), discountPct: e.discountPct != null ? num(e.discountPct) : null })),
       // R-73 (F-73-1): a draft carries a provisional OPT-n display number. The
       // editor's next-number re-peek keeps the REAL next serial; Accept stamps it.
@@ -902,7 +935,7 @@ export default async function voucherRoutes(app: FastifyInstance) {
 
         await tx.delete(voucherEntries).where(eq(voucherEntries.voucherId, id));
         await tx.delete(inventoryEntries).where(eq(inventoryEntries.voucherId, id));
-        await writeBody(tx, id, input);
+        await writeBody(tx, id, c, input);
         await recordAuditEvent(tx, c, id, req.userId, "edit");
         return editWarnings.length ? { id, warnings: editWarnings } : { id };
       });

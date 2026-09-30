@@ -101,9 +101,15 @@ export default function Shell({
       // R-62/R-63: Alt+S = Company Settings, Alt+O = Chart of Accounts —
       // both Tally-vocabulary chords (Stock Query / the O of "COA"), free
       // in zprime's chord space since the letter space is saturated.
+      // R-83 (F-83-8): Alt+N/Alt+M = the Tally-F11 cost masters (Categories /
+      // Centres), Alt+K = the Cost Centres report — the letter+digit space was
+      // already saturated, so these follow the same real-chord precedent.
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
         if (e.key === "s" || e.key === "S") { e.preventDefault(); nav(`/company/${cid}/settings`); }
         if (e.key === "o" || e.key === "O") { e.preventDefault(); nav(`/company/${cid}/reports/chart-of-accounts`); }
+        if (e.key === "n" || e.key === "N") { e.preventDefault(); nav(`/company/${cid}/masters/cost-categories`); }
+        if (e.key === "m" || e.key === "M") { e.preventDefault(); nav(`/company/${cid}/masters/cost-centres`); }
+        if (e.key === "k" || e.key === "K") { e.preventDefault(); nav(`/company/${cid}/reports/cost-centres`); }
       }
     };
     window.addEventListener("keydown", handler);

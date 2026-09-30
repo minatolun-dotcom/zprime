@@ -346,6 +346,83 @@ const BASE = D.BASE.replace(/\/$/, "");
   await page.keyboard.press("Escape");
   await page.waitForURL("**/daybook", { timeout: 10000 }).catch(() => {});
 
+  // ---------------- H) F-83-8: Cost centres (Tally F11) -----------------------
+  // Masters (category + centre), ledger opt-in, per-row split with sum-to-row
+  // enforcement (server 400 on drift), alter round-trip, and the Cost Centres
+  // report computing Dr/Cr/net per centre per category.
+  console.log("-- H) F-83-8: cost centres (allocation = dimension, never a posting) --");
+  const ccToday = new Date().toISOString().slice(0, 10);
+  const cat83 = await (await page.request.post(`${BASE}/api/c/${cid}/cost-categories`, { data: { name: `R83 Depts ${stamp}` } })).json();
+  const ccA = await (await page.request.post(`${BASE}/api/c/${cid}/cost-centres`, { data: { name: `R83 Sales Dept ${stamp}`, categoryId: cat83.id } })).json();
+  const ccB = await (await page.request.post(`${BASE}/api/c/${cid}/cost-centres`, { data: { name: `R83 Prod Dept ${stamp}`, categoryId: cat83.id } })).json();
+  ok("cost masters created (category + 2 centres)", !!cat83.id && !!ccA.id && !!ccB.id, { cat83, ccA, ccB });
+  const ccLedger = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 CC Advertising ${stamp}`, groupId: g["Indirect Expenses"], trackCostCentre: true } })).json();
+  ok("ledger opts into cost-centre tracking", !!ccLedger.id && ccLedger.trackCostCentre === true, ccLedger);
+
+  // Drift: allocations not summing to the row are REFUSED by the server
+  const drift = await page.request.post(`${BASE}/api/c/${cid}/vouchers`, { data: {
+    voucherTypeId: vt["Payment"], date: ccToday,
+    entries: [
+      { ledgerId: ccLedger.id, amount: 400, costAllocations: [{ costCentreId: ccA.id, amount: 250 }, { costCentreId: ccB.id, amount: 100 }] },
+      { ledgerId: cash.id, amount: -400 },
+    ],
+  } });
+  ok("server refuses a split that does not sum to the row (400)", drift.status() === 400, await drift.text());
+
+  // UI flow: Payment split across the two centres, saved, alter round-trip
+  await page.goto(`${BASE}/company/${cid}/voucher/${vt["Payment"]}/new`);
+  await page.waitForSelector("text=Ledger Entries");
+  const ctable = page.locator("table").filter({ hasText: "Ledger" }).last();
+  const crow0 = ctable.locator("tbody tr").nth(0);
+  await ahead(crow0.locator("input").first(), `R83 CC Advertising ${stamp}`);
+  await crow0.locator('input[type="number"]').nth(0).fill("400");
+  await page.click('button:has-text("+ Add Ledger")');
+  const crow1 = ctable.locator("tbody tr").nth(1);
+  await ahead(crow1.locator("input").first(), "Cash");
+  await crow1.locator('input[type="number"]').nth(1).fill("400");
+  // The split cell appears once the tracking ledger occupies the row.
+  await page.waitForSelector('[data-testid="cost-split-0"]');
+  ok("Cost Centre column renders a split cell on the tracking row", true);
+  await page.locator('[data-testid="cost-split-0"]').click();
+  await page.waitForSelector('[data-testid="cost-split-modal"]');
+  await page.locator("[data-testid='cost-split-add']").click();
+  await page.locator("[data-testid='cost-split-add']").click();
+  await page.locator("[data-testid='cost-split-centre-0']").selectOption(String(ccA.id));
+  await page.locator("[data-testid='cost-split-centre-1']").selectOption(String(ccB.id));
+  await page.locator("[data-testid='cost-split-amt-0']").fill("300");
+  await page.locator("[data-testid='cost-split-amt-1']").fill("100");
+  ok("split total shows the balanced allocation",
+     (await page.locator("[data-testid='cost-split-total']").textContent()).includes("400"));
+  await page.locator("[data-testid='cost-split-done']").click();
+  await page.keyboard.press("Control+a");
+  await page.waitForURL("**/daybook", { timeout: 12000 });
+  const ccList2 = await get(`/api/c/${cid}/vouchers`);
+  const ccVoucher = (await Promise.all(ccList2.filter((v) => v.typeName === "Payment" && !v.isCancelled && !v.isOptional).map((v) => get(`/api/c/${cid}/vouchers/${v.id}`))))
+    .find((v) => (v.entries ?? []).some((e) => e.ledgerId === ccLedger.id));
+  const ccEntry = ccVoucher?.entries?.find((e) => e.ledgerId === ccLedger.id);
+  ok("saved voucher carries the split (300 + 100 on the row)",
+     ccEntry && ccEntry.costAllocations?.length === 2
+     && Math.abs(ccEntry.costAllocations.find((a) => a.costCentreId === ccA.id)?.amount - 300) < 0.01
+     && Math.abs(ccEntry.costAllocations.find((a) => a.costCentreId === ccB.id)?.amount - 100) < 0.01, ccEntry);
+
+  // Alter restores the split
+  await page.goto(`${BASE}/company/${cid}/voucher/${ccVoucher.id}/edit`);
+  await page.waitForSelector("text=Ledger Entries");
+  const chipText = await page.locator("[data-testid='cost-split-0']").textContent();
+  ok("alter shows the saved split on the row chip", chipText.includes("R83 Sales Dept") && chipText.includes("R83 Prod Dept"), chipText);
+  await page.keyboard.press("Escape");
+  await page.waitForURL("**/daybook", { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(400);
+
+  // The Cost Centres report: Dr/Cr/net per centre, category labelled
+  await page.goto(`${BASE}/company/${cid}/reports/cost-centres`);
+  await page.waitForSelector("table");
+  ok("report shows both centres with the category",
+     (await page.locator("td", { hasText: `R83 Sales Dept ${stamp}` }).count()) >= 1
+     && (await page.locator("td", { hasText: `R83 Depts ${stamp}` }).count()) >= 2);
+  const netCell = await page.locator("tr", { hasText: `R83 Sales Dept ${stamp}` }).locator("td").last().textContent();
+  ok("report nets the expense centre at 300 Dr", netCell.includes("300"), netCell);
+
   // ---------------- G) F-83-7: Bank Allocation depth -------------------------
   // Tally's Bank Allocation screen on Payment: instrument no/date (date
   // pre-fills with the voucher date), bank-side Ref ID, post-dated class; the

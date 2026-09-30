@@ -178,6 +178,18 @@ export const voucherSchema = z.object({
       // R-73 (F-73-6): per-line narration (Tally F12 "use different narrations").
       narration: shortText(300).nullable().optional(),
       bills: z.array(billSchema).optional().default([]),
+      // R-83 (F-83-8): cost-centre allocations on the row (Tally F11) — each
+      // is a DIMENSION of the posting; the write path enforces that the
+      // allocations sum to the row's signed amount (the TB cannot move).
+      costAllocations: z
+        .array(
+          z.object({
+            costCentreId: z.number().int().positive(),
+            amount: z.number().finite(),
+          }),
+        )
+        .nullable()
+        .optional(),
     })
   ),
   inventoryEntries: z.array(

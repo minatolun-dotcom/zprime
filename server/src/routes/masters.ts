@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
 import {
   groups, ledgers, units, stockGroups, stockCategories, godowns, stockItems, voucherTypes, tdsSections, tcsSections, vouchers,
+  costCategories, costCentres,
 } from "../db/schema.js";
 import { and, asc, eq, ilike } from "drizzle-orm";
 import { cid, bad, groupSchema, tdsSectionSchema, tcsSectionSchema } from "../lib/routes.js";
@@ -50,6 +51,16 @@ export default async function masterRoutes(app: FastifyInstance) {
   crud(app, "stock-groups", stockGroups, { orderBy: byName });
   crud(app, "stock-categories", stockCategories, { orderBy: byName });
   crud(app, "godowns", godowns, { orderBy: byName });
+  // R-83 (F-83-8): the Tally F11 cost-centre masters. A cost centre may
+  // reference only its own company's category (in-company FK, R-08 rule);
+  // category deletion is soft (SET NULL → the centre falls to Tally's
+  // "Primary Cost Category"), centre deletion is FK-guarded while
+  // allocations exist (pgFriendly → clean 400).
+  crud(app, "cost-categories", costCategories, { orderBy: byName });
+  crud(app, "cost-centres", costCentres, {
+    orderBy: byName,
+    refs: { categoryId: { table: costCategories, label: "Cost category" } },
+  });
   crud(app, "stock-items", stockItems, { orderBy: byName, searchFields: [stockItems.name],
     refs: {
       unitId: { table: units, label: "Unit" },

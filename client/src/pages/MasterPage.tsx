@@ -12,7 +12,7 @@ type FieldType = "text" | "number" | "date" | "select" | "checkbox" | "textarea"
 interface FieldDef {
   name: string; label: string; type: FieldType;
   options?: { value: string | number; label: string }[];
-  optionsFrom?: "ledgers" | "units" | "stock-groups" | "stock-categories" | "groups" | "tds-sections" | "tcs-sections" | "employees";
+  optionsFrom?: "ledgers" | "units" | "stock-groups" | "stock-categories" | "groups" | "tds-sections" | "tcs-sections" | "employees" | "cost-categories";
   required?: boolean; hint?: string; full?: boolean;
 }
 interface KindConfig {
@@ -75,6 +75,13 @@ export default function MasterPage() {
     queryFn: () => get<any[]>(`/api/c/${cid}/tcs-sections`),
     enabled: config.fields.some((f) => f.optionsFrom === "tcs-sections"),
   });
+  // R-83 (F-83-8): cost categories feed the Cost Centre master's select and
+  // the table's Category column.
+  const { data: ccOpts } = useQuery({
+    queryKey: ["cost-categories", cid],
+    queryFn: () => get<any[]>(`/api/c/${cid}/cost-categories`),
+    enabled: config.fields.some((f) => f.optionsFrom === "cost-categories") || kind === "cost-centres",
+  });
 
   const resolvedFields = useMemo(() => {
     return config.fields.map((f) => {
@@ -96,9 +103,10 @@ export default function MasterPage() {
       if (f.optionsFrom === "stock-categories") options = (scOpts ?? []).map((g) => ({ value: g.id, label: g.name }));
       if (f.optionsFrom === "tds-sections") options = [{ value: "", label: "— None —" }, ...(tdsOpts ?? []).map((s) => ({ value: s.id, label: `${s.section} (${s.rate}%)` }))];
       if (f.optionsFrom === "tcs-sections") options = [{ value: "", label: "— None —" }, ...(tcsOpts ?? []).map((s) => ({ value: s.id, label: `${s.section} (${s.rate}%)` }))];
+      if (f.optionsFrom === "cost-categories") options = [{ value: "", label: "— Primary Cost Category —" }, ...(ccOpts ?? []).map((g) => ({ value: g.id, label: g.name }))];
       return { ...f, options };
     });
-  }, [config, ledgerOpts, unitOpts, sgOpts, scOpts, tdsOpts, tcsOpts]);
+  }, [config, ledgerOpts, unitOpts, sgOpts, scOpts, tdsOpts, tcsOpts, ccOpts]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -216,7 +224,11 @@ export default function MasterPage() {
                 <td className="text-slate-400">{i + 1}</td>
                 {config.columns.map((c) => (
                   <td key={c.key} className={c.sub === "num" ? "num" : ""}>
-                    {c.sub === "num" ? (Math.abs(num(r[c.key])) < 0.005 ? "" : num(r[c.key]).toLocaleString("en-IN")) : r[c.key] ?? ""}
+                    {c.sub === "num"
+                      ? (Math.abs(num(r[c.key])) < 0.005 ? "" : num(r[c.key]).toLocaleString("en-IN"))
+                      : c.sub === "costCategory"
+                        ? (ccOpts ?? []).find((g) => g.id === r[c.key])?.name ?? "Primary Cost Category"
+                        : r[c.key] ?? ""}
                   </td>
                 ))}
                 <td className="text-right">
@@ -299,6 +311,7 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
     { name: "groupId", label: "Under Group *", type: "select", optionsFrom: "groups", required: true },
     { name: "openingBalance", label: "Opening Balance", type: "number", hint: "+ = Dr, − = Cr" },
     { name: "billWise", label: "Bill-wise Details", type: "checkbox" },
+    { name: "trackCostCentre", label: "Cost Centre Tracking", type: "checkbox", hint: "Tally F11 — voucher rows on this ledger offer a Cost Centre split (Tally: Cost centres are applicable)" },
     { name: "gstin", label: "GSTIN", type: "text" },
     { name: "gstRegistrationType", label: "GST Registration", type: "select", options: [
       { value: "regular", label: "Regular" }, { value: "composition", label: "Composition" },
@@ -398,6 +411,21 @@ function CONFIGS(kind: string, _fy: string): KindConfig {
       title: "Godowns / Locations", endpoint: "godowns",
       fields: [{ name: "name", label: "Name *", type: "text", required: true }],
       columns: [{ key: "name", label: "Name" }],
+      newRow: () => ({}),
+    },
+    "cost-categories": {
+      title: "Cost Categories", endpoint: "cost-categories",
+      fields: [{ name: "name", label: "Name *", type: "text", required: true, hint: "e.g. Departments, Projects (Tally F11)" }],
+      columns: [{ key: "name", label: "Name" }],
+      newRow: () => ({}),
+    },
+    "cost-centres": {
+      title: "Cost Centres", endpoint: "cost-centres",
+      fields: [
+        { name: "name", label: "Name *", type: "text", required: true, hint: "e.g. Sales, Production, Site A" },
+        { name: "categoryId", label: "Cost Category", type: "select", optionsFrom: "cost-categories", hint: "Blank = Tally's Primary Cost Category" },
+      ],
+      columns: [{ key: "name", label: "Name" }, { key: "categoryId", label: "Category", sub: "costCategory" }],
       newRow: () => ({}),
     },
     "voucher-types": {

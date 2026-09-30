@@ -3958,5 +3958,92 @@ check("F83-7: edit updates Ref ID + clears post-dated",
       s == 200 and back83p2.get("bankRefId") == "UTR83X2" and back83p2.get("isPostDated") is False,
       back83p2)
 
+# ================= R-83 (F-83-8): Cost centres — allocation = dimension =================
+print("-- R-83 F-83-8: cost categories/centres + per-row allocation --")
+
+# 12) masters: category + centres (one under the category, one Primary/NULL)
+s, cat83b = req("POST", f"{C83}/cost-categories", {"name": "Departments 83"})
+check("F83-8: cost category created", s == 200 and cat83b.get("id"), (s, str(cat83b)[:100]))
+s, ccA = req("POST", f"{C83}/cost-centres", {"name": "Sales Dept 83", "categoryId": cat83b["id"]})
+s, ccB = req("POST", f"{C83}/cost-centres", {"name": "Prod Dept 83"})
+check("F83-8: cost centres created (one categorized, one Primary)",
+      s == 200 and ccA.get("categoryId") == cat83b["id"] and ccB.get("categoryId") in (None, ""), (ccA, ccB))
+s, ccdup = req("POST", f"{C83}/cost-centres", {"name": "Sales Dept 83"})
+check("F83-8: duplicate centre name -> 409", s == 409, (s, str(ccdup)[:90]))
+s, _ = req("DELETE", f"{C83}/cost-categories/{cat83b['id']}")
+s, ccAback = req("GET", f"{C83}/cost-centres/{ccA['id']}")
+check("F83-8: category delete falls back to Primary (SET NULL)",
+      s == 200 and ccAback.get("categoryId") in (None, ""), ccAback)
+
+# 13) allocation sums-to-row enforcement (dimension, never a second posting)
+s, d83drift = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-23",
+    "entries": [{"ledgerId": purch83["id"], "amount": 400,
+                 "costAllocations": [{"costCentreId": ccA["id"], "amount": 250}, {"costCentreId": ccB["id"], "amount": 100}]},
+                {"ledgerId": cash83["id"], "amount": -400}]})
+check("F83-8: split not summing to the row -> 400", s == 400, (s, str(d83drift)[:130]))
+s, d83foreign = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-23",
+    "entries": [{"ledgerId": purch83["id"], "amount": 100, "costAllocations": [{"costCentreId": 999999, "amount": 100}]},
+                {"ledgerId": cash83["id"], "amount": -100}]})
+check("F83-8: foreign company cost centre -> 404", s == 404, (s, str(d83foreign)[:110]))
+
+# 14) valid split posts + round-trips; TB UNCHANGED by allocations (the core invariant)
+s, tb83_pre = req("GET", f"{C83}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+s, v83cc = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-24",
+    "entries": [{"ledgerId": purch83["id"], "amount": 400,
+                 "costAllocations": [{"costCentreId": ccA["id"], "amount": 300}, {"costCentreId": ccB["id"], "amount": 100}]},
+                {"ledgerId": cash83["id"], "amount": -400}]})
+check("F83-8: payment with a balanced split posts", s == 200, (s, str(v83cc)[:130]))
+s, back83cc = req("GET", f"{C83}/vouchers/{v83cc['id']}")
+_ccentry = next((e for e in back83cc.get("entries", []) if e["ledgerId"] == purch83["id"]), None)
+check("F83-8: allocations round-trip on the entry",
+      _ccentry is not None and len(_ccentry.get("costAllocations", [])) == 2
+      and abs(next(a for a in _ccentry["costAllocations"] if a["costCentreId"] == ccA["id"])["amount"] - 300) < 0.01,
+      _ccentry)
+s, tb83_post = req("GET", f"{C83}/reports/trial-balance?from=2026-04-01&to=2026-06-30")
+def _tbnet(tb):
+    return round(sum(float(r["debit"]) for r in tb["rows"]) - sum(float(r["credit"]) for r in tb["rows"]), 2)
+check("F83-8: TB Dr-Cr delta identical (allocation moved NOTHING)",
+      abs(_tbnet(tb83_post) - _tbnet(tb83_pre)) < 0.02, (_tbnet(tb83_pre), _tbnet(tb83_post)))
+
+# 15) edit is full-body: omitting costAllocations clears the split
+s, _ = req("PUT", f"{C83}/vouchers/{v83cc['id']}", {"voucherTypeId": vt83["Payment"], "date": "2026-04-24",
+    "entries": [{"ledgerId": purch83["id"], "amount": 400}, {"ledgerId": cash83["id"], "amount": -400}]})
+s, back83cc2 = req("GET", f"{C83}/vouchers/{v83cc['id']}")
+_ccentry2 = next((e for e in back83cc2.get("entries", []) if e["ledgerId"] == purch83["id"]), None)
+check("F83-8: edit omitting costAllocations clears the split",
+      _ccentry2 is not None and len(_ccentry2.get("costAllocations", [])) == 0, _ccentry2)
+
+# 16) Cost Centres report: per-centre Dr/Cr/net + category label
+# (check 15's edit legitimately cleared the FIRST split, so these are fresh
+# postings: 250 all on Prod, then 300 all on Sales)
+s, v83cc2 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-25",
+    "entries": [{"ledgerId": purch83["id"], "amount": 250,
+                 "costAllocations": [{"costCentreId": ccB["id"], "amount": 250}]},
+                {"ledgerId": cash83["id"], "amount": -250}]})
+check("F83-8: second split payment posts", s == 200, (s, str(v83cc2)[:110]))
+s, v83cc3 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-26",
+    "entries": [{"ledgerId": purch83["id"], "amount": 300,
+                 "costAllocations": [{"costCentreId": ccA["id"], "amount": 300}]},
+                {"ledgerId": cash83["id"], "amount": -300}]})
+check("F83-8: third split payment posts", s == 200, (s, str(v83cc3)[:110]))
+s, ccRep = req("GET", f"{C83}/reports/cost-centres?from=2026-04-01&to=2026-06-30")
+_ccA = next((c for c in ccRep.get("centres", []) if c["centreId"] == ccA["id"]), None)
+_ccB = next((c for c in ccRep.get("centres", []) if c["centreId"] == ccB["id"]), None)
+check("F83-8: report nets Sales 300 Dr / Prod 250 Dr",
+      _ccA is not None and abs(_ccA["net"] - 300) < 0.02
+      and _ccB is not None and abs(_ccB["net"] - 250) < 0.02, (_ccA, _ccB))
+check("F83-8: uncategorized centre labels Primary Cost Category",
+      _ccB is not None and _ccB.get("categoryName") == "Primary Cost Category", _ccB)
+
+# 17) cancelled vouchers drop out of the report (isCancelled filter) — Sales
+# stays untouched at 300 while Prod's only posting was cancelled away
+s, _ = req("POST", f"{C83}/vouchers/{v83cc2['id']}/cancel", {})
+s, ccRep2 = req("GET", f"{C83}/reports/cost-centres?from=2026-04-01&to=2026-06-30")
+_ccB2 = next((c for c in ccRep2.get("centres", []) if c["centreId"] == ccB["id"]), None)
+_ccA2 = next((c for c in ccRep2.get("centres", []) if c["centreId"] == ccA["id"]), None)
+check("F83-8: cancelled voucher's allocation leaves the report",
+      (_ccB2 is None or abs(_ccB2["net"]) < 0.02)
+      and _ccA2 is not None and abs(_ccA2["net"] - 300) < 0.02, (_ccA2, _ccB2))
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

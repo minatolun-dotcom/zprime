@@ -388,7 +388,7 @@ const stamp = Date.now().toString(36);
   await page.click('nav >> text=Reports');
   await page.waitForSelector('[data-testid="reports-menu"]');
   const menuCount = await page.locator('[data-testid="reports-menu"] a').count();
-  ok("Reports menu page renders the full report list (17 options)", menuCount === 17, menuCount);
+  ok("Reports menu page renders the full report list (18 options — 17 + the F-83-8 Cost Centres)", menuCount === 18, menuCount);
   ok("Reports menu URL is the in-between surface", /\/company\/\d+\/reports$/.test(page.url()), page.url());
 
   // Esc from the menu goes back to the report it came from (history-faithful)

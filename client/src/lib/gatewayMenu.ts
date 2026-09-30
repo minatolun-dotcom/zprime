@@ -55,6 +55,11 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
     { label: "Units of Measure", to: `/company/${cid}/masters/units`, letter: "N" },
     { label: "Stock Groups", to: `/company/${cid}/masters/stock-groups`, letter: "2" },
     { label: "Godowns / Locations", to: `/company/${cid}/masters/godowns`, letter: "O" },
+    // R-83 (F-83-8, Tally F11): the letter+digit space is saturated (R-53c),
+    // so the cost masters carry real chords — registered globally in Shell
+    // (Alt+S/Alt+O precedent), never display-only chips.
+    { label: "Cost Categories", to: `/company/${cid}/masters/cost-categories`, chord: "Alt+N" },
+    { label: "Cost Centres", to: `/company/${cid}/masters/cost-centres`, chord: "Alt+M" },
     { label: "Voucher Types", to: `/company/${cid}/masters/voucher-types`, letter: "Y" },
     { label: "TDS Sections", to: `/company/${cid}/masters/tds-sections`, letter: "D" },
     { label: "TCS Sections", to: `/company/${cid}/masters/tcs-sections`, letter: "4" },
@@ -96,6 +101,7 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
         { label: "TCS Report", to: `/company/${cid}/reports/tcs`, letter: "8" },
         { label: "Salary Register", to: `/company/${cid}/reports/salary-register`, letter: "0" },
         { label: "Cheque Register", to: `/company/${cid}/reports/cheque-register`, letter: "Q" },
+        { label: "Cost Centres", to: `/company/${cid}/reports/cost-centres`, chord: "Alt+K" }, // R-83 (F-83-8) — chord (space saturated; Shell-registered)
       ],
     },
     {

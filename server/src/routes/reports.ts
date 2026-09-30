@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/index.js";
-import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, inventoryEntries, stockItems, units, payslips, employees, irpEwbOps } from "../db/schema.js";
+import { companies, ledgers, groups, voucherTypes, vouchers, voucherEntries, inventoryEntries, stockItems, units, payslips, employees, irpEwbOps, costCentres, costCategories, voucherCostAllocations } from "../db/schema.js";
 import { and, eq, gte, lte, lt, gt, asc, inArray, desc, isNull, sql } from "drizzle-orm";
 import { cid, bad } from "../lib/routes.js";
 import { num, r2, today, fyStart, d } from "../lib/util.js";
@@ -893,5 +893,40 @@ export default async function reportRoutes(app: FastifyInstance) {
       });
     }
     return { orders: result };
+  });
+
+  // ---- R-83 (F-83-8): Cost Centres report (Tally: Display > Reports >
+  // Cost Centres) — departmental profitability from the allocation DIMENSION.
+  // Signed net per centre per category over the window (Dr +, Cr −: a positive
+  // net on an expense-heavy centre means more was debited than credited —
+  // the natural "department cost" reading; the client renders the sign).
+  app.get("/cost-centres", async (req) => {
+    const c = await cid(req);
+    const q = req.query as any;
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(q.from ?? "")) ? String(q.from) : "0001-01-02";
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(q.to ?? "")) ? String(q.to) : today();
+    const rows = await db
+      .select({
+        centreId: costCentres.id, centreName: costCentres.name,
+        categoryId: costCentres.categoryId, categoryName: costCategories.name,
+        dr: sql<string>`coalesce(sum(case when ${voucherCostAllocations.amount} > 0 then ${voucherCostAllocations.amount} else 0 end), 0)`,
+        cr: sql<string>`coalesce(sum(case when ${voucherCostAllocations.amount} < 0 then -${voucherCostAllocations.amount} else 0 end), 0)`,
+      })
+      .from(voucherCostAllocations)
+      .innerJoin(voucherEntries, eq(voucherEntries.id, voucherCostAllocations.entryId))
+      .innerJoin(vouchers, and(eq(vouchers.id, voucherEntries.voucherId), eq(vouchers.isCancelled, false), eq(vouchers.isOptional, false), gte(vouchers.date, from), lte(vouchers.date, to)))
+      .innerJoin(costCentres, eq(costCentres.id, voucherCostAllocations.costCentreId))
+      .leftJoin(costCategories, eq(costCategories.id, costCentres.categoryId))
+      .where(eq(vouchers.companyId, c))
+      .groupBy(costCentres.id, costCentres.name, costCentres.categoryId, costCategories.name)
+      .orderBy(asc(costCentres.name));
+    return {
+      asOf: { from, to },
+      centres: rows.map((r) => ({
+        centreId: r.centreId, centreName: r.centreName,
+        categoryId: r.categoryId, categoryName: r.categoryName ?? "Primary Cost Category",
+        debit: r2(num(r.dr)), credit: r2(num(r.cr)), net: r2(num(r.dr) - num(r.cr)),
+      })),
+    };
   });
 }

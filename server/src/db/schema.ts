@@ -113,6 +113,9 @@ export const ledgers = pgTable("ledgers", {
   tcsSectionId: integer("tcs_section_id"),
   // Bill-wise
   billWise: boolean("bill_wise").notNull().default(false),
+  // R-83 (F-83-8): Tally F11 "Cost centres are applicable" — when on, the
+  // voucher entry UI offers a Cost Centre cell on this ledger's rows.
+  trackCostCentre: boolean("track_cost_centre").notNull().default(false),
   // Party contact
   partyAddress: text("party_address"),
   partyState: text("party_state"),
@@ -406,6 +409,48 @@ export const billAllocations = pgTable("bill_allocations", {
   amount: numeric("amount", { precision: 18, scale: 2 }).notNull(), // signed
   dueDate: date("due_date"),
 }, (t) => [index("bills_entry_idx").on(t.entryId)]);
+
+// ---------- R-83 (F-83-8): Cost centres / categories (Tally F11) ----------
+// Two-level master exactly like Tally: a Cost Category (e.g. "Departments")
+// groups Cost Centres ("Sales", "Production"). A ledger may opt into tracking
+// (ledgers.track_cost_centre); its voucher rows then carry allocations split
+// across centres. The allocation's signed amount must add up to the row's
+// signed amount (enforced in the voucher write path) — allocation is a
+// DIMENSION of the posting, never a second posting (the trial balance cannot
+// move). NULL category = the Tally "Primary Cost Category".
+export const costCategories = pgTable(
+  "cost_categories",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    ...masterActor(),
+  },
+  (t) => [uniqueIndex("cost_cat_company_name_uq").on(t.companyId, t.name)],
+);
+
+export const costCentres = pgTable(
+  "cost_centres",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    categoryId: integer("category_id").references(() => costCategories.id, { onDelete: "set null" }), // null = Primary category
+    ...masterActor(),
+  },
+  (t) => [uniqueIndex("cost_centre_company_name_uq").on(t.companyId, t.name), index("cost_centre_category_idx").on(t.categoryId)],
+);
+
+export const voucherCostAllocations = pgTable(
+  "voucher_cost_allocations",
+  {
+    id: serial("id").primaryKey(),
+    entryId: integer("entry_id").notNull().references(() => voucherEntries.id, { onDelete: "cascade" }),
+    costCentreId: integer("cost_centre_id").notNull().references(() => costCentres.id),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(), // signed, mirrors the row's sign
+  },
+  (t) => [index("cost_alloc_entry_idx").on(t.entryId), index("cost_alloc_centre_idx").on(t.costCentreId)],
+);
 
 export const inventoryEntries = pgTable("inventory_entries", {
   id: serial("id").primaryKey(),

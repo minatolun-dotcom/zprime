@@ -84,20 +84,24 @@ const BASE = D.BASE.replace(/\/$/, "");
   ok("ArrowLeft keeps the heading picked (Create)", (await hlHeadingText())?.includes("Create"), await hlHeadingText());
 
   // ---- 4) pane arrows: move + wrap; Enter picks -------------------------
+  // (v1.72.0: the Create pane grew the F-83-8 cost masters — 12 items; the
+  // walk below reads the LIVE pane length instead of a hardcoded count so the
+  // wrap assertions track the menu, not a snapshot of it.)
   await press("ArrowRight"); // back into Create
   await page.waitForSelector('[data-testid="gateway-contents"] a:has-text("Ledgers")', { timeout: 8000 });
+  const createItemCount = await pane().locator("a.fkey-item").count();
   await press("ArrowDown");
   ok("pane ArrowDown moves item 1 → 2 (Groups)", (await hlPaneText())?.includes("Groups"), await hlPaneText());
-  for (let i = 0; i < 9; i++) await press("ArrowDown"); // wraps to Ledgers (10 items)
+  for (let i = 0; i < createItemCount - 1; i++) await press("ArrowDown"); // wraps to Ledgers (item 1)
   ok("pane ArrowDown wraps to Ledgers", (await hlPaneText())?.includes("Ledgers"), await hlPaneText());
   await press("ArrowUp");
-  ok("pane ArrowUp wraps backwards to Employees", (await hlPaneText())?.includes("Employees"), await hlPaneText());
+  ok("pane ArrowUp wraps backwards to the last item", (await hlPaneText())?.includes("Employees & Payroll"), await hlPaneText());
 
   await press("ArrowRight"); // pane open: Right pins the first item (idempotent-ish)
   ok("pane ArrowRight pins the first item (Enter target exists)", (await hlPaneText()) !== null, await hlPaneText());
 
-  // Enter picks the highlighted item → navigates to the leaf
-  // (Right kept the existing highlight — Employees & Payroll, item 10 of 10)
+  // Enter picks the highlighted item → navigates to the leaf (Right re-pinned
+  // the LAST item — Employees & Payroll — preserved through the re-anchor).
   const want = await hlPaneText();
   await press("Enter");
   await page.waitForSelector("text=Employees & Payroll", { timeout: 10000 }).catch(() => {});

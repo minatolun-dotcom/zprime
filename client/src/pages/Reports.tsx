@@ -179,6 +179,7 @@ export default function Reports() {
       {key === "tcs" && data && <TcsView data={data} meta={meta} />}
       {key === "salary-register" && data && <SalaryRegisterView data={data} meta={meta} />}
       {key === "cheque-register" && data && <ChequeRegisterView data={data} meta={meta} />}
+      {key === "cost-centres" && data && <CostCentresView data={data} meta={meta} />}
       {key === "bank-reconciliation" && (
         <div className="mb-3">
           <label className="text-sm text-slate-500 mr-2">Bank account</label>
@@ -1442,6 +1443,49 @@ function ChequeRegisterView({ data, meta }: { data: any; meta: string[][] }) {
   );
 }
 
+// ---------- R-83 (F-83-8): Cost Centres (Tally: Display > Cost Centres) ----------
+// Departmental profitability from the allocation DIMENSION — per centre (and
+// its category) the window's allocated debits, credits and signed net. The
+// row's net is a "department reading": expense-heavy centres go positive
+// (Dr > Cr), income-heavy negative — the client renders the sign as-is.
+function CostCentresView({ data, meta }: { data: any; meta: string[][] }) {
+  const centres: any[] = data.centres ?? [];
+  const totalNet = centres.reduce((s, c) => s + c.net, 0);
+  return (
+    <>
+    <ReportActions
+      name="cost-centres"
+      meta={meta}
+      headers={["Cost Centre", "Category", "Debit", "Credit", "Net (Dr − Cr)"]}
+      rows={() => centres.map((c) => [c.centreName, c.categoryName, c.debit, c.credit, c.net])}
+    />
+    <Card>
+      <table className="report-table">
+        <thead><tr><th>Cost Centre</th><th className="w-48">Category</th><th className="w-32 text-right">Debit</th><th className="w-32 text-right">Credit</th><th className="w-32 text-right">Net (Dr − Cr)</th></tr></thead>
+        <tbody>
+          {centres.map((c, i) => (
+            <tr key={i}>
+              <td className="font-medium">{c.centreName}</td>
+              <td className="text-slate-500">{c.categoryName}</td>
+              <td className="num">{c.debit ? c.debit.toLocaleString("en-IN") : ""}</td>
+              <td className="num">{c.credit ? c.credit.toLocaleString("en-IN") : ""}</td>
+              <td className={`num ${Math.abs(c.net) < 0.005 ? "text-slate-400" : c.net > 0 ? "" : "text-indigo-700"}`}>{Math.abs(c.net) < 0.005 ? "—" : c.net.toLocaleString("en-IN")}</td>
+            </tr>
+          ))}
+          {centres.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-4">No cost-centre allocations in this window — opt a ledger into Cost Centre Tracking and split its voucher rows</td></tr>}
+          {centres.length > 0 && (
+            <tr className="font-semibold bg-slate-50/80 border-t-2 border-slate-200">
+              <td colSpan={4} className="text-right pr-3">Total Net</td>
+              <td className="num">{Math.abs(totalNet) < 0.005 ? "—" : totalNet.toLocaleString("en-IN")}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+    </>
+  );
+}
+
 // ---------- R-73 (F-73-5): Bank Reconciliation ----------
 function BankReconciliationView({ data, meta }: { data: any; meta: string[][] }) {
   const { cid } = useParams();
@@ -1676,6 +1720,7 @@ const ENDPOINTS: Record<string, string> = {
   "cheque-register": "cheque-register",
   "bank-reconciliation": "bank-reconciliation", // R-73 (F-73-5) — banking surface
   "order-book": "order-book", // R-73 (F-73-4)
+  "cost-centres": "cost-centres", // R-83 (F-83-8)
 };
 
 const TITLES: Record<string, string> = {
@@ -1700,6 +1745,7 @@ const TITLES: Record<string, string> = {
   "cheque-register": "Cheque Register",
   "bank-reconciliation": "Bank Reconciliation",
   "order-book": "Order Book",
+  "cost-centres": "Cost Centres",
 };
 
 // ---------- Chart of Accounts (R-63 — Tally's COA explorer) ----------

@@ -11,7 +11,7 @@ import { num, r2, today, fmtDate } from "../lib/format";
 import { loadVoucherCfg, saveVoucherCfg, DEFAULT_VOUCHER_CFG, type VoucherCfg } from "../lib/voucherCfg";
 import InvoicePrint from "../components/InvoicePrint";
 
-interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; narration?: string; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; }
+interface LedgerRow { ledgerId: number | null; ledgerName: string; amount: number; narration?: string; againstBill?: string; tdsSectionId?: number | null; tcsSectionId?: number | null; costAllocations?: { costCentreId: number; amount: number }[]; }
 interface InvRow { itemId: number | null; itemName: string; godownId: number | null; qty: number; rate: number; discountPct: number; amount: number; kind: string; }
 interface VoucherType { id: number; name: string; category: string; affectsStock: boolean; shortCode: string; allowZeroValueEntries?: boolean; }
 // R-83 (Option A, F-83-4): Tally's per-voucher descriptive invoice details —
@@ -273,6 +273,17 @@ export default function VoucherScreen() {
     return Array.isArray(bills) ? bills.filter((b: any) => b.ledgerId === ledgerId) : [];
   };
 
+  // R-83 (F-83-8): Tally F11 cost centres — the centre master list and the
+  // split editor. Only rows whose ledger tracks cost centres offer the cell.
+  const { data: costCentreList } = useQuery({
+    queryKey: ["cost-centres", cid],
+    queryFn: () => get<any[]>(`/api/c/${cid}/cost-centres`),
+    enabled: !!cid && (allLedgers ?? []).some((l: any) => l.trackCostCentre),
+  });
+  const centreById = useMemo(() => new Map((costCentreList ?? []).map((c: any) => [c.id, c])), [costCentreList]);
+  const [splitFor, setSplitFor] = useState<number | null>(null); // row index being split
+  const costAllocSum = (row: LedgerRow) => r2((row.costAllocations ?? []).reduce((s, a) => s + a.amount, 0));
+
   // Load type (new) or full voucher (edit)
   useEffect(() => {
     (async () => {
@@ -302,6 +313,7 @@ export default function VoucherScreen() {
             tdsSectionId: e.tdsSectionId,
             tcsSectionId: e.tcsSectionId, // R-27: preserve the snapshot on alter
             againstBill: e.bills?.find((b: any) => b.billType === "against_ref")?.billName ?? "",
+            costAllocations: (e.costAllocations ?? []).map((a: any) => ({ costCentreId: a.costCentreId, amount: num(a.amount) })), // R-83 (F-83-8)
           }));
           setEntries(rows.length ? rows : [{ ledgerId: null, ledgerName: "", amount: 0 }]);
           if (v.partyLedgerId) {
@@ -758,6 +770,7 @@ export default function VoucherScreen() {
       invoiceDetails: hasParty && Object.values(invoiceDetails).some((v) => v != null && v !== "") ? invoiceDetails : null,
       entries: validEntries.map((e, i) => {
         const l = e.ledgerId ? ledgerById.get(e.ledgerId) : null;
+        const costAllocations = (e.costAllocations ?? []).length ? e.costAllocations : undefined; // R-83 (F-83-8): omit = none
         const isPartyRow = hasParty && e.ledgerId === party.id;
         const bills: any[] = [];
         // R-73 (F-73-4): ORDER vouchers never create bill rows — they record a
@@ -782,6 +795,7 @@ export default function VoucherScreen() {
           tdsSectionId: e.tdsSectionId ?? null,
           tcsSectionId: e.tcsSectionId ?? null, // R-27: persist the collection-section snapshot
           narration: e.narration || null, // R-73 (F-73-6)
+          costAllocations, // R-83 (F-83-8): dimension split, row-summed (server-enforced)
           bills,
         };
       }),
@@ -1315,6 +1329,7 @@ export default function VoucherScreen() {
                       <th>Ledger</th>
                       {detailed && <th className="w-36">Against Bill</th>}
                       {detailed && !isOrder && <th className="w-40">Line Narration</th>}
+                      {costCentreList && costCentreList.length > 0 && <th className="w-28">Cost Centre</th>}
                       {isInvoiceMode ? (
                         <th className="w-44 text-right">Amount <span className="font-normal normal-case text-slate-400 text-[10px]">(To/By · Ctrl+H)</span></th>
                       ) : (
@@ -1391,6 +1406,26 @@ export default function VoucherScreen() {
                             />
                           </td>
                         )}
+                        {costCentreList && costCentreList.length > 0 && (
+                          <td>
+                            {l?.trackCostCentre ? (
+                              <button
+                                type="button"
+                                data-testid={`cost-split-${i}`}
+                                onClick={() => setSplitFor(i)}
+                                className={`w-full text-left text-xs px-1.5 py-1 rounded border ${(row.costAllocations ?? []).length === 0 ? "border-slate-200 text-slate-400" : Math.abs(costAllocSum(row) - r2(row.amount)) <= 0.01 ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-red-300 bg-red-50 text-red-700"}`}
+                                title="Cost centre split (Tally F11) — allocations must sum to the row amount"
+                              >
+                                {(row.costAllocations ?? []).length === 0
+                                  ? "— split —"
+                                  : (row.costAllocations ?? []).map((a) => centreById.get(a.costCentreId)?.name ?? `#${a.costCentreId}`).join(" + ") +
+                                    (Math.abs(costAllocSum(row) - r2(row.amount)) > 0.01 ? ` ⚠ ${costAllocSum(row).toLocaleString("en-IN")}` : "")}
+                              </button>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                        )}
                         {isInvoiceMode ? (
                           <td>
                             <div className="flex items-center justify-end gap-1.5">
@@ -1458,6 +1493,7 @@ export default function VoucherScreen() {
                     <td className="text-right pr-3 text-base">Total</td>
                     {detailed && <td />}
                     {detailed && !isOrder && <td />}
+                    {costCentreList && costCentreList.length > 0 && <td />}
                     {isInvoiceMode ? (
                       <td className="num">{totalDr.toLocaleString("en-IN")}</td>
                     ) : (
@@ -1569,6 +1605,73 @@ export default function VoucherScreen() {
           master details — after an Alter, Ctrl+A first, then Print. */}
       {isInvoicePrintable && isEdit && !cancelledView && voucherForPrint && (
         <InvoicePrint cid={cid!} voucherId={voucherId!} voucher={voucherForPrint} />
+      )}
+      {/* R-83 (F-83-8): Tally's cost-centre split editor — allocations on the
+          row must sum to the row's signed amount (server-enforced ±0.01); the
+          chip shows the running total and turns red on drift. */}
+      {splitFor != null && entries[splitFor] && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" data-testid="cost-split-modal">
+          <div className="card shadow-raised w-[520px] max-w-[95vw]">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl text-base font-semibold text-indigo-700">
+              Cost Centre Split — {entries[splitFor].ledgerName || "row"} · {Math.abs(entries[splitFor].amount).toLocaleString("en-IN")} {entries[splitFor].amount < 0 ? "Cr" : "Dr"}
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {(entries[splitFor].costAllocations ?? []).map((a, ai) => (
+                <div key={ai} className="flex items-center gap-2">
+                  <select
+                    className="flex-1"
+                    data-testid={`cost-split-centre-${ai}`}
+                    value={a.costCentreId}
+                    onChange={(e) => {
+                      const cidNum = parseInt(e.target.value, 10);
+                      setEntries(entries.map((r, j) => (j === splitFor ? { ...r, costAllocations: (r.costAllocations ?? []).map((x, xi) => (xi === ai ? { ...x, costCentreId: cidNum } : x)) } : r)));
+                    }}
+                  >
+                    {(costCentreList ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name}{c.categoryName ? ` · ${c.categoryName}` : ""}</option>)}
+                  </select>
+                  <input
+                    className="w-32 text-right"
+                    type="number" step="any"
+                    data-testid={`cost-split-amt-${ai}`}
+                    value={Math.abs(a.amount) || ""}
+                    onChange={(e) => {
+                      const v = Math.abs(num(e.target.value)) * (a.amount < 0 ? -1 : 1);
+                      setEntries(entries.map((r, j) => (j === splitFor ? { ...r, costAllocations: (r.costAllocations ?? []).map((x, xi) => (xi === ai ? { ...x, amount: v } : x)) } : r)));
+                    }}
+                  />
+                  <button type="button" className="text-slate-400 hover:text-red-500" onClick={() => setEntries(entries.map((r, j) => (j === splitFor ? { ...r, costAllocations: (r.costAllocations ?? []).filter((_, xi) => xi !== ai) } : r)))}>✕</button>
+                </div>
+              ))}
+              {(costCentreList ?? []).length === 0 && (
+                <div className="text-sm text-slate-500">No cost centres yet — create them under Create → Cost Centres.</div>
+              )}
+              <div className="flex items-center justify-between text-sm pt-1">
+                <button
+                  type="button"
+                  className="btn-ghost text-sm"
+                  data-testid="cost-split-add"
+                  disabled={(costCentreList ?? []).length === 0}
+                  onClick={() => setEntries(entries.map((r, j) => (j === splitFor ? { ...r, costAllocations: [...(r.costAllocations ?? []), { costCentreId: (costCentreList ?? [])[0]?.id ?? 0, amount: 0 }] } : r)))}
+                >+ Add Allocation</button>
+                <span data-testid="cost-split-total" className={`num ${Math.abs(costAllocSum(entries[splitFor]) - r2(entries[splitFor].amount)) <= 0.01 ? "text-green-600" : "text-red-600"}`}>
+                  Allocated {costAllocSum(entries[splitFor]).toLocaleString("en-IN")} of {r2(entries[splitFor].amount).toLocaleString("en-IN")}
+                </span>
+              </div>
+              {(() => { const remaining = r2(entries[splitFor].amount - costAllocSum(entries[splitFor])); return Math.abs(remaining) > 0.01 ? (
+                <button
+                  type="button"
+                  className="btn-ghost text-sm"
+                  data-testid="cost-split-rest"
+                  disabled={(costCentreList ?? []).length === 0}
+                  onClick={() => setEntries(entries.map((r, j) => (j === splitFor ? { ...r, costAllocations: [...(r.costAllocations ?? []), { costCentreId: (costCentreList ?? []).find((c: any) => !(r.costAllocations ?? []).some((x) => x.costCentreId === c.id))?.id ?? (costCentreList ?? [])[0]?.id, amount: remaining }] } : r)))}
+                >Allocate remaining {remaining.toLocaleString("en-IN")}</button>
+              ) : null; })()}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2">
+              <button type="button" className="btn-primary" data-testid="cost-split-done" onClick={() => setSplitFor(null)}>Done</button>
+            </div>
+          </div>
+        </div>
       )}
       {/* R-35: ledger-on-the-fly quick-create. Layering contract: Esc here
           closes ONLY this modal; the voucher behind keeps every keystroke.
