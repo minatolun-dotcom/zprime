@@ -115,6 +115,11 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
         // click/arrow (Tally also navigates it by menu, not chord).
         { label: "Deposit Slips", to: `/company/${cid}/deposit-slips`, hint: "Cash/cheque slips + payment advice" },
         { label: "Audit Trail", to: `/company/${cid}/audit`, letter: "Z", hint: "Voucher history" },
+        // R-85: deployment-level Backups — rides the Utilities pane by
+        // click/arrow exactly like Deposit Slips (the letter+digit space is
+        // saturated, R-53c; no new chord). Server-side admin-gated: the page
+        // answers the neutral not-found card for non-admins.
+        { label: "Backups", to: "/backups", hint: "Google Drive backup & restore (admin)" },
       ],
     },
     // R-62: Company Settings carries a REAL shortcut — Alt+S (Tally's

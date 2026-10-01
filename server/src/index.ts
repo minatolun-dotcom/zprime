@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { runMigrations } from "./db/index.js";
 import authPlugin, { hashPassword } from "./plugins/auth.js";
 import { db } from "./db/index.js";
-import { users, companies, irpCredentials } from "./db/schema.js";
+import { users, companies, irpCredentials, backupSettings } from "./db/schema.js";
 import { eq } from "drizzle-orm";
 import { decryptSecret } from "./lib/crypto.js";
 
@@ -20,6 +20,8 @@ import reportRoutes from "./routes/reports.js";
 import payrollRoutes from "./routes/payroll.js";
 import importRoutes from "./routes/import.js";
 import bankingRoutes from "./routes/banking.js";
+import backupRoutes from "./routes/backups.js";
+import { startScheduler } from "./services/backups.js";
 
 const app = Fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
 
@@ -50,6 +52,13 @@ app.get("/api/health", async () => ({ ok: true }));
 app.setErrorHandler((err: any, req, reply) => {
   const status = (err as any)?.statusCode ?? (err as any)?.status;
   if (typeof status === "number" && status >= 400 && status < 500) {
+    return reply.code(status).send({ error: err.message });
+  }
+  // R-85: operational backup errors (invalid_grant's 7-day guidance, integrity
+  // refusal, not-connected) carry OUR OWN operator-facing wording — never SQL,
+  // stack traces or internals — and must reach the UI verbatim, so explicitly
+  // exposed errors pass through on their (non-4xx) status too.
+  if ((err as any)?.expose === true && typeof status === "number") {
     return reply.code(status).send({ error: err.message });
   }
   const isBodyParse = String((err as any)?.code ?? "").startsWith("FST_ERR");
@@ -83,6 +92,7 @@ await app.register(reportRoutes, { prefix: "/api/c/:cid/reports" });
 await app.register(payrollRoutes, { prefix: "/api/c/:cid" });
 await app.register(importRoutes, { prefix: "/api/c/:cid/import" });
 await app.register(bankingRoutes, { prefix: "/api/c/:cid" });
+await app.register(backupRoutes, { prefix: "/api" }); // R-85: deployment-level (admin-gated, not company-scoped)
 
 // Serve built client (production/Docker, or repo root when run from source)
 const clientDistCandidates = [
@@ -119,6 +129,7 @@ if (existing.length === 0) {
   await db.insert(users).values({
     username: process.env.ADMIN_USER ?? "admin",
     passwordHash: hashPassword(adminPassword),
+    isAdmin: true, // R-85: the seeded operator is the deployment admin
   });
   console.log(`Created default admin user: ${process.env.ADMIN_USER ?? "admin"}`);
 }
@@ -139,5 +150,22 @@ if (irpCount > 0) {
   }
 }
 
+// R-85 boot check: backup secrets (OAuth client secret + refresh token) use
+// the same AES-256-GCM key as IRP — the same fail-fast posture applies.
+const backupProbe = await db.select({ blob: backupSettings.refreshTokenEnc }).from(backupSettings).limit(1);
+if (backupProbe.length && backupProbe[0].blob) {
+  try {
+    decryptSecret(backupProbe[0].blob);
+  } catch {
+    throw new Error(
+      "Backup settings exist but cannot be decrypted with the current IRP_ENC_KEY " +
+        "(missing or rotated). Restore the key in .env — refusing to start to avoid silent corruption.",
+    );
+  }
+}
+
 await app.listen({ port: PORT, host: "0.0.0.0" });
 console.log(`zprime running on http://localhost:${PORT}`);
+
+// R-85: in-app backup scheduler (daily/weekly; catches up a missed run today).
+startScheduler();

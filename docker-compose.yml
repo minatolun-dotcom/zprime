@@ -30,6 +30,12 @@ services:
       # server fails fast with an actionable message at first credential save,
       # and refuses to boot if encrypted rows exist and the key is wrong.
       IRP_ENC_KEY: ${IRP_ENC_KEY:-}
+      # R-85: env-only Drive/OAuth endpoint overrides (test suites' mock-drive
+      # sidecar). Empty/unset = the real Google hosts fixed in code — the
+      # destination is NEVER settable from the API/UI (SSRF posture).
+      BACKUP_DRIVE_ENDPOINT: ${BACKUP_DRIVE_ENDPOINT:-}
+      BACKUP_OAUTH_ENDPOINT: ${BACKUP_OAUTH_ENDPOINT:-}
+      BACKUP_AUTHORIZE_ENDPOINT: ${BACKUP_AUTHORIZE_ENDPOINT:-}
       PORT: "3000"
     # R-29: extra_hosts makes the HOST's loopback reachable from the container
     # as `host.docker.internal` — how an operator (or the test suites) points
@@ -60,6 +66,23 @@ services:
       - ./scripts:/app/scripts:ro
     ports:
       - "3299:3199"   # host 3299 ≠ suite-spawned mocks (3199) — no port collision
+    profiles: ["test"]
+    restart: unless-stopped
+
+  # R-85: test-profile sidecar — the wire-faithful mock Google Drive + OAuth2,
+  # reachable from the app container as http://mock-drive:3309 (Drive/token
+  # endpoints) while the test browser follows the consent redirect at
+  # http://localhost:3309 (host-published port). Endpoints are env-only
+  # (BACKUP_*_ENDPOINT) — never API/UI-settable (SSRF posture). Only started
+  # by `docker compose --profile test up`.
+  mock-drive:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "scripts/mock_drive.js", "--port", "3309"]
+    volumes:
+      - ./scripts:/app/scripts:ro
+    ports:
+      - "3309:3309"   # host 3309 — the browser-facing consent redirect port
     profiles: ["test"]
     restart: unless-stopped
 

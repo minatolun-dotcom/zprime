@@ -5,7 +5,7 @@ import { companies, groups, ledgers, voucherTypes, userCompanies, users, irpCred
 import { encryptSecret, decryptSecret } from "../lib/crypto.js";
 import { and, eq, asc, sql } from "drizzle-orm";
 import { DEFAULT_GROUPS, DEFAULT_VOUCHER_TYPES } from "../lib/defaults.js";
-import { bad, pgFriendly } from "../lib/routes.js";
+import { bad, pgFriendly, requireAdmin } from "../lib/routes.js";
 import { hashPassword } from "../plugins/auth.js";
 
 const optText = (max = 200) => z.string().trim().max(max).optional().nullable();
@@ -267,7 +267,9 @@ export default async function companyRoutes(app: FastifyInstance) {
   app.get("/companies/:id/members", async (req) => {
     const id = await requireMember(req, parseInt((req.params as any).id, 10));
     return db
-      .select({ userId: users.id, username: users.username, role: userCompanies.role, createdAt: userCompanies.createdAt })
+      .select({ userId: users.id, username: users.username, role: userCompanies.role, createdAt: userCompanies.createdAt,
+        // R-85: the Users card renders the deployment-admin checkbox state.
+        isAdmin: users.isAdmin })
       .from(userCompanies)
       .innerJoin(users, eq(users.id, userCompanies.userId))
       .where(eq(userCompanies.companyId, id))
@@ -320,6 +322,32 @@ export default async function companyRoutes(app: FastifyInstance) {
     if (!row) throw bad("Member not found", 404);
     await db.update(users).set({ passwordHash: hashPassword(parsed.data.password) }).where(eq(users.id, target));
     return { ok: true, username: row.username };
+  });
+
+  // ---- R-85: deployment-admin promotion (admin-gated) ----
+  // Backups are deployment-level, so the operator promotes a trusted user to
+  // deployment admin (users.is_admin) from the Users card. Two honest limits:
+  //  - a demotion may never leave the deployment without an admin;
+  //  - admins promote/demote each other, but never themselves (no accidental
+  //    self-lockout from a misclick; a second admin or the CLI does that).
+  // Resolved from the verified JWT uid on every call — the body never grants.
+  const adminPatchSchema = z.object({ isAdmin: z.boolean() });
+
+  app.patch("/users/:userId/admin", async (req) => {
+    const uid = await requireAdmin(req);
+    const target = parseInt((req.params as any).userId, 10);
+    if (!Number.isFinite(target) || target <= 0) throw bad("Invalid user");
+    const parsed = adminPatchSchema.safeParse(req.body);
+    if (!parsed.success) throw bad("Invalid admin flag");
+    if (target === uid) throw bad("You cannot change your own admin flag — ask another admin", 409);
+    const [t] = await db.select({ id: users.id, isAdmin: users.isAdmin }).from(users).where(eq(users.id, target)).limit(1);
+    if (!t) throw bad("User not found", 404);
+    if (t.isAdmin && !parsed.data.isAdmin) {
+      const admins = await db.select({ id: users.id }).from(users).where(eq(users.isAdmin, true));
+      if (admins.length <= 1) throw bad("Cannot demote the last deployment admin", 409);
+    }
+    await db.update(users).set({ isAdmin: parsed.data.isAdmin }).where(eq(users.id, target));
+    return { ok: true, userId: target, isAdmin: parsed.data.isAdmin };
   });
 
   // ---- R-28: IRP connectivity credentials (opt-in) ----

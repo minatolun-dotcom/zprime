@@ -48,7 +48,11 @@ env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zp
     JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123",  # R-09: explicit fixtures (fail-fast otherwise)
     # R-28: key for credential-at-rest crypto; the suite proves round-trip and
     # wrong-key boot refusal. Base64 of 32 deterministic bytes.
-    IRP_ENC_KEY=base64.b64encode(bytes(range(32))).decode())
+    IRP_ENC_KEY=base64.b64encode(bytes(range(32))).decode(),
+    # R-85: Drive/OAuth point at the suite-spawned mock (started in the R-85
+    # block below). Env-only override — the SSRF posture under test.
+    BACKUP_DRIVE_ENDPOINT="http://localhost:3390",
+    BACKUP_OAUTH_ENDPOINT="http://localhost:3390")
 # Harness hygiene: a crashed prior run can orphan the node child (terminate()
 # kills the tsx wrapper only), leaving a squatter on 3106 that this run's
 # health poll would silently hit. Kill leftovers, then start a NEW PROCESS
@@ -4103,6 +4107,204 @@ s, cr84 = req("GET", f"{C83}/cheque-register")
 _dsrow = next((r for r in cr84 if r["chequeNumber"] == "DS-1001"), None)
 check("A1: cheque register exposes depositSlipPrintedAt", _dsrow is not None and _dsrow.get("depositSlipPrintedAt") is None,
       _dsrow)  # unprinted above -> null here
+
+# ================= R-85: In-app backups to Google Drive (admin-gated) =================
+print("-- R-85: backups gating, masked secrets, backup/restore engine --")
+import urllib.parse
+
+# Suite-spawned mock Drive (compose test-profile sidecar pattern). The server
+# reaches it via the env-only BACKUP_*_ENDPOINT overrides set at boot.
+_mdproc = subprocess.Popen(["node", "scripts/mock_drive.js", "--port", "3390"],
+    cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, start_new_session=True)
+def _kill_md():
+    try: os.killpg(os.getpgid(_mdproc.pid), signal.SIGTERM)
+    except Exception: pass
+atexit.register(_kill_md)
+MD85 = "http://localhost:3390"
+def mdr(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    r = urllib.request.Request(MD85 + path, data=data, method=method, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(r, timeout=5) as resp:
+            t = resp.read().decode()
+            return json.loads(t) if t else None
+    except Exception as e:
+        return {"__err__": str(e)}
+for _ in range(40):
+    if "__err__" not in mdr("GET", "/__stats"): break
+    time.sleep(0.25)
+mdr("POST", "/__reset")
+
+# Worker session (the R-13 second-jar pattern).
+_r85jar = http.cookiejar.CookieJar()
+_r85op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_r85jar))
+def _r85(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json"} if body is not None else {}
+    r = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
+    try:
+        with _r85op.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except Exception as e:
+        return -1, {"error": str(e)}
+
+s, c85 = req("POST", "/api/companies", {"name": "R85 Backup Co", "state": "Maharashtra", "stateCode": "27",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R85: company created", s == 200 and c85.get("id"), (s, str(c85)[:100]))
+C85 = f"/api/c/{c85['id']}"
+s, w85 = req("POST", f"/api/companies/{c85['id']}/members", {"username": "r85worker", "password": "r85worker", "role": "accountant"})
+check("R85: worker created", s == 200 and w85.get("userId"), (s, str(w85)[:100]))
+_r85("POST", "/api/auth/login", {"username": "r85worker", "password": "r85worker"})
+
+# 1) non-admin neutral 404s — company membership confers NOTHING here.
+for _m85, _p85, _b85 in [
+    ("GET", "/api/backups/settings", None), ("PUT", "/api/backups/settings", {"folderName": "x"}),
+    ("POST", "/api/backups/oauth/start", {}), ("POST", "/api/backups/disconnect", {}),
+    ("GET", "/api/backups/runs", None), ("POST", "/api/backups/run", {}),
+    ("GET", "/api/backups/remote", None),
+    ("POST", "/api/backups/restore", {"base": "zprime-2026-01-01T00-00-00", "confirm": "RESTORE"}),
+]:
+    _s85, _x85 = _r85(_m85, _p85, _b85)
+    check(f"R85: non-admin 404 on {_m85} {_p85}", _s85 == 404, (_s85, str(_x85)[:80]))
+_s85, _x85 = _r85("PATCH", "/api/users/1/admin", {"isAdmin": True})
+check("R85: non-admin 404 on PATCH /users/:id/admin", _s85 == 404, _s85)
+
+# 2) /auth/me carries the admin flag (resolved from the DB, never the token).
+_s85, _me85 = req("GET", "/api/auth/me")
+check("R85: seeded admin /auth/me isAdmin=true", _s85 == 200 and _me85.get("isAdmin") is True, _me85)
+_s85, _mew85 = _r85("GET", "/api/auth/me")
+check("R85: worker /auth/me isAdmin=false", _s85 == 200 and _mew85.get("isAdmin") is False, _mew85)
+
+# 3) settings, masked secret (R-28), schedule fields.
+_s85, _st0 = req("GET", "/api/backups/settings")
+check("R85: defaults (zprime-backups, off, 14, disconnected)", _s85 == 200 and _st0["folderName"] == "zprime-backups"
+      and _st0["scheduleKind"] == "off" and _st0["retentionCount"] == 14 and _st0["connected"] is False, _st0)
+_s85, _e85 = req("POST", "/api/backups/oauth/start", {})
+check("R85: connect without credentials refused with guidance", _s85 == 400 and "Save the Google Cloud" in str(_e85), (_s85, str(_e85)[:100]))
+req("PUT", "/api/backups/settings", {"clientId": "mock-client-id", "clientSecret": "mock-secret-XYZ9"})
+_s85, _st1 = req("GET", "/api/backups/settings")
+check("R85: secret read-back masked to last4, plaintext never leaves", _s85 == 200 and _st1["hasClientSecret"]
+      and _st1["clientSecretLast4"] == "XYZ9" and "mock-secret" not in json.dumps(_st1), _st1)
+req("PUT", "/api/backups/settings", {"folderName": "zprime-r85", "scheduleKind": "daily", "scheduleHhmm": "03:40", "retentionCount": 3})
+_s85, _st2 = req("GET", "/api/backups/settings")
+check("R85: schedule/folder/retention persist; omitted secret unchanged", _s85 == 200 and _st2["folderName"] == "zprime-r85"
+      and _st2["scheduleKind"] == "daily" and _st2["scheduleHhmm"] == "03:40" and _st2["retentionCount"] == 3
+      and _st2["clientSecretLast4"] == "XYZ9", _st2)
+_s85, _e85 = req("PUT", "/api/backups/settings", {"endpointOverride": "http://evil.example"})
+check("R85: no destination-URL surface (unknown field -> 400)", _s85 == 400, (_s85, str(_e85)[:80]))
+_s85, _e85 = req("PUT", "/api/backups/settings", {"scheduleHhmm": "9:99"})
+check("R85: bad HH:MM rejected", _s85 == 400, (_s85, str(_e85)[:80]))
+
+# 4) connect end-to-end through the REAL callback route (mock consent host).
+_s85, _start85 = req("POST", "/api/backups/oauth/start", {"returnTo": "/backups"})
+check("R85: oauth/start returns an authorize URL with state", _s85 == 200
+      and _start85.get("url", "").startswith("https://accounts.google.com/o/oauth2/v2/auth")
+      and "state=" in _start85.get("url", ""), _start85)
+_q85 = urllib.parse.parse_qs(urllib.parse.urlparse(_start85["url"]).query)
+_cb85 = f"/api/backups/oauth/callback?code=mock-auth-code&state={_q85['state'][0]}"
+req("GET", _cb85)  # 302 → /backups?backups=connected (SPA HTML; status irrelevant)
+_s85, _st3 = req("GET", "/api/backups/settings")
+check("R85: callback connects (refresh token stored encrypted)", _st3["connected"] is True, _st3)
+_s85, _runs85 = req("GET", "/api/backups/runs")
+check("R85: connect audited in runs history", any(r["kind"] == "connect" and r["status"] == "ok" for r in _runs85), _runs85[:1])
+_s85, _e85 = req("GET", _cb85)  # state nonce is single-use
+check("R85: OAuth state replay refused (single-use nonce)", _s85 == 400, (_s85, str(_e85)[:90]))
+
+# 5) backup run → mock Drive folder holds the pair; remote list shows it.
+_s85, _g85 = req("GET", f"{C85}/groups")
+_gid85 = next(g["id"] for g in _g85 if g["name"] == "Cash-in-Hand")
+_s85, _led85 = req("POST", f"{C85}/ledgers", {"name": "Probe Ledger R85", "groupId": _gid85})
+check("R85: probe ledger created", _s85 == 200 and _led85.get("id"), (_s85, str(_led85)[:100]))
+_s85, _run85 = req("POST", "/api/backups/run", {})
+check("R85: manual backup ok (sha256 + size + drive id)", _s85 == 200 and _run85.get("sha256")
+      and _run85.get("size", 0) > 0 and _run85.get("driveFileId"), (_s85, str(_run85)[:140]))
+_files85 = mdr("GET", "/__files")
+_dump85 = next((f for f in _files85 if f["name"].endswith(".sql.gz")), None)
+_man85 = next((f for f in _files85 if f["name"].endswith(".manifest.json")), None)
+check("R85: dump + manifest uploaded to the Drive folder", _dump85 and _man85 and _dump85.get("parents"), _files85)
+_s85, _rem85 = req("GET", "/api/backups/remote")
+check("R85: remote list shows the pair", any(r["base"] == _dump85["name"][:-len(".sql.gz")] for r in _rem85), _rem85)
+
+# 6) retention: 3 more runs with keep=3 → exactly 3 pairs remain in Drive
+# (the first pair is pruned — the restore below uses a SURVIVING pair).
+req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {})
+_names85 = [f["name"] for f in mdr("GET", "/__files")]
+check("R85: retention keeps the newest 3 pairs",
+      len([n for n in _names85 if n.endswith(".sql.gz")]) == 3
+      and len([n for n in _names85 if n.endswith(".manifest.json")]) == 3, _names85)
+_base85 = sorted(n[:-len(".sql.gz")] for n in _names85 if n.endswith(".sql.gz"))[-1]  # newest surviving pair
+
+# 7) restore round-trip: delete the probe ledger → restore → it is back.
+req("DELETE", f"{C85}/ledgers/{_led85['id']}")
+_s85, _ledlist = req("GET", f"{C85}/ledgers?search=Probe")
+check("R85: probe ledger deleted after backup", not any(l["name"] == "Probe Ledger R85" for l in _ledlist), _ledlist)
+_s85, _runs85 = req("GET", "/api/backups/runs")  # fresh: the retention runs happened after the last fetch
+_sha85 = next(r["sha256"] for r in _runs85 if r["kind"] == "backup" and r["status"] == "ok" and r["fileName"] == f"{_base85}.sql.gz")
+_s85, _r85res = req("POST", "/api/backups/restore", {"base": _base85, "confirm": "RESTORE"})
+check("R85: restore ok (sha verified before anything changed)", _s85 == 200 and _r85res.get("sha256") == _sha85, (_s85, str(_r85res)[:140]))
+time.sleep(0.6)
+_s85, _ledlist = req("GET", f"{C85}/ledgers?search=Probe")
+check("R85: restore round-trip — probe ledger is back", isinstance(_ledlist, list) and any(l["name"] == "Probe Ledger R85" for l in _ledlist), str(_ledlist)[:200])
+_s85, _runs85 = req("GET", "/api/backups/runs")
+check("R85: restore audited in runs history", any(r["kind"] == "restore" and r["status"] == "ok" for r in _runs85), _runs85[:1])
+_s85, _st4 = req("GET", "/api/backups/settings")
+check("R85: connection + settings survive the restore (state is IN the backup)", _st4["connected"] is True, _st4)
+
+# 8) restore gates: typed confirmation, base regex, unknown backup.
+_s85, _e85 = req("POST", "/api/backups/restore", {"base": _base85})
+check("R85: restore without confirm=RESTORE refused", _s85 == 400, (_s85, str(_e85)[:90]))
+_s85, _e85 = req("POST", "/api/backups/restore", {"base": _base85, "confirm": "restore"})
+check("R85: confirm literal is case-sensitive", _s85 == 400, (_s85, str(_e85)[:90]))
+_s85, _e85 = req("POST", "/api/backups/restore", {"base": "../../etc/passwd", "confirm": "RESTORE"})
+check("R85: restore base regex-gated", _s85 == 400, (_s85, str(_e85)[:90]))
+_s85, _e85 = req("POST", "/api/backups/restore", {"base": "zprime-1999-01-01T00-00-00", "confirm": "RESTORE"})
+check("R85: unknown backup refused", _s85 in (400, 500), (_s85, str(_e85)[:90]))
+
+# 9) sha-mismatch REFUSES (byte corrupted between upload and restore).
+mdr("POST", "/__corrupt", {"name": f"{_base85}.sql.gz"})
+_s85, _e85 = req("POST", "/api/backups/restore", {"base": _base85, "confirm": "RESTORE"})
+check("R85: sha-mismatch dump REFUSES to restore", _s85 == 500 and "Integrity check FAILED" in str(_e85), (_s85, str(_e85)[:140]))
+
+# 10) invalid_grant — the consent-"Testing" 7-day signature — is actionable.
+# The access token is cached server-side; force the REAL recovery path (401 on
+# the next Drive call → cache invalidated → refresh → invalid_grant).
+mdr("POST", "/__fail-refresh", {"error": "invalid_grant"})
+mdr("POST", "/__fail-drive-401")
+_s85, _e85 = req("POST", "/api/backups/run", {})
+check("R85: invalid_grant surfaces the 7-day actionable message", "In production" in str(_e85) and "7 days" in str(_e85), (_s85, str(_e85)[:200]))
+_s85, _runs85 = req("GET", "/api/backups/runs")
+check("R85: failed run recorded as an error row", any(r["status"] == "error" and "In production" in (r["error"] or "") for r in _runs85), None)
+
+# 11) disconnect: revoke + wipe; runs honestly fail without a connection.
+req("POST", "/api/backups/disconnect", {})
+_s85, _st5 = req("GET", "/api/backups/settings")
+check("R85: disconnect wipes the token", _st5["connected"] is False, _st5)
+_s85, _runs85 = req("GET", "/api/backups/runs")
+check("R85: disconnect audited", any(r["kind"] == "disconnect" and r["status"] == "ok" for r in _runs85), None)
+_s85, _e85 = req("POST", "/api/backups/run", {})
+check("R85: run without a connection fails honestly", _s85 == 500 and "not connected" in str(_e85), (_s85, str(_e85)[:120]))
+_s85, _e85 = req("GET", "/api/backups/remote")
+check("R85: remote list without a connection fails honestly", _s85 == 500, (_s85, str(_e85)[:90]))
+
+# 12) admin promotion API (deployment-level; company owners gain nothing).
+_s85, _ = req("PATCH", f"/api/users/{w85['userId']}/admin", {"isAdmin": True})
+_s85, _mew85 = _r85("GET", "/api/auth/me")
+check("R85: promoted worker passes the gate immediately", _mew85.get("isAdmin") is True, _mew85)
+_s85, _x85 = _r85("GET", "/api/backups/settings")
+check("R85: promoted worker reaches backups settings", _s85 == 200, (_s85, str(_x85)[:80]))
+_s85, _mem85 = req("GET", f"/api/companies/{c85['id']}/members")
+_adminRow85 = next(m for m in _mem85 if m["username"] == "admin")
+_s85, _e85 = req("PATCH", f"/api/users/{_adminRow85['userId']}/admin", {"isAdmin": False})
+check("R85: self admin-flag change refused 409 (no self-lockout)", _s85 == 409, (_s85, str(_e85)[:90]))
+req("PATCH", f"/api/users/{w85['userId']}/admin", {"isAdmin": False})
+_s85, _mew85 = _r85("GET", "/api/auth/me")
+check("R85: demotion gates the worker again immediately", _mew85.get("isAdmin") is False, _mew85)
 
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

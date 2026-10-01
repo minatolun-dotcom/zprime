@@ -104,6 +104,9 @@ export default function CompanySettings() {
   const [resetPw, setResetPw] = useState("");
 
   const isManager = !!(me?.username && (members ?? []).some((m) => m.username === me.username && m.role === "owner"));
+  // R-85: deployment-admin management (Backups surface) — visible only to
+  // deployment admins; the server enforces the same gate (neutral 404).
+  const meIsAdmin = !!(me as any)?.isAdmin;
 
   const addMember = async (e: FormEvent) => {
     e.preventDefault();
@@ -138,6 +141,24 @@ export default function CompanySettings() {
       setResetPw("");
     } catch (err) {
       setMMsg({ ok: false, text: err instanceof Error ? err.message : "Could not reset the password" });
+    }
+  };
+
+  // R-85: promote/demote a member to deployment admin (Backups access).
+  const setAdmin = async (m: any, isAdmin: boolean) => {
+    setMMsg(null);
+    try {
+      await patch(`/api/users/${m.userId}/admin`, { isAdmin });
+      setMMsg({
+        ok: true,
+        text: isAdmin
+          ? `"${m.username}" can now manage deployment Backups.`
+          : `"${m.username}" can no longer manage deployment Backups.`,
+      });
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: membersKey }); // refetch — the checkbox reads from the members list
+    } catch (err) {
+      setMMsg({ ok: false, text: err instanceof Error ? err.message : "Could not change the admin flag" });
     }
   };
 
@@ -275,6 +296,7 @@ export default function CompanySettings() {
               <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
                 <th className="py-2 font-semibold">User</th>
                 <th className="py-2 font-semibold">Access</th>
+                {meIsAdmin && <th className="py-2 font-semibold">Deployment admin</th>}
                 {isManager && <th className="py-2" />}
               </tr>
             </thead>
@@ -287,6 +309,20 @@ export default function CompanySettings() {
                     {m.role === "owner" && <span className="ml-2 text-xs text-slate-400">can manage users</span>}
                   </td>
                   <td className="py-2.5 text-slate-600">Full access</td>
+                  {meIsAdmin && (
+                    <td className="py-2.5 whitespace-nowrap">
+                      <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!(m as any).isAdmin}
+                          disabled={m.username === me?.username}
+                          onChange={(e) => setAdmin(m, e.target.checked)}
+                          data-testid={`admin-${m.username}`}
+                        />
+                        Backups
+                      </label>
+                    </td>
+                  )}
                   {isManager && (
                     <td className="py-2.5 text-right whitespace-nowrap">
                       <button type="button" className="text-indigo-600 hover:underline mr-3" onClick={() => { setResetFor(m); setResetPw(""); }}>

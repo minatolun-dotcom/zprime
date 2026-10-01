@@ -15,6 +15,7 @@ import Reports from "./pages/Reports";
 import ReportsMenu from "./pages/ReportsMenu";
 import CompanySettings from "./pages/CompanySettings";
 import AuditTrail from "./pages/AuditTrail";
+import Backups from "./pages/Backups";
 
 function CompanyLayout() {
   const { cid } = useParams();
@@ -32,6 +33,9 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/companies" element={<Companies />} />
+      {/* R-85: deployment-level Backups (whole-Postgres unit) — outside the
+          company layout; admin-only server-side, neutral not-found otherwise. */}
+      <Route path="/backups" element={<Backups />} />
       <Route element={<CompanyLayout />}>
         <Route path="/company/:cid" element={<Gateway />} />
         <Route path="/company/:cid/masters/:kind" element={<MasterPage />} />

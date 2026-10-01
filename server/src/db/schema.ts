@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, serial, integer, text, boolean, date, timestamp, numeric, index, uniqueIndex, jsonb,
+  pgTable, serial, integer, text, boolean, date, timestamp, numeric, index, uniqueIndex, jsonb, bigint,
 } from "drizzle-orm/pg-core";
 // (drizzle-orm/pg-core exports reviewed for R-02: no new column types needed —
 // timestamp/text/integer already imported. R-28 adds `sql` for the partial
@@ -30,6 +30,12 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  // R-85: deployment-level admin flag. Backups are instance-wide (the whole
+  // Postgres), so configuring/running/restoring them is admin-only — company
+  // membership (R-03) does not confer it. The seeded first user is the
+  // operator (migration 0024 backfills is_admin for min(id)); Company
+  // Settings → Users lets that operator promote another user.
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -606,3 +612,45 @@ export const irpSubmissions = pgTable("irp_submissions", {
   uniqueIndex("irp_subs_accepted_uq").on(t.voucherId, t.kind).where(sql`status = 'accepted'`),
   uniqueIndex("irp_subs_pending_uq").on(t.voucherId, t.kind).where(sql`status = 'pending'`),
 ]);
+
+// R-85: in-app backups to Google Drive (UpdraftPlus-style). Deployment-level
+// (single row — the whole Postgres is the backup unit), admin-gated via
+// users.is_admin. Secrets (OAuth client secret + refresh token) are stored
+// AES-256-GCM encrypted (crypto.ts, same key infra as IRP; boot fail-fast
+// probe). No user-controllable destination URLs — Google hosts are fixed in
+// code; the suites' mock endpoint is env-only (BACKUP_DRIVE_ENDPOINT).
+export const backupSettings = pgTable("backup_settings", {
+  id: integer("id").primaryKey().default(1), // singleton
+  clientId: text("client_id"),
+  clientSecretEnc: text("client_secret_enc"), // base64(nonce+tag+ciphertext), GCM — same format as irp_credentials
+  refreshTokenEnc: text("refresh_token_enc"), // offline consent token; NULL = not connected
+  folderName: text("folder_name").notNull().default("zprime-backups"),
+  // schedule_kind: off | daily | weekly; hhmm local time; dow 0=Sun..6=Sat (weekly only)
+  scheduleKind: text("schedule_kind").notNull().default("off"),
+  scheduleDow: integer("schedule_dow"),
+  scheduleHhmm: text("schedule_hhmm").notNull().default("02:30"),
+  retentionCount: integer("retention_count").notNull().default(14),
+  enabled: boolean("enabled").notNull().default(false),
+  lastScheduledDate: text("last_scheduled_date"), // YYYY-MM-DD of the last schedule-driven run (idempotence across restarts)
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+});
+
+// R-85: one row per backup/restore run (both kinds) — the history the
+// Backups page renders and the suites assert on.
+export const backupRuns = pgTable("backup_runs", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // backup | restore
+  trigger: text("trigger").notNull(), // schedule | manual
+  status: text("status").notNull(), // ok | error
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  fileName: text("file_name"),
+  fileSize: bigint("file_size", { mode: "number" }),
+  sha256: text("sha256"),
+  driveFileId: text("drive_file_id"),
+  error: text("error"),
+  // R-22-style actor provenance (who triggered the run) — backup_runs is the
+  // deployment-level audit trail for this surface (audit_events is
+  // company-scoped; backups are not).
+  actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+});

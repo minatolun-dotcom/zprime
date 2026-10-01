@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "../db/index.js";
-import { companies, userCompanies } from "../db/schema.js";
+import { companies, userCompanies, users } from "../db/schema.js";
 import { and, eq } from "drizzle-orm";
 
 /** Company-scoped helper: parse :cid, ensure numeric, existing AND that the
@@ -22,6 +22,20 @@ export async function cid(req: any): Promise<number> {
     .limit(1);
   if (!row) throw bad("Company not found", 404);
   return cid;
+}
+
+/** R-85 deployment-level admin gate. Backups are instance-wide (the whole
+ *  Postgres is the backup unit), so configuring/running/restoring them
+ *  requires users.is_admin — company membership (R-03) does not confer it.
+ *  Non-admins get the same neutral 404 the company gate returns: no
+ *  existence/structure leak. Resolved from the verified JWT uid on EVERY
+ *  request (never from body/headers), so a demotion is immediate. */
+export async function requireAdmin(req: any): Promise<number> {
+  const uid = req.userId;
+  if (!Number.isFinite(uid) || uid <= 0) throw bad("Not found", 404);
+  const [user] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, uid)).limit(1);
+  if (!user?.isAdmin) throw bad("Not found", 404);
+  return uid;
 }
 
 /** Create a 4xx error with an explicit HTTP status. */

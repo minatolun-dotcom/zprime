@@ -114,6 +114,8 @@ const ok = (name, cond, detail) => {
   await page.goto(`${D.BASE}/company/${cid}/reports/gstr1`);
   await page.waitForSelector("text=GSTR-1", { timeout: 15000 });
   const submitBtn = page.locator('button:has-text("submit")').first();
+  // Wait on the element (render race on a cold server — same hardening r29/r30 got in v1.73.0)
+  await submitBtn.waitFor({ timeout: 15000 }).catch(() => {});
   ok("GSTR-1 rows carry the submit action", await submitBtn.isVisible().catch(() => false));
   await submitBtn.click();
   const noKey = page.locator("text=/No IRP public key configured/").first();

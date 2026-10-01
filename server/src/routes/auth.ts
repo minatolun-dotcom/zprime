@@ -63,6 +63,9 @@ export default async function authRoutes(app: FastifyInstance) {
   });
 
   app.get("/me", async (req) => {
-    return { username: (req.user as any)?.username ?? null };
+    // R-85: the client renders admin-only surfaces (Backups) from this flag —
+    // resolved from the DB row, never trusted from the token payload.
+    const [u] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, req.userId as number)).limit(1);
+    return { username: (req.user as any)?.username ?? null, isAdmin: !!u?.isAdmin };
   });
 }

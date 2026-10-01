@@ -20,8 +20,8 @@ export function ErrorBanner({ error }: { error: unknown }) {
   );
 }
 
-export function Card({ children, className = "", onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
-  return <div className={`card ${className}`} onClick={onClick}>{children}</div>;
+export function Card({ children, className = "", onClick, testId }: { children: ReactNode; className?: string; onClick?: () => void; testId?: string }) {
+  return <div className={`card ${className}`} onClick={onClick} data-testid={testId}>{children}</div>;
 }
 
 export function PageHead({ title, sub, actions }: { title: string; sub?: string; actions?: ReactNode }) {
