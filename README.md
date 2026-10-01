@@ -133,7 +133,10 @@ python3 scripts/smoke_test.py    # 39 end-to-end checks: vouchers, reports, GST,
 
 ## Data & backups
 
-All data lives in one Postgres database inside the `pgdata` Docker volume. The verified backup path is plain `pg_dump` (no product UI needed for a single-operator deployment):
+All data lives in one Postgres database inside the `pgdata` Docker volume. Since **v1.74.0** the app ships **in-app backups/restore to Google Drive** (UpdraftPlus-style, no host tools needed): a deployment admin opens **Backups** in the Gateway's Utilities pane, pastes a Google Cloud OAuth client ID/secret (the built-in wizard walks the free GCP setup — including the "consent screen In production" step that keeps refresh tokens from expiring after 7 days), clicks Connect, and then backs up on demand or on a daily/weekly schedule with a keep-newest-N retention. Every backup is a sha256-verified dump+manifest pair; **restore is in-app too** — pick a backup in Drive, type RESTORE, and the app verifies the checksum and swaps the database (everything recorded since that backup is lost). The Drive client uses the least-privilege `drive.file` scope (the app only sees files it created), and secrets are encrypted at rest. The plain-`pg_dump` path below remains fully supported — it is what the in-app backup runs internally:
+
+```bash
+# Backup
 
 ```bash
 # Backup
