@@ -10,6 +10,7 @@ import VoucherScreen from "./pages/VoucherScreen";
 import PayrollProcess from "./pages/PayrollProcess";
 import ImportXml from "./pages/ImportXml";
 import ChequePrint from "./pages/ChequePrint";
+import DepositSlips from "./pages/DepositSlips";
 import Reports from "./pages/Reports";
 import ReportsMenu from "./pages/ReportsMenu";
 import CompanySettings from "./pages/CompanySettings";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/company/:cid/payroll" element={<PayrollProcess />} />
         <Route path="/company/:cid/import" element={<ImportXml />} />
         <Route path="/company/:cid/cheques" element={<ChequePrint />} />
+        <Route path="/company/:cid/deposit-slips" element={<DepositSlips />} />
         <Route path="/company/:cid/audit" element={<AuditTrail />} />
         <Route path="/company/:cid/settings" element={<CompanySettings />} />
       </Route>

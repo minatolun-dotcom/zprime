@@ -107,6 +107,10 @@ const ok = (name, cond, detail) => {
   // ---- 1) GSTR-1 row exposes all lifecycle actions ----
   await page.goto(`${D.BASE}/company/${cid}/reports/gstr1`);
   await page.waitForSelector("text=GSTR-1", { timeout: 15000 });
+  // The row actions mount with the row data (async query) — wait for the
+  // first action button before probing visibility, else the check races the
+  // render (proven: the lifecycle clicks below pass on the same page state).
+  await page.waitForSelector('button:has-text("ewb-gen")', { timeout: 15000 }).catch(() => {});
   for (const label of ["ewb-gen", "ewb-veh", "ewb-ext", "ewb-can"]) {
     ok(`GSTR-1 row carries ${label}`, await page.locator(`button:has-text("${label}")`).first().isVisible().catch(() => false));
   }

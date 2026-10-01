@@ -110,6 +110,10 @@ export function buildGatewayMenu(cid: string, acct: { id: number; name: string; 
       items: [
         { label: "XML Import", to: `/company/${cid}/import`, letter: "X", hint: "Masters + vouchers" },
         { label: "Cheque Printing", to: `/company/${cid}/cheques`, letter: "J" },
+        // R-84 (A1): Tally's deposit-slip family (Alt+G > Deposit Slips) — the
+        // letter space is saturated, so this rides the Utilities pane by
+        // click/arrow (Tally also navigates it by menu, not chord).
+        { label: "Deposit Slips", to: `/company/${cid}/deposit-slips`, hint: "Cash/cheque slips + payment advice" },
         { label: "Audit Trail", to: `/company/${cid}/audit`, letter: "Z", hint: "Voucher history" },
       ],
     },

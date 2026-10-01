@@ -4045,5 +4045,64 @@ check("F83-8: cancelled voucher's allocation leaves the report",
       (_ccB2 is None or abs(_ccB2["net"]) < 0.02)
       and _ccA2 is not None and abs(_ccA2["net"] - 300) < 0.02, (_ccA2, _ccB2))
 
+# ================= R-84 (A1): Deposit Slips + Payment Advice =================
+print("-- R-84 A1: deposit-candidates + printed bookkeeping --")
+
+# 18) fixtures: a bank + receipts (cheque, cash) + a payment
+s, dsbank = req("POST", f"{C83}/ledgers", {"name": "City Bank 84", "groupId": g83["Bank Accounts"], "isBankCash": True, "bankAccountNumber": "50100887766"})
+s, dspayee = req("POST", f"{C83}/ledgers", {"name": "DS Client 84", "groupId": g83["Sundry Debtors"]})
+s, dsr1 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Receipt"], "date": "2026-04-27",
+    "narration": "Being received from DS Client 84", "chequeNumber": "DS-1001", "chequeDate": "2026-04-27",
+    "entries": [{"ledgerId": dsbank["id"], "amount": 1500}, {"ledgerId": dspayee["id"], "amount": -1500}]})
+s, dsr2 = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Receipt"], "date": "2026-04-28",
+    "narration": "Being cash received",
+    "entries": [{"ledgerId": dsbank["id"], "amount": 700}, {"ledgerId": dspayee["id"], "amount": -700}]})
+s, dspay = req("POST", f"{C83}/vouchers", {"voucherTypeId": vt83["Payment"], "date": "2026-04-28",
+    "narration": "Being rent paid by cheque", "chequeNumber": "DS-9001",
+    "entries": [{"ledgerId": dsbank["id"], "amount": -900}, {"ledgerId": purch83["id"], "amount": 900}]})
+check("A1: fixtures post", s == 200 and dsr1.get("id") and dsr2.get("id") and dspay.get("id"), (s, str(dspay)[:100]))
+
+# 19) deposit candidates: the two receipts (arriving legs only), unpaid first
+s, dc = req("GET", f"{C83}/deposit-candidates")
+_ids = {r["voucherId"] for r in dc}
+check("A1: candidates list receipts with instrument + received-from, no payments",
+      dsr1["id"] in _ids and dsr2["id"] in _ids and dspay["id"] not in _ids
+      and all(r["printedAt"] is None for r in dc)
+      and next(r for r in dc if r["voucherId"] == dsr1["id"])["chequeNumber"] == "DS-1001"
+      and "DS Client 84" in (next(r for r in dc if r["voucherId"] == dsr1["id"])["receivedFrom"] or ""), dc)
+
+# 20) bank filter scopes the list
+s, dcb = req("GET", f"{C83}/deposit-candidates?ledgerId={dsbank['id']}")
+check("A1: ledgerId filter keeps the bank's candidates", {r["voucherId"] for r in dcb} == _ids, len(dcb))
+
+# 21) payment-advice kind: only the Payment leg
+s, dcp = req("GET", f"{C83}/deposit-candidates?kind=payment-advice")
+check("A1: payment-advice candidates = the payment leg only",
+      {r["voucherId"] for r in dcp} == {dspay["id"]} and dcp[0]["chequeNumber"] == "DS-9001", dcp)
+
+# 22) stamp printed -> default list empties; incl-printed re-lists with stamps
+s, _ = req("PATCH", f"{C83}/deposit-slips/print", {"voucherIds": [dsr1["id"], dsr2["id"]]})
+s, dc2 = req("GET", f"{C83}/deposit-candidates")
+check("A1: printed legs drop out of the default list", len(dc2) == 0, dc2)
+s, dc3 = req("GET", f"{C83}/deposit-candidates?includePrinted=1")
+_stamped = {r["voucherId"]: r["printedAt"] for r in dc3}
+check("A1: incl-printed lists both with timestamps",
+      dsr1["id"] in _stamped and dsr2["id"] in _stamped
+      and _stamped[dsr1["id"]] and _stamped[dsr2["id"]], _stamped)
+
+# 23) unprint clears; cancelled/optional vouchers are skipped harmlessly
+s, _ = req("PATCH", f"{C83}/deposit-slips/print", {"voucherIds": [dsr1["id"]], "printed": False})
+s, dc4 = req("GET", f"{C83}/deposit-candidates")
+check("A1: unprint restores the row to the unprinted list",
+      {r["voucherId"] for r in dc4} == {dsr1["id"]}, dc4)
+s, e83bad = req("PATCH", f"{C83}/deposit-slips/print", {})
+check("A1: empty voucherIds -> 400", s == 400, (s, str(e83bad)[:90]))
+
+# 24) the register still carries the printed stamp (one truth, two views)
+s, cr84 = req("GET", f"{C83}/cheque-register")
+_dsrow = next((r for r in cr84 if r["chequeNumber"] == "DS-1001"), None)
+check("A1: cheque register exposes depositSlipPrintedAt", _dsrow is not None and _dsrow.get("depositSlipPrintedAt") is None,
+      _dsrow)  # unprinted above -> null here
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
 sys.exit(1 if FAIL else 0)

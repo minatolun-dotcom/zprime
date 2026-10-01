@@ -84,6 +84,15 @@ const ok = (name, cond, detail) => {
   //         masked password (last-4 only), never the plaintext ----
   await page.goto(`${D.BASE}/company/${cid}/settings`);
   await page.waitForSelector("text=EWB portal (direct e-way bills, B2C)", { timeout: 15000 });
+  // The credentials GET resolves just after the card paints (race proven:
+  // the API read-back holds the row while the immediate input probe reads
+  // "") — wait until the prefill actually lands, else the check races the
+  // render. A genuine absence still fails honestly (empty on timeout).
+  await page.waitForFunction(() => {
+    const el = [...document.querySelectorAll("label")]
+      .find((l) => l.textContent?.includes("EWB portal username"))?.querySelector("input");
+    return !!el && el.value.length > 0;
+  }, { timeout: 15000 }).catch(() => {});
   const ewbUserVal = await page.locator("label", { hasText: "EWB portal username" }).locator("input").inputValue().catch(() => "");
   ok("EWB username prefilled in settings", ewbUserVal === "r30ui-ewb", ewbUserVal);
   const bodyHtml = await page.content();

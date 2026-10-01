@@ -64,6 +64,7 @@ const BASE = D.BASE.replace(/\/$/, "");
   const vt = Object.fromEntries(vtList.map((t) => [t.name, t.id]));
   const ledgers = await get(`/api/c/${cid}/ledgers`);
   const cash = ledgers.find((l) => l.name === "Cash");
+  const payToday = new Date().toISOString().slice(0, 10);
 
   const buyer = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 Buyer ${stamp}`, groupId: g["Sundry Debtors"], billWise: true } })).json();
   const salesL = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: "R83 Local Sales", groupId: g["Sales Accounts"] } })).json();
@@ -423,6 +424,67 @@ const BASE = D.BASE.replace(/\/$/, "");
   const netCell = await page.locator("tr", { hasText: `R83 Sales Dept ${stamp}` }).locator("td").last().textContent();
   ok("report nets the expense centre at 300 Dr", netCell.includes("300"), netCell);
 
+  // ---------------- I) R-84 A1: Deposit Slips + Payment Advice ----------------
+  // Tally's banking-print family: the page lists the bank's unprinted deposit
+  // candidates (Receipt/Contra legs arriving), printing stamps them printed,
+  // Incl-printed re-lists them; the Payment Advice view lists Payment legs.
+  console.log("-- I) R-84 A1: deposit slips + payment advice (print bookkeeping) --");
+  const dsBank = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 City Bank ${stamp}`, groupId: g["Bank Accounts"], isBankCash: true, bankAccountNumber: "50100887766" } })).json();
+  const dsPayee = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 DS Client ${stamp}`, groupId: g["Sundry Debtors"] } })).json();
+  await page.request.post(`${BASE}/api/c/${cid}/vouchers`, { data: {
+    voucherTypeId: vt["Receipt"], date: payToday, narration: `Being received from R83 DS Client ${stamp}`,
+    chequeNumber: "DS-1001", entries: [{ ledgerId: dsBank.id, amount: 1500 }, { ledgerId: dsPayee.id, amount: -1500 }],
+  } });
+  await page.request.post(`${BASE}/api/c/${cid}/vouchers`, { data: {
+    voucherTypeId: vt["Receipt"], date: payToday, narration: "Being cash received",
+    entries: [{ ledgerId: dsBank.id, amount: 700 }, { ledgerId: dsPayee.id, amount: -700 }],
+  } });
+  const dsPay = await (await page.request.post(`${BASE}/api/c/${cid}/vouchers`, { data: {
+    voucherTypeId: vt["Payment"], date: payToday, narration: "Being rent paid by cheque",
+    chequeNumber: "DS-9001", entries: [{ ledgerId: dsBank.id, amount: -900 }, { ledgerId: purchL.id, amount: 900 }],
+  } })).json();
+
+  await page.goto(`${BASE}/company/${cid}/deposit-slips`);
+  await page.waitForSelector("text=Deposit Slips");
+  // Rows arrive with the candidates query (async) — wait for the first data
+  // row before counting, else the check races the render.
+  await page.waitForSelector("tbody tr", { timeout: 15000 }).catch(() => {});
+  await page.waitForSelector("table");
+  ok("deposit page lists the bank's two unprinted receipts",
+     (await page.locator("tbody tr").count()) === 2
+     && (await page.locator("td", { hasText: "DS-1001" }).count()) >= 1);
+  // pick both, print, printed chips + list empties (default = unprinted only)
+  // Scoped to the table: the toolbar's Incl-printed checkbox precedes it in
+  // the DOM — unscoped first()/nth(1) picked the toggle, not the second row.
+  await page.locator("tbody input[type=checkbox]").first().check();
+  await page.locator("tbody input[type=checkbox]").nth(1).check();
+  await page.locator("[data-testid='print-slips']").click();
+  await page.waitForTimeout(1200);
+  ok("print stamps both receipts printed (list empties by default)",
+     (await page.locator("tbody input[type=checkbox]").count()) === 0
+     && (await page.locator("text=No unprinted deposits").count()) >= 1);
+  await page.locator("[data-testid='ds-incl-printed']").check();
+  await page.waitForTimeout(600);
+  ok("incl-printed re-lists both with printed chips",
+     (await page.locator("tbody tr").count()) === 2
+     && (await page.locator("[data-testid='ds-printed-chip']").count()) === 2);
+
+  // Payment Advice view: shows the Payment leg, not receipts
+  await page.locator("[data-testid='ds-kind']").selectOption("payment-advice");
+  await page.waitForTimeout(600);
+  ok("payment-advice view lists the payment leg",
+     (await page.locator("tbody tr").count()) === 1
+     && (await page.locator("td", { hasText: "DS-9001" }).count()) >= 1);
+  await page.locator("tbody input[type=checkbox]").first().check();
+  ok("advice preview renders the payee + amount",
+     (await page.locator("text=Payment Advice").count()) >= 1
+     && (await page.locator("text=900").count()) >= 1);
+
+  // server contract: unprint restores
+  await page.request.patch(`${BASE}/api/c/${cid}/deposit-slips/print`, { data: { voucherIds: [dsPay.id], printed: false } });
+  const dsAfter = (await get(`/api/c/${cid}/deposit-candidates?kind=payment-advice`)).find((r) => r.voucherId === dsPay.id);
+  ok("unprint clears the stamp (row re-lists unprinted)", dsAfter && dsAfter.printedAt === null, dsAfter);
+
   // ---------------- G) F-83-7: Bank Allocation depth -------------------------
   // Tally's Bank Allocation screen on Payment: instrument no/date (date
   // pre-fills with the voucher date), bank-side Ref ID, post-dated class; the
@@ -430,7 +492,6 @@ const BASE = D.BASE.replace(/\/$/, "");
   // cleared) with a ?status= filter; a PDC reconciles via BRS to cleared.
   console.log("-- G) F-83-7: Bank Allocation (Ref ID + post-dated) --");
   const payL = await (await page.request.post(`${BASE}/api/c/${cid}/ledgers`, { data: { name: `R83 Bank Vendor ${stamp}`, groupId: g["Purchase Accounts"] } })).json();
-  const payToday = new Date().toISOString().slice(0, 10);
   const pdcDue = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
   await page.goto(`${BASE}/company/${cid}/voucher/${vt["Payment"]}/new`);
   await page.waitForSelector("text=Ledger Entries");
