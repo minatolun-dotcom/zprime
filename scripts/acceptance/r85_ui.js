@@ -121,6 +121,16 @@ const MOCK = process.env.MOCK_DRIVE_URL || "http://localhost:3309";
   ok("Gateway Utilities pane lists Backups (click-only, no new chord)", true, null);
 
   // ---------------- C) wizard + masked secret ----------------
+  // R-86: capture clipboard writes so the setup-checklist button is testable
+  // headless (no real clipboard permissions needed).
+  await page.addInitScript(() => {
+    window.__copied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: (t) => { window.__copied.push(String(t)); return Promise.resolve(); } },
+      configurable: true,
+    });
+  });
+
   // Clean slate: a previous suite run may have left the deployment connected
   // (settings are a deployment-wide singleton). Disconnect before the first
   // chip assertion so the starting state is deterministic.
@@ -138,8 +148,21 @@ const MOCK = process.env.MOCK_DRIVE_URL || "http://localhost:3309";
   await page.waitForSelector('[data-testid="backup-wizard"]');
   const wizText = await page.textContent('[data-testid="backup-wizard"]');
   ok("wizard carries the In-production 7-day-trap warning", /In production/i.test(wizText) && /7 days/i.test(wizText), wizText.slice(0, 120));
+  const troubleText = await page.textContent('[data-testid="wizard-troubleshooting"]');
+  ok(
+    "wizard documents the two known Google-side connect errors",
+    troubleText.includes("redirect_uri_mismatch") && /In production/.test(troubleText) && /Advanced/.test(troubleText),
+    troubleText.slice(0, 120),
+  );
   const shownUri = await page.textContent('[data-testid="redirect-uri"]');
   ok("wizard shows the exact redirect URI for this origin", shownUri.trim() === `${BASE}/api/backups/oauth/callback`, shownUri);
+  await page.click('[data-testid="wizard-copy-checklist"]');
+  const copied = await page.evaluate(() => (window.__copied || []).join("\n"));
+  ok(
+    "setup checklist copies console steps + exact redirect URI",
+    copied.includes("projectcreate") && /In production/.test(copied) && copied.includes(`${BASE}/api/backups/oauth/callback`),
+    copied.slice(0, 200),
+  );
 
   await page.fill('[data-testid="backup-client-id"]', "mock-client-id.apps.googleusercontent.com");
   await page.fill('[data-testid="backup-client-secret"]', "mock-client-secret-ABC");
@@ -159,6 +182,29 @@ const MOCK = process.env.MOCK_DRIVE_URL || "http://localhost:3309";
   {
     const { s, j } = await mreq("PUT", "/api/backups/settings", { clientId: "x", endpointOverride: "http://evil.example" });
     ok("settings API has no destination-URL surface (unknown field rejected)", s === 400, (s, JSON.stringify(j)?.slice(0, 120)));
+  }
+
+  // ---------------- C2) R-86 pre-Connect validation ----------------
+  // A mistyped client ID can only ever end in Google's redirect/invalid errors:
+  // the Connect button refuses to fire until the ID is well-formed AND matches
+  // the saved settings (the connect uses the SAVED id, not the form).
+  await page.fill('[data-testid="backup-client-id"]', "not-a-valid-client-id");
+  {
+    await page.waitForFunction(() => document.querySelector('[data-testid="connect-drive"]')?.disabled === true, { timeout: 5000 });
+    const hint = await page.isVisible('[data-testid="connect-validation-hint"]');
+    ok("Connect gated on a well-formed Client ID (disabled + hint)", hint, hint);
+  }
+  await page.fill('[data-testid="backup-client-id"]', "other-id.apps.googleusercontent.com");
+  {
+    await page.waitForFunction(() => document.querySelector('[data-testid="connect-drive"]')?.disabled === false, { timeout: 5000 });
+    const unsaved = await page.isVisible('[data-testid="connect-unsaved-hint"]');
+    ok("Connect warns when the typed Client ID is not saved yet", unsaved, unsaved);
+  }
+  await page.fill('[data-testid="backup-client-id"]', "mock-client-id.apps.googleusercontent.com");
+  {
+    await page.waitForFunction(() => document.querySelector('[data-testid="connect-drive"]')?.disabled === false, { timeout: 5000 });
+    const gone = await page.isVisible('[data-testid="connect-unsaved-hint"]');
+    ok("Connect re-enabled with the saved, well-formed Client ID", !gone, gone);
   }
 
   // ---------------- D) connect end-to-end ----------------

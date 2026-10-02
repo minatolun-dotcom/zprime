@@ -221,6 +221,21 @@ export default function Backups() {
 
   const connected = !!settings?.connected;
   const redirectUri = `${window.location.origin}/api/backups/oauth/callback`;
+  // R-86: Connect is gated on a well-formed Google client ID — a mistyped ID
+  // can only ever end in Google's redirect_uri_mismatch/invalid_client errors.
+  const clientIdLooksValid = /^[a-z0-9-]+\.apps\.googleusercontent\.com$/i.test((form.clientId ?? "").trim());
+  const setupChecklist = [
+    "zprime Google Drive setup — 4 steps (one-time)",
+    "",
+    "1) Create a free Google Cloud project: https://console.cloud.google.com/projectcreate",
+    "2) Enable the Google Drive API: https://console.cloud.google.com/apis/library/drive.googleapis.com",
+    '3) OAuth consent screen → fill app name + your email → then PUBLISH it as "In production"',
+    '   (left in "Testing", Google expires the connection every 7 days)',
+    "4) Create an OAuth client ID (Web application) and add this EXACT redirect URI:",
+    `   ${redirectUri}`,
+    "",
+    "Then paste the Client ID and Client secret into zprime and press Connect Google Drive.",
+  ].join("\n");
 
   return (
     <Shell title="Backups" breadcrumb={[{ label: "Gateway", to: `/company/${currentCid()}` }, { label: "Backups" }]}>
@@ -253,9 +268,20 @@ export default function Backups() {
 
         {/* One-time GCP wizard */}
         <div className="mt-4 pt-4 border-t border-slate-100">
-          <button type="button" className="text-sm text-indigo-600 hover:underline" onClick={() => setShowWizard(!showWizard)} data-testid="wizard-toggle">
-            {showWizard ? "Hide" : "Show"} one-time Google Cloud setup (≈10 minutes, free)
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" className="text-sm text-indigo-600 hover:underline" onClick={() => setShowWizard(!showWizard)} data-testid="wizard-toggle">
+              {showWizard ? "Hide" : "Show"} one-time Google Cloud setup (≈10 minutes, free)
+            </button>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              data-testid="wizard-copy-checklist"
+              title="Copy the whole setup checklist (with the exact redirect URI) to the clipboard"
+              onClick={() => navigator.clipboard?.writeText(setupChecklist)}
+            >
+              Copy setup checklist
+            </button>
+          </div>
           {showWizard && (
             <ol className="mt-3 space-y-2 text-xs text-slate-600 leading-relaxed list-decimal pl-5" data-testid="backup-wizard">
               <li>
@@ -280,6 +306,20 @@ export default function Backups() {
               <li>Copy the <b>Client ID</b> and <b>Client secret</b> below → Save → press <b>Connect Google Drive</b>.</li>
             </ol>
           )}
+          {showWizard && (
+            <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600 leading-relaxed" data-testid="wizard-troubleshooting">
+              <div className="font-semibold text-slate-700 mb-1">If Google blocks the connect</div>
+              <p>
+                <b>Error 400: redirect_uri_mismatch</b> — the redirect URI registered in Google Cloud must be exactly{" "}
+                <code className="font-mono">{redirectUri}</code> (no trailing slash; plain <span className="font-mono">http://localhost:3000/</span> is not enough).
+              </p>
+              <p className="mt-1">
+                <b>Error 403: access_denied (“has not completed the Google verification process”)</b> — the consent screen is still in “Testing”:
+                publish it as <b>“In production”</b> (OAuth consent screen → Publish App). After publishing, the “Unverified app” warning is
+                normal for a self-created app — proceed via <b>Advanced → Go to zprime (unsafe) → Allow</b>.
+              </p>
+            </div>
+          )}
         </div>
 
         <form onSubmit={saveSettings} className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -294,9 +334,26 @@ export default function Backups() {
           </Field>
           <div className="sm:col-span-2 flex items-center gap-2 flex-wrap">
             <button type="submit" className="btn-primary" disabled={busy === "save"} data-testid="backup-save">Save settings</button>
-            <button type="button" className="btn-secondary" onClick={connect} disabled={busy === "connect" || !form.clientId || !settings?.hasClientSecret} data-testid="connect-drive">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={connect}
+              disabled={busy === "connect" || !clientIdLooksValid || !settings?.hasClientSecret}
+              title={!settings?.hasClientSecret ? "Save a Client secret first" : !clientIdLooksValid ? "Needs a Google Client ID (ends in .apps.googleusercontent.com)" : undefined}
+              data-testid="connect-drive"
+            >
               {busy === "connect" ? "Redirecting…" : connected ? "Reconnect Google Drive" : "Connect Google Drive"}
             </button>
+            {!clientIdLooksValid && (form.clientId ?? "").trim() !== "" && (
+              <span className="text-xs text-amber-700" data-testid="connect-validation-hint">
+                That doesn't look like a Google Client ID — it should end in <span className="font-mono">.apps.googleusercontent.com</span>.
+              </span>
+            )}
+            {clientIdLooksValid && settings && (form.clientId ?? "").trim() !== settings.clientId && (
+              <span className="text-xs text-amber-700" data-testid="connect-unsaved-hint">
+                New Client ID not saved yet — press <b>Save settings</b> before connecting (Connect uses the saved ID).
+              </span>
+            )}
             {connected && (
               <button type="button" className="btn-ghost" onClick={disconnect} disabled={busy === "disconnect"} data-testid="disconnect-drive">
                 Disconnect
