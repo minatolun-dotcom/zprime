@@ -4,6 +4,17 @@ The authoritative release history of zprime. **Every entry below is immutable.**
 
 ---
 
+## v1.74.1
+
+- **Released:** 2026-10-02
+- **R-item:** R-86 Option B — guided-setup hardening on the Backups page, implementing the scope approved by the operator from `R-86_INVESTIGATION.md`
+- **Commit:** `5c8863c`
+- **Purpose:** After R-86's research (UpdraftPlus's one-click = hosted vendor relay per their own source; rclone's shared client_id retired by Google during 2026; no Google API creates OAuth clients), the operator approved hardening the one-time Google setup inside zprime's control — **client-only, zero server/schema/accounting change**. **(1) "Copy setup checklist"** button on the GCP wizard: copies the whole 4-step flow as text — project-create + Drive-API-enable deep links, the In-production publishing step with the 7-day warning, and the exact redirect URI for this origin. **(2) Inline troubleshooting** block documenting the two Google-side errors measured on the operator's real connect: `Error 400: redirect_uri_mismatch` (register the shown callback exactly, no trailing slash) and `Error 403: access_denied` (consent screen left in Testing → publish In production; the unverified-app Advanced → unsafe → Allow bypass is the designed self-use path). **(3) Pre-Connect validation**: Connect disabled until the typed Client ID is well-formed (`.apps.googleusercontent.com`) and a secret is saved; inline hint for a malformed ID; a second hint when a NEW ID is typed but not saved (Connect uses the SAVED settings — closing the silent stale-ID gap found during design).
+- **Verification:** typecheck server+client clean · build clean · `git diff --check` clean · r85_ui **53/53** (48 → 53: troubleshooting block, headless clipboard-stub capture of the copied checklist incl. deep links + exact URI, malformed-ID gate disabled+hint, unsaved-ID hint on a different valid ID, re-enabled on the saved ID) · full estate green fresh schema, every suite exactly once: run.js ALL CHECKS PASSED (153), smoke **39/39**, final_regression **1051/1051**, attack **88/88**, fix_regression **65/65**, reconcile **61/61**, attack2 **29/29**, all r-suites baseline (r03 24, r04 9, r05 12, r07 14, r10 10, r14 11, r18 11, r20 12, r21 13, r23 14, r24 17, r25 13, r26 12, r27 15, r28 15, r29 14, r30 17, r31 15, r33 13, r34 20, r35 23, r36 25, r38 14, r43 12, r44 11, r46_drill 42, r53 43, r54 26, r56 22, r57 21, r58 15, r59 12, r60 16, r62 15, r63 25, r64 13, r65 12, r66 75, r68 17, r69 17, r70 19, r71 15, r72 11, r74 59, r75 25, r76 58, r78 27, r79 34, r83 60, **r85_ui 53**), personas: beginner **23/23**, pro **26/26**, hacker **25/25** (mock-irp up) · client-only — no migration, no upgrade drill per the no-migration precedent.
+- **Immutability:** v1.74.1 and all prior tags are immutable
+
+---
+
 ## v1.74.0
 
 - **Released:** 2026-10-01
