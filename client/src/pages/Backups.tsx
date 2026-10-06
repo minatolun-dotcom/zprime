@@ -36,12 +36,23 @@ interface BackupRun {
   fileSize: number | null;
   sha256: string | null;
   error: string | null;
+  // R-88: scope dimension on run history — present because the runs endpoint
+  // now reads the scope columns live (schema 0025). companyId is null for
+  // deployment runs; companyName is not returned by the runs endpoint (only the
+  // remote list resolves names from manifests), so the runs table shows the cid.
+  scopeKind: "deployment" | "company";
+  companyId: number | null;
 }
 
 interface RemoteBackup {
   base: string;
   createdTime: string;
   size: number | null;
+  // R-88: manifest scope — present because the remote list now comes from
+  // listRemoteScoped(). companyName may be null for deployment backups.
+  scopeKind: "deployment" | "company";
+  companyCid: number | null;
+  companyName: string | null;
 }
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -105,6 +116,22 @@ export default function Backups() {
       });
   }, [settings?.clientId, settings?.folderName, settings?.scheduleKind, settings?.scheduleDow, settings?.scheduleHhmm, settings?.retentionCount, settings?.enabled]);
 
+  // R-88: per-company backup/restore scope picker (manual only; the deployment
+  // schedule is unchanged). "deployment" = current behaviour; "company" picks
+  // one company from the instance.
+  const [scope, setScope] = useState<"deployment" | "company">("deployment");
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([]);
+  const companiesKey = ["backup-companies"] as const;
+  const { data: companiesData } = useQuery({
+    queryKey: companiesKey,
+    queryFn: () => get<{ id: number; name: string }[]>("/api/backups/companies"),
+    enabled: !!settings,
+    retry: false,
+  });
+  useEffect(() => { if (companiesData) setCompanies(companiesData); }, [companiesData]);
+  const companyChoosen = scope === "company" && companyId != null;
+
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -164,11 +191,17 @@ export default function Backups() {
   };
 
   const runNow = async () => {
+    if (scope === "company" && companyId == null) { setMsg({ ok: false, text: "Pick a company to back up first." }); return; }
     setMsg(null);
     setBusy("run");
     try {
-      const out = await post<any>("/api/backups/run", {});
-      setMsg({ ok: true, text: `Backup uploaded: ${out.fileName} (${fmtSize(out.size)}). Retention keeps the newest ${form.retentionCount} pairs in Drive.` });
+      const out = await post<any>("/api/backups/run", {
+        scope: scope === "company" ? { scope: "company", companyId } : { scope: "deployment" },
+      });
+      const label = scope === "company"
+        ? `Company “${companies.find((c) => c.id === companyId)?.name ?? companyId}” backed up: ${out.fileName} (${fmtSize(out.size)}).`
+        : `Backup uploaded: ${out.fileName} (${fmtSize(out.size)}).`;
+      setMsg({ ok: true, text: `${label} Retention keeps the newest ${form.retentionCount} pairs in Drive.` });
       qc.invalidateQueries({ queryKey: ["backup-runs"] });
       qc.invalidateQueries({ queryKey: ["backup-remote"] });
     } catch (err) {
@@ -191,10 +224,18 @@ export default function Backups() {
     setRestoreMsg(null);
     setRestoreBusy(true);
     try {
-      await post("/api/backups/restore", { base: restoreFor.base, confirm: "RESTORE" });
+      await post("/api/backups/restore", {
+        base: restoreFor.base,
+        confirm: "RESTORE",
+        scope: restoreFor.scopeKind === "company"
+          ? { scope: "company", companyId: restoreFor.companyCid }
+          : { scope: "deployment" },
+      });
       setRestoreMsg({
         ok: true,
-        text: `Restored from ${restoreFor.base}. The database was replaced — reloading the app…`,
+        text: restoreFor.scopeKind === "company"
+          ? `Restored company “${restoreFor.companyName ?? restoreFor.companyCid}” from ${restoreFor.base}. The company was replaced — reloading the app…`
+          : `Restored from ${restoreFor.base}. The database was replaced — reloading the app…`,
       });
       setTimeout(() => window.location.reload(), 1800);
     } catch (err) {
@@ -403,10 +444,48 @@ export default function Backups() {
 
       {/* ---- Run now + history ---- */}
       <Card className="p-6 max-w-3xl mt-5">
+        <div className="text-sm font-semibold text-slate-700 mb-3">Backup runs</div>
+        <div className="flex items-center gap-4 flex-wrap mb-3">
+          <label className="flex items-center gap-2.5 text-sm text-slate-700 select-none">
+            <span className="text-xs text-slate-500">Back up:</span>
+            <select
+              className="w-auto text-sm border border-slate-200 rounded px-2 py-1 bg-white"
+              value={scope}
+              onChange={(e) => { setScope(e.target.value as "deployment" | "company"); setCompanyId(null); }}
+              data-testid="backup-scope"
+            >
+              <option value="deployment">Entire database</option>
+              <option value="company">One company</option>
+            </select>
+          </label>
+          {scope === "company" && (
+            <label className="flex items-center gap-2.5 text-sm text-slate-700 select-none">
+              <span className="text-xs text-slate-500">Company:</span>
+              <select
+                className="w-auto text-sm border border-slate-200 rounded px-2 py-1 bg-white"
+                value={companyId == null ? "" : String(companyId)}
+                onChange={(e) => setCompanyId(e.target.value ? Number(e.target.value) : null)}
+                disabled={companies.length === 0}
+                data-testid="backup-company"
+              >
+                <option value="">— select a company —</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
-          <div className="text-sm font-semibold text-slate-700">Backup runs</div>
-          <button type="button" className="btn-primary" onClick={runNow} disabled={busy === "run" || !connected} data-testid="run-now">
-            {busy === "run" ? "Backing up…" : "Back up now"}
+          <div className="text-xs text-slate-500">
+            {scope === "deployment"
+              ? "The whole deployment (every company) is dumped and uploaded."
+              : companyChoosen
+                ? `Backing up company “${companies.find((c) => c.id === companyId)?.name ?? companyId}” only — other companies are untouched.`
+                : "Pick a company to back up only that company."}
+          </div>
+          <button type="button" className="btn-primary" onClick={runNow} disabled={busy === "run" || !connected || (scope === "company" && !companyChoosen)} data-testid="run-now">
+            {busy === "run" ? "Backing up…" : scope === "company" && companyChoosen ? `Back up company now` : "Back up now"}
           </button>
         </div>
         {!connected && <p className="text-xs text-slate-500 mb-3">Connect Google Drive to enable backups.</p>}
@@ -415,6 +494,7 @@ export default function Backups() {
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
                 <th className="py-2 font-semibold">Started</th>
+                <th className="py-2 font-semibold">Scope</th>
                 <th className="py-2 font-semibold">Kind</th>
                 <th className="py-2 font-semibold">Status</th>
                 <th className="py-2 font-semibold">File</th>
@@ -426,6 +506,11 @@ export default function Backups() {
               {(runs ?? []).map((r) => (
                 <tr key={r.id} className="border-t border-slate-100">
                   <td className="py-2 whitespace-nowrap">{fmtWhen(r.startedAt)}</td>
+                  <td className="py-2">
+                    {r.scopeKind === "company"
+                      ? (<span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 text-slate-600 text-xs font-medium">Company<span className="text-slate-400"> · </span>{r.companyId}</span>)
+                      : (<span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Deployment</span>)}
+                  </td>
                   <td className="py-2">
                     {r.kind}
                     {r.kind === "connect" || r.kind === "disconnect" ? "" : ` · ${r.trigger}`}
@@ -449,14 +534,16 @@ export default function Backups() {
       <Card className="p-6 max-w-3xl mt-5">
         <div className="text-sm font-semibold text-slate-700 mb-1">Backups in Google Drive</div>
         <p className="text-xs text-slate-500 leading-relaxed mb-4">
-          Restoring <b>replaces the entire database</b> with the backup's contents — everything recorded since that backup is lost. Every restore
-          is verified byte-for-byte against the backup's checksum before anything is touched.
+          A backup's <b>scope</b> is recorded in its manifest: a <b>Deployment</b> backup contains the whole instance; a <b>Company</b> backup contains one
+          company only. Restoring a deployment backup <b>replaces the entire database</b>; restoring a company backup <b>replaces that company only</b> and leaves
+          other companies untouched. Every restore is verified byte-for-byte against the backup's checksum before anything is touched.
         </p>
         {(remote ?? []).length > 0 ? (
           <table className="w-full text-sm" data-testid="remote-table">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
                 <th className="py-2 font-semibold">Backup</th>
+                <th className="py-2 font-semibold">Scope</th>
                 <th className="py-2 font-semibold">Created</th>
                 <th className="py-2 font-semibold">Size</th>
                 <th className="py-2" />
@@ -466,11 +553,16 @@ export default function Backups() {
               {(remote ?? []).map((b) => (
                 <tr key={b.base} className="border-t border-slate-100">
                   <td className="py-2 font-mono text-xs">{b.base}</td>
+                  <td className="py-2">
+                    {b.scopeKind === "company"
+                      ? (<span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 text-slate-600 text-xs font-medium">Company<span className="text-slate-400"> · </span>{(b.companyName ?? b.companyCid)?.toString?.() ?? b.companyCid}</span>)
+                      : (<span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">Deployment</span>)}
+                  </td>
                   <td className="py-2 whitespace-nowrap">{fmtWhen(b.createdTime)}</td>
                   <td className="py-2 whitespace-nowrap">{fmtSize(b.size)}</td>
                   <td className="py-2 text-right">
                     <button type="button" className="text-indigo-600 hover:underline" onClick={() => { setRestoreFor(b); setRestoreWord(""); setRestoreMsg(null); }} data-testid={`restore-${b.base}`}>
-                      Restore…
+                      {b.scopeKind === "company" ? "Restore company…" : "Restore…"}
                     </button>
                   </td>
                 </tr>
@@ -487,10 +579,15 @@ export default function Backups() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !restoreBusy) setRestoreFor(null); }}>
           <div className="card w-full max-w-md p-5 space-y-4" data-testid="restore-confirm-modal">
             <div>
-              <div className="text-base font-semibold text-slate-800">Restore from {restoreFor.base}?</div>
+              <div className="text-base font-semibold text-slate-800">
+                {restoreFor.scopeKind === "company"
+                  ? `Restore company “${(restoreFor.companyName ?? restoreFor.companyCid)?.toString?.() ?? restoreFor.companyCid}” from ${restoreFor.base}?`
+                  : `Restore from ${restoreFor.base}?`}
+              </div>
               <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-2 leading-relaxed">
-                This REPLACES the entire current database with the backup's contents. Work recorded after this backup disappears. The app
-                reloads after the restore completes.
+                {restoreFor.scopeKind === "company"
+                  ? `This REPLACES company “${(restoreFor.companyName ?? restoreFor.companyCid)?.toString?.() ?? restoreFor.companyCid}” with the backup's contents. Work recorded for that company after this backup disappears. Other companies are untouched. The app reloads after the restore completes.`
+                  : `This REPLACES the entire current database with the backup's contents. Work recorded after this backup disappears. The app reloads after the restore completes.`}
               </div>
             </div>
             <ErrorBanner error={restoreMsg && !restoreMsg.ok ? restoreMsg.text : ""} />

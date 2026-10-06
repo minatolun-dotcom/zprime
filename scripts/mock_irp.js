@@ -19,6 +19,9 @@
 //   POST /__reject               → { invoiceNo } — next GENIRN for that number is rejected
 //   POST /__failaction           → { action } — next call for that action returns an IRP error
 //   POST /__expire               → { ewbNo } — mark an EWB older than 24h (cancel-window test)
+//   POST /__reset                → zero counters + clear one-shot state (the compose sidecar is
+//                                  shared and long-lived, so suites start by resetting it — same
+//                                  posture as mock_drive's POST /__reset)
 //
 // Self-keyed mode: run WITHOUT --private-key and the mock generates its own
 // keypair in-memory (compose test-profile sidecar; the suite reads /__pubkey).
@@ -74,6 +77,16 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/__reject") { rejectNext.add(json.invoiceNo); return send(200, { ok: true }); }
   if (req.url === "/__failaction") { failAction.set(json.action, json.error ?? [{ ErrorCode: "9999", ErrorMessage: "mock forced failure" }]); return send(200, { ok: true }); }
   if (req.url === "/__expire") { expired.add(json.ewbNo); return send(200, { ok: true }); }
+  if (req.url === "/__reset") {
+    for (const k of Object.keys(stats)) stats[k] = 0;
+    sessions.clear();
+    rejectNext.clear();
+    failAction.clear();
+    ewbBornAt.clear();
+    expired.clear();
+    extended.clear();
+    return send(200, { ok: true });
+  }
 
   // ---- R-30: EWB-API v1.03 (a SEPARATE portal under the same mock) ----
   // Same self-keyed RSA/AES choreography; lowercase response casing (the

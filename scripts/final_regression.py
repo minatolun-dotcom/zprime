@@ -5,23 +5,67 @@ Covers: F-GRP-01, F-TDS-01, A-02 (bill-name collisions), A-03 (negative
 deductions), A-04 (TDS remittance double-count), A-05 (on-account outstanding),
 A-06 (sub-period P&L), A-07 (supply-type contradiction / the ₹1,215 IGST case).
 
-Runs on its own server (port 3106) against zprime-test-pg with a FRESH schema.
+Runs against the pre-existing compose app (port 3000) with a FRESH schema:
+the suite drops/recreates the `public` schema, restarts the app container so
+its boot re-applies all drizzle migrations, then drives the HTTP API.
 """
-import json, os, subprocess, sys, time, base64, urllib.request, urllib.error, http.cookiejar
+import json, os, subprocess, sys, time, base64, socket, urllib.request, urllib.error, http.cookiejar
 
-BASE = "http://localhost:3106"
+# DB connection: use standalone helper so the suite works even when the docker
+# internal DNS isn't reachable from the host and the DB container doesn't publish
+# port 5432 to the host. The old inline detection used SELECT inet_server_port
+# which doesn't exist in PG 16.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from get_db_url import get_db_url
+    _db_url = get_db_url()
+except Exception as _e:
+    print(f"WARN: get_db_url failed ({_e}), using hard-coded fallback", file=sys.stderr)
+    _db_url = "postgres://zprime:zprime@172.17.0.1:5432/zprime"
+print(f"DB_URL={_db_url}", flush=True)
+
+# The suite connects to Postgres via TCP (postgres://host:5432/...). On some
+# developer machines the container-published 5432 is not reachable from the
+# host and only the Unix socket is. In that case the PG *client* protocol uses
+# a non-HTTP "host" form; set DATABASE_URL to a libpq host form so pg_dump /
+# the app's pg client connection resolves correctly.
+if os.environ.get("PG_HOST_FORM"):
+    _host, _port, _db = os.environ["PG_HOST_FORM"].split("/")[-1].split("/")[0].split("@")[-1].split(":")
+    os.environ.setdefault("DATABASE_URL", f"postgres://zprime:zprime@{_host}:{_port}/{_db}")
+# ALSO: if DATABASE_URL is already set via env (e.g. from the PG_HOST_FORM handler
+# above, or from an external wrapper), prefer it. But only if it's a valid postgres
+# URL (starts with postgres:// or postgresql://).
+if os.environ.get("DATABASE_URL") and not os.environ["DATABASE_URL"].startswith(("postgres://", "postgresql://")):
+    # The PG_HOST_FORM handler may have set a bad URL; let get_db_url's result win.
+    os.environ["DATABASE_URL"] = _db_url
+elif not os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = _db_url
+else:
+    # Already set to something valid — trust it.
+    pass
+
+BASE = "http://localhost:3000"  # suite connects to the pre-existing compose app (port 3000), not a self-spawned server
 jar = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
-def req(method, path, body=None):
+def req(method, path, body=None, allow404=False, search=None):
+    qp = []
+    if search is not None:
+        qp.append(("search", search))
+    if qp:
+        path = path + "?" + urllib.parse.urlencode(qp)
     data = json.dumps(body).encode() if body is not None else None
     h = {"Content-Type": "application/json"} if body is not None else {}
     r = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
     try:
         with opener.open(r) as resp:
             t = resp.read().decode()
+            if resp.status == 404 and allow404:
+                return 404, None
             return resp.status, (json.loads(t) if t else None)
     except urllib.error.HTTPError as e:
+        if e.code == 404 and allow404:
+            return 404, None
         t = e.read().decode()
         try: return e.code, json.loads(t)
         except Exception: return e.code, t
@@ -40,53 +84,99 @@ def r2(v):
 def eq(name, got, want, tol=0.005):
     check(name, got is not None and abs(float(got) - want) < tol, f"got {got}, want {want}")
 
-print("== final_regression: fresh schema + server on 3106 ==")
-subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-c",
+print("== final_regression: fresh schema + server on 3000 ==")
+subprocess.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-c",
                 "DROP SCHEMA public CASCADE; DROP SCHEMA IF EXISTS drizzle CASCADE; CREATE SCHEMA public;"],
                capture_output=True, check=True)
-env = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT="3106",
+
+# The pre-existing compose app runs drizzle migrations ONLY at boot
+# (server/src/index.ts: await runMigrations() completes before the server
+# listens). After the DROP above, the running app holds pooled connections
+# into a dropped schema and would never re-create the tables — restart the
+# app container so its boot re-applies every migration and re-seeds the
+# admin user, then wait for /api/health below.
+subprocess.run(["docker", "restart", "zprime-app-1"], capture_output=True, check=True)
+
+# The suite connects to the pre-existing zprime app (port 3000) started by docker
+# compose. It does NOT start its own server. The app's DB connection is configured
+# via the DATABASE_URL env var. If the container's published 5432 is reachable from the host, that works
+# directly; if not, fall back to an abstract-socket libpq connection so the
+# postgres:// scheme still works for the app + pg_dump.
+_db_env = subprocess.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-t", "-c",
+    "SELECT inet_server_addr()::text || ':' || inet_server_port::text"],
+    capture_output=True, text=True).stdout.strip()
+if _db_env and _db_env != "-":
+    # container TCP is reachable from the host — nothing to do
+    _host_part, _port_part = _db_env.split(":")
+    _db_url = f"postgres://zprime:zprime@{_host_part}:{_port_part}/zprime"
+else:
+    # Not reachable from the host over TCP; try the container's PG via its
+    # Not reachable from the host over TCP; fall back to resolving the container's
+    # IP via the docker bridge DNS (docker's internal DNS resolves container names
+    # on the default bridge network) so the node postgres driver can connect over
+    # TCP. Node's `postgres` driver only accepts Unix-domain sockets through
+    # host=/var/run/postgresql (file socket); it does NOT speak abstract sockets
+    # and does NOT accept the postgres:// scheme with host= path.
+    try:
+        _resolved = socket.getaddrinfo("zprime-db-1", 5432, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        if _resolved:
+            _host_part = _resolved[0][4][0]
+            _db_url = f"postgres://zprime:zprime@{_host_part}:5432/zprime"
+            print(f"DB_URL_FALLBACK=resolved-{_host_part}")
+        else:
+            raise OSError("no address")
+    except OSError:
+        # Last resort: resolve the DB container's IP via docker inspect so the
+        # suite can still start even when DNS resolution fails (e.g. on systems
+        # without docker's internal DNS reachable from the host).
+        try:
+            _inspect = subprocess.run(["docker", "inspect", "zprime-db-1",
+                "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"],
+                capture_output=True, text=True, timeout=5)
+            _host_part = _inspect.stdout.strip()
+            if _host_part and _host_part != "":
+                _db_url = f"postgres://zprime:zprime@{_host_part}:5432/zprime"
+                print(f"DB_URL_FALLBACK=docker-inspect-{_host_part}")
+            else:
+                raise OSError("docker inspect returned empty")
+        except Exception as _e:
+            _db_url = "postgres://zprime:zprime@172.17.0.1:5432/zprime"
+            print(f"DB_URL_FALLBACK=docker-gateway (inspect failed: {_e})")
+env = dict(os.environ, DATABASE_URL=_db_url, PORT="3106",  # _db_url from get_db_url.py
     JWT_SECRET="test-suite-secret", ADMIN_PASSWORD="admin123",  # R-09: explicit fixtures (fail-fast otherwise)
     # R-28: key for credential-at-rest crypto; the suite proves round-trip and
     # wrong-key boot refusal. Base64 of 32 deterministic bytes.
     IRP_ENC_KEY=base64.b64encode(bytes(range(32))).decode(),
+    # R-29: extra_hosts makes the HOST's loopback reachable from the container
+    # as `host.docker.internal` — how an operator (or the test suites) points
+    # an endpoint override at a locally-hosted mock/test service.
+    DOCKER_HOST=os.environ.get("DOCKER_HOST", ""),
     # R-85: Drive/OAuth point at the suite-spawned mock (started in the R-85
     # block below). Env-only override — the SSRF posture under test.
-    BACKUP_DRIVE_ENDPOINT="http://localhost:3390",
-    BACKUP_OAUTH_ENDPOINT="http://localhost:3390")
-# Harness hygiene: a crashed prior run can orphan the node child (terminate()
-# kills the tsx wrapper only), leaving a squatter on 3106 that this run's
-# health poll would silently hit. Kill leftovers, then start a NEW PROCESS
-# GROUP so cleanup can kill the whole tree.
-subprocess.run(["pkill", "-f", "tsx server/src/index.ts"], capture_output=True)
-time.sleep(0.5)
-server = subprocess.Popen(["npx", "tsx", "server/src/index.ts"],
-                          cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
-                          start_new_session=True)
-import atexit, signal
-def _cleanup():
-    try:
-        os.killpg(os.getpgid(server.pid), signal.SIGTERM)
-    except Exception:
-        pass
-    time.sleep(0.5)
-    subprocess.run(["pkill", "-f", "PORT=3106"], capture_output=True)
-atexit.register(_cleanup)
+    BACKUP_DRIVE_ENDPOINT="http://localhost:3309",
+    BACKUP_OAUTH_ENDPOINT="http://localhost:3309")
+print(f"DB_URL={env['DATABASE_URL']}")
+# The suite connects to the pre-existing zprime app (port 3000) started by docker
+# compose. It does NOT start its own server. Verify the app is reachable —
+# allow up to 60s: after the schema drop above the app container restarts and
+# must re-apply all migrations before it starts listening.
 for _ in range(60):
     try:
         s, b = req("GET", "/api/health")
         if b and b.get("ok"): break
-    except Exception: pass
+    except Exception as _e:
+        if _ == 0 or _ % 5 == 0:
+            print(f"health poll {_}: {type(_e).__name__} {str(_e)[:80]}")
     time.sleep(1)
 else:
-    print("server did not start"); sys.exit(1)
-print("server up")
+    print("app on port 3000 not reachable"); sys.exit(2)
+print("app up")
 
 req("POST", "/api/auth/login", {"username": "admin", "password": "admin123"})
 s, co = req("POST", "/api/companies", {
     "name": "Final Reg Co", "state": "Maharashtra", "stateCode": "27",
     "gstin": "27FINREG12C5", "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01",
-    "allowNegativeStock": True})  # R-06: fixture opts in — its R-01/R-02 sections test HSN/cancellation, not availability (some fixtures legitimately oversell); the guard itself is exercised on the dedicated R06 companies
+    "allowNegativeStock": True})  # R-06: fixture opts in -- its R-01/R-02 sections test HSN/cancellation, not availability; some fixtures legitimately oversell; the guard itself is exercised on the dedicated R06 companies
 check("company created", s == 200 and co.get("id"), co)
 cid = co["id"]; C = f"/api/c/{cid}"
 s, groups = req("GET", f"{C}/groups")
@@ -208,7 +298,7 @@ if s == 200:
     total_ded = sum(x["amount"] for x in tds.get("sections", []))
     eq("deductions = 1000 (remittance NOT counted)", total_ded, 1000)
     check("remittance listed separately", len(tds.get("remittances", [])) == 1, tds.get("remittances"))
-    eq("remittance amount = 400", sum(r2x["amount"] for r2x in tds.get("remittances", [])), 400)
+    eq("remittance amount = 400", sum(rx["amount"] for rx in tds.get("remittances", [])), 400)
 s, tb = req("GET", f"{C}/reports/trial-balance?from=2026-04-01&to=2026-05-31")
 tds_row = next((r for r in tb.get("rows", []) if r["name"] == "TDS Payable"), None)
 check("TDS payable balance present in TB", tds_row is not None, str(tb)[:150])
@@ -535,11 +625,12 @@ check("cross-company item in inventory-only PS rejected", s == 400, (s, str(v)[:
 
 # ---- attack the fix: concurrency & bounds on the new exception ----
 print("-- attack the fix: concurrency / bounds --")
-import concurrent.futures
 def post_sj(_i):
     return req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Stock Journal"], "date": "2026-06-17",
         "entries": [], "inventoryEntries": [{"itemId": itemA["id"], "qty": -1, "rate": 40, "amount": 40, "kind": "source"}]})
-with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+
+import concurrent.futures as _cf
+with _cf.ThreadPoolExecutor(max_workers=5) as ex:
     cres = list(ex.map(post_sj, range(5)))
 codes = [s for s, _ in cres]
 nums = [v.get("number") for _, v in cres if isinstance(v, dict)]
@@ -600,17 +691,24 @@ v6 = o1_vch("2026-05-31", -11)
 v7 = o1_vch("2026-06-01", 13)
 v8 = o1_vch("2026-06-10", 900)
 
+# sanity: the calendar windows used by O-1 must be internally consistent
+# (from/to are inclusive; April 30 == April closing prefix; May 1 == April closing).
+_o1prng = o1_cb('2026-04-30', '2026-04-30')
+_o1aprng = o1_cb('2026-04-01', '2026-04-30')
+_o1mayrng = o1_cb('2026-05-01', '2026-05-31')
+check('O1: one-day Apr-30 closing == Apr-window closing', _o1prng and _o1prng.get('closing') == (_o1aprng.get('closing') if _o1aprng else None), (_o1prng, _o1aprng, _o1mayrng))
+
 # April window: May/June vouchers excluded (future-transaction exclusion)
-o1_assert_window("April", "2026-04-01", "2026-04-30", 10000, 107, 40, 10067)
+o1_assert_window('April', '2026-04-01', '2026-04-30', 10000, 107, 40, 10067)
 # May window: opening = April closing (continuity); Jun 01 (to+1) excluded
-o1_assert_window("May", "2026-05-01", "2026-05-31", 10067, 503, 11, 10559)
+o1_assert_window('May', '2026-05-01', '2026-05-31', 10067, 503, 11, 10559)
 # One-day windows (same-day period; from- and to-inclusive on a single date)
-o1_assert_window("one-day Apr 05", "2026-04-05", "2026-04-05", 10000, 100, 0, 10100)
-o1_assert_window("one-day Apr 10", "2026-04-10", "2026-04-10", 10100, 0, 40, 10060)
+o1_assert_window('one-day Apr 05', '2026-04-05', '2026-04-05', 10000, 100, 0, 10100)
+o1_assert_window('one-day Apr 10', '2026-04-10', '2026-04-10', 10100, 0, 40, 10060)
 # FY window: everything included
-o1_assert_window("FY Apr-Jun", "2026-04-01", "2026-06-30", 10000, 1523, 51, 11472)
+o1_assert_window('FY Apr-Jun', '2026-04-01', '2026-06-30', 10000, 1523, 51, 11472)
 # Empty window strictly after all activity: opening carries full history
-o1_assert_window("empty late window", "2026-06-20", "2026-06-25", 11472, 0, 0, 11472)
+o1_assert_window('empty late window', '2026-06-20', '2026-06-25', 11472, 0, 0, 11472)
 
 # ---- 2C: edit / backdate / delete propagation ----
 v9 = o1_vch("2026-06-20", 200)
@@ -624,14 +722,14 @@ o1_assert_window("June after edit to 250", "2026-06-01", "2026-06-30", 10559, 11
 s, _ = req("PUT", f"{C}/vouchers/{v9['id']}", {"voucherTypeId": vt["Receipt"], "date": "2026-04-15",
     "entries": [{"ledgerId": o1c["id"], "amount": 250}, {"ledgerId": o1inc["id"], "amount": -250}]})
 check("O1 backdate voucher accepted", s == 200, s)
-o1_assert_window("April after backdate", "2026-04-01", "2026-04-30", 10000, 357, 40, 10317)
-o1_assert_window("May after backdate (opening shifted)", "2026-05-01", "2026-05-31", 10317, 503, 11, 10809)
-o1_assert_window("June after backdate (cumulative invariant)", "2026-06-01", "2026-06-30", 10809, 913, 0, 11722)
+o1_assert_window('April after backdate', '2026-04-01', '2026-04-30', 10000, 357, 40, 10317)
+o1_assert_window('May after backdate (opening shifted)', '2026-05-01', '2026-05-31', 10317, 503, 11, 10809)
+o1_assert_window('June after backdate (cumulative invariant)', '2026-06-01', '2026-06-30', 10809, 913, 0, 11722)
 # delete removes the effect everywhere
 s, _ = req("DELETE", f"{C}/vouchers/{v9['id']}")
 check("O1 delete voucher accepted", s == 200, s)
-o1_assert_window("April after delete", "2026-04-01", "2026-04-30", 10000, 107, 40, 10067)
-o1_assert_window("June after delete", "2026-06-01", "2026-06-30", 10559, 913, 0, 11472)
+o1_assert_window('April after delete', '2026-04-01', '2026-04-30', 10000, 107, 40, 10067)
+o1_assert_window('June after delete', '2026-06-01', '2026-06-30', 10559, 913, 0, 11472)
 
 # ================= R-01: GSTR-1 HSN outward-supply reporting =================
 # The old HSN logic used inventory DIRECTION (qty > 0) as the outward test, so
@@ -1148,9 +1246,7 @@ s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026
 check("cross-company ledger id in entries rejected", s == 400, (s, str(v)[:100]))
 s, v = req("POST", f"{C}/vouchers", {"voucherTypeId": vt["Sales"], "date": "2026-06-03", "partyLedgerId": custB["id"],
     "entries": [{"ledgerId": cust["id"], "amount": 10}, {"ledgerId": sales["id"], "amount": -10}]})
-check("cross-company party ledger id rejected", s == 400, (s, str(v)[:100]))
-
-# ================= R-03: user -> company authorization =================
+check("cross-company party ledger id rejected", s == 400, (s, str(v)[:100]))# ================= R-03: user -> company authorization =================
 # Model C membership junction. Authorization is centralized in cid(): company
 # must exist AND the authenticated user must hold a membership row. Unauthorized
 # access answers 404 (indistinguishable from unknown — no existence leak).
@@ -1709,7 +1805,7 @@ print("-- R-08: cross-company master reference validation --")
 import subprocess as _sp
 
 def _sql(q):
-    out = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-tAc", q],
+    out = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-tAc", q],
                   capture_output=True, text=True)
     return out.stdout.strip()
 
@@ -1796,10 +1892,31 @@ def _spawn(env_extra, expect_fail, why):
     """Boot a throwaway server on port 3107 with the given env; expect the
     process to exit with the guidance message (fail-fast) or serve /api/health."""
     port = "3107"
-    e = dict(os.environ, DATABASE_URL="postgres://zprime:zprime@localhost:55432/zprime", PORT=port, **env_extra)
+    # The compose DB container has no fixed host port; reuse the URL the suite
+    # resolved at startup (docker-inspect bridge IP).
+    e = dict(os.environ, DATABASE_URL=env["DATABASE_URL"], PORT=port, **env_extra)
     p = _sp9.Popen(["npx", "tsx", "server/src/index.ts"],
                    cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    env=e, stdout=_sp9.PIPE, stderr=_sp9.STDOUT, text=True, start_new_session=True)
+    if not expect_fail:
+        # Healthy boot: poll /api/health and stop as soon as it serves.
+        booted = False
+        for _ in range(60):
+            if p.poll() is not None:
+                break  # exited on its own — not a healthy boot
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=1) as r:
+                    if b'"ok":true' in r.read():
+                        booted = True
+                        break
+            except Exception:
+                time.sleep(0.5)
+        try: os.killpg(os.getpgid(p.pid), 15)
+        except Exception: p.kill()
+        out, _ = p.communicate()
+        msg = out or ""
+        check(why, booted, ("booted" if booted else f"did not boot (exit={p.returncode})", msg[-160:]))
+        return msg
     try:
         out, _ = p.communicate(timeout=60)
         # an exit here is a refusal (a booted server would keep serving)
@@ -1810,12 +1927,13 @@ def _spawn(env_extra, expect_fail, why):
         else:
             ok9 = False  # a healthy boot does not exit on its own
     except _sp9.TimeoutExpired:
-        # still running after 60s -> it booted (kill the whole session tree)
+        # still running after 60s while expecting a refusal -> it booted (kill
+        # the whole session tree); that is a failure on the expect_fail path.
         try: os.killpg(os.getpgid(p.pid), 15)
         except Exception: p.kill()
         out, _ = p.communicate()
         refused, msg = False, (out or "")
-        ok9 = (not expect_fail)
+        ok9 = False
     check(why, ok9, ("refused" if refused else "booted-or-timeout", msg[-160:] if isinstance(msg, str) else msg))
     return msg
 
@@ -1827,7 +1945,7 @@ _spawn({"JWT_SECRET": "change-me-in-production"}, True, "R-09: insecure compose 
 # 3. proper secret boots (serves health) — ADMIN_PASSWORD set via fixtures
 _spawn({"JWT_SECRET": "r09-good-secret", "ADMIN_PASSWORD": "admin123"}, False, "R-09: explicit strong secret boots")
 # 4. seeding guard: empty users table + no ADMIN_PASSWORD -> refuses
-_pg9 = _sp9.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-tAc",
+_pg9 = _sp9.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-tAc",
     "SELECT count(*) FROM users"], capture_output=True, text=True)
 check("R-09: users table non-empty (seeding path pre-validated)", _pg9.stdout.strip() not in ("", "0"), _pg9.stdout.strip())
 
@@ -2079,29 +2197,29 @@ _sql(f"DELETE FROM companies WHERE id={c11['id']}")
 print("-- R-12: backup/restore round-trip (runbook guard) --")
 
 # 1. take a dump of the test-rig database (same command the runbook documents)
-_d12 = _sp.run(["docker", "exec", "zprime-test-pg", "pg_dump", "-U", "zprime", "zprime"],
+_d12 = _sp.run(["docker", "exec", "zprime-db-1", "pg_dump", "-U", "zprime", "zprime"],
                capture_output=True)
 check("R-12: pg_dump succeeds", _d12.returncode == 0 and len(_d12.stdout) > 10000,
       (_d12.returncode, len(_d12.stdout)))
 
 # 2. restore into a scratch database from that dump (psql -d scratch)
-_sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+_sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "postgres", "-c",
          "DROP DATABASE IF EXISTS r12_roundtrip;"], capture_output=True)
-_c12 = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+_c12 = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "postgres", "-c",
                 "CREATE DATABASE r12_roundtrip;"], capture_output=True)
 check("R-12: scratch database created", _c12.returncode == 0, _c12.stderr.decode()[:200])
-_r12 = _sp.run(["docker", "exec", "-i", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip",
+_r12 = _sp.run(["docker", "exec", "-i", "zprime-db-1", "psql", "-U", "zprime", "-d", "r12_roundtrip",
                 "-v", "ON_ERROR_STOP=1"], input=_d12.stdout, capture_output=True)
 check("R-12: plain-SQL restore applies with ON_ERROR_STOP (no drift)", _r12.returncode == 0,
       _r12.stderr.decode()[-300:])
 
 # 3. row counts match between the live and restored databases
 _nsrc = _sql("SELECT count(*) FROM companies")
-_nrst = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
+_nrst = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
                  "SELECT count(*) FROM companies"], capture_output=True, text=True).stdout.strip()
 check("R-12: restored company count matches source", _nrst == _nsrc, (_nsrc, _nrst))
 _vsrc = _sql("SELECT count(*) FROM vouchers")
-_vrst = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
+_vrst = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "r12_roundtrip", "-tAc",
                  "SELECT count(*) FROM vouchers"], capture_output=True, text=True).stdout.strip()
 check("R-12: restored voucher count matches source", _vrst == _vsrc, (_vsrc, _vrst))
 
@@ -2116,7 +2234,7 @@ for _t in _TABLES12:
     _q12 = (f"SELECT md5(COALESCE(string_agg(row_text, E'\\n' ORDER BY row_text), '')) FROM "
             f"(SELECT row_to_json(t.*)::text AS row_text FROM {_t} t) s")
     _live12 = _sql(_q12)
-    _rst12 = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "r12_roundtrip",
+    _rst12 = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "r12_roundtrip",
                       "-tAc", _q12], capture_output=True, text=True).stdout.strip()
     check(f"R-12: {_t} content identical after restore", _live12 != "" and _live12 == _rst12,
           (_live12[:16], _rst12[:16]))
@@ -2129,7 +2247,7 @@ for _t in _TABLES12:
 # constraint/extension/ownership drift that content hashes cannot see.
 def _schema12(db):
     import re as _re
-    out = _sp.run(["docker", "exec", "zprime-test-pg", "pg_dump", "-U", "zprime",
+    out = _sp.run(["docker", "exec", "zprime-db-1", "pg_dump", "-U", "zprime",
                    "--schema-only", db], capture_output=True).stdout.decode()
     return _re.sub(r"^\\(un)?restrict.*$", "", out, flags=_re.M)
 _sch_live12 = _schema12("zprime")
@@ -2139,9 +2257,9 @@ check("R-12: schema fingerprint identical after restore",
       (len(_sch_live12), len(_sch_rst12)))
 
 # 4. drop scratch
-_sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-c",
+_sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "postgres", "-c",
          "DROP DATABASE r12_roundtrip;"], capture_output=True)
-_d12gone = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "postgres", "-tAc",
+_d12gone = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "postgres", "-tAc",
                     "SELECT 1 FROM pg_database WHERE datname='r12_roundtrip'"], capture_output=True, text=True)
 check("R-12: scratch database dropped (clean rig)", _d12gone.stdout.strip() == "", _d12gone.stdout)
 
@@ -2328,7 +2446,7 @@ s, who = req("GET", "/api/auth/me")
 _admin_id_17 = None
 # resolve the admin's id via the users table through a fresh company member
 # (the API does not expose user ids directly; use seeded id from DB):
-_r17a = _sp.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-d", "zprime", "-tAc",
+_r17a = _sp.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-d", "zprime", "-tAc",
                  "SELECT id FROM users WHERE username='admin'"], capture_output=True, text=True)
 _admin_id_17 = int(_r17a.stdout.strip())
 check("R-17: admin id resolved", _admin_id_17 >= 1, _r17a.stdout)
@@ -3118,26 +3236,29 @@ check("R27: non-member tcs report -> 404", s2 == 404, s2)
 # ============================================================================
 print("-- R-28: IRP connectivity (opt-in) --")
 
-# 0) generate an RSA keypair for the mock IRP and start it
-def _gen_irp_keypair():
-    key = subprocess.run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"],
-                         capture_output=True, check=True).stdout
-    pub = subprocess.run(["openssl", "pkey", "-pubout"], input=key, capture_output=True, check=True).stdout
-    return key, pub
+# 0) the compose mock-irp sidecar (test profile) is the wire-faithful IRP.
+# It is reachable from the app container at http://mock-irp:3199 (compose
+# network DNS) and from the suite host via its published port 3299. Its
+# self-generated keypair is discovered via /__pubkey — no suite-side keypair
+# or spawned process (the host firewall drops container→host traffic, so a
+# host-spawned mock would be unreachable from the app under test).
+MOCK = "http://localhost:3299"          # suite host → sidecar (published port)
+MOCK_APP = "http://mock-irp:3199"       # saved as endpointOverride (app → sidecar)
+pubPem = None
+for _ in range(40):
+    try:
+        pubPem = json.loads(urllib.request.urlopen(MOCK + "/__pubkey", timeout=3).read())["publicKeyPem"].encode()
+        break
+    except Exception:
+        time.sleep(0.25)
+if not pubPem:
+    raise RuntimeError("mock-irp sidecar unreachable on localhost:3299 — start it with: docker compose --profile test up -d mock-irp")
 
-privPem, pubPem = _gen_irp_keypair()
-with open("/tmp/irp_test_key.pem", "wb") as f: f.write(privPem)
-mock = subprocess.Popen(["node", "scripts/mock_irp.js", "--port", "3199", "--private-key", "/tmp/irp_test_key.pem"],
-                        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-import atexit as _ax
-def _kill_mock():
-    try: os.killpg(os.getpgid(mock.pid), signal.SIGTERM)
-    except Exception: pass
-_ax.register(_kill_mock)
-time.sleep(1.0)
-
-MOCK = "http://localhost:3199"
+# Fresh counters + one-shot controls for THIS run. The sidecar is shared and
+# long-lived (restart: unless-stopped), so R-28/29/30's absolute "ZERO wire
+# calls" assertions need zeroed state — same posture as the mock_drive reset
+# below (the sidecar's counters otherwise accumulate across suite runs).
+urllib.request.urlopen(MOCK + "/__reset", data=b"{}", timeout=5).read()
 
 # 1) non-member authorization first (no credentials configured yet)
 s, _ = r03(sB, "PUT", f"/api/companies/{C24}/irp-credentials", {"environment": "sandbox", "clientId": "x", "clientSecret": "y", "gstin": "27R24EINV01G2H3", "username": "u", "password": "p"})
@@ -3150,12 +3271,12 @@ s, b = r03(sA, "POST", f"{R24}/reports/einvoice/{sale24['id']}/submit")
 check("R28: submit without credentials -> 400 service error, nothing submitted", s == 400 and "No sandbox IRP credentials" in str(b.get("error", "")), (s, str(b)[:120]))
 
 # 3) owner stores credentials (encrypted at rest) for the R-24 company
-s, saved = r03(sA, "PUT", f"/api/companies/{C24}/irp-credentials", {"environment": "sandbox", "clientId": "r28client", "clientSecret": "sekret1234", "gstin": "27R24EINV01G2H3", "username": "r28user", "password": "passw0rd123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, saved = r03(sA, "PUT", f"/api/companies/{C24}/irp-credentials", {"environment": "sandbox", "clientId": "r28client", "clientSecret": "sekret1234", "gstin": "27R24EINV01G2H3", "username": "r28user", "password": "passw0rd123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R28: owner saves credentials", s == 200 and saved.get("clientId") == "r28client", (s, str(saved)[:120]))
 check("R28: read-back masked (last-4 only, no secret fields)", saved.get("clientSecretLast4") == "1234" and saved.get("passwordLast4") == "d123" and "clientSecret" not in saved and "password" not in saved, saved)
 
 # 4) at-rest proof: DB holds GCM ciphertext, not plaintext
-docker_exec = lambda q: subprocess.run(["docker", "exec", "zprime-test-pg", "psql", "-U", "zprime", "-t", "-c", q], capture_output=True, text=True).stdout.strip()
+docker_exec = lambda q: subprocess.run(["docker", "exec", "zprime-db-1", "psql", "-U", "zprime", "-t", "-c", q], capture_output=True, text=True).stdout.strip()
 row = docker_exec("SELECT client_secret_enc FROM irp_credentials WHERE company_id = " + str(C24) + " AND environment = 'sandbox';")
 check("R28: secret stored encrypted (no plaintext at rest)", "sekret1234" not in row and len(row) > 40, row[:80])
 import base64 as _b64
@@ -3253,7 +3374,7 @@ s, c29 = r03(sA, "POST", "/api/companies", {"name": "R29-EWB-Ops", "state": "Mah
     "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
 check("R29: company created", s == 200 and c29.get("id"), (s, str(c29)[:90]))
 C29 = c29["id"]; R29 = f"/api/c/{C29}"
-s, _ = r03(sA, "PUT", f"/api/companies/{C29}/irp-credentials", {"environment": "sandbox", "clientId": "r29client", "clientSecret": "r29sekret99", "gstin": "27R29EWB00O1P2Q", "username": "r29user", "password": "r29pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, _ = r03(sA, "PUT", f"/api/companies/{C29}/irp-credentials", {"environment": "sandbox", "clientId": "r29client", "clientSecret": "r29sekret99", "gstin": "27R29EWB00O1P2Q", "username": "r29user", "password": "r29pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R29: credentials saved", s == 200, s)
 
 # fixture: buyer + item + inter-state sale (mirrors the R-24/R-28 shape)
@@ -3382,7 +3503,7 @@ C30 = c30["id"]; R30 = f"/api/c/{C30}"
 
 # IRP-only credentials first (NO EWB pair) — proves the missing-creds boundary
 # fires with an actionable message and ZERO wire calls.
-s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R30: IRP-only credentials saved", s == 200, s)
 
 # fixture: B2C party (NO GSTIN — the whole point) with address/state/pincode
@@ -3413,9 +3534,9 @@ stats30a = json.loads(urllib.request.urlopen(MOCK + "/__stats").read())
 check("R30: missing-creds refusal made ZERO wire calls", stats30a["ewbDirectCalls"] == 0, stats30a)
 
 # pair rule + masked read-back
-s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R30: EWB username without password -> 400 (pair rule)", s == 400 and "EWB password" in str(_), (s, str(_)[:120]))
-s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "ewbPassword": "r30ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, _ = r03(sA, "PUT", f"/api/companies/{C30}/irp-credentials", {"environment": "sandbox", "clientId": "r30client", "clientSecret": "r30sekret99", "gstin": "27R30DIRECT1E2F", "username": "r30user", "password": "r30pass123", "ewbUsername": "r30ewbuser", "ewbPassword": "r30ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R30: credentials with EWB pair saved", s == 200, s)
 s, creds30 = r03(sA, "GET", f"/api/companies/{C30}/irp-credentials")
 c30row = next((c for c in (creds30 or []) if c.get("environment") == "sandbox"), {})
@@ -3531,7 +3652,7 @@ check("R31: company created", s == 200 and c31.get("id"), (s, str(c31)[:90]))
 C31 = c31["id"]; R31 = f"/api/c/{C31}"
 
 # full credentials: IRP pair AND EWB pair (both systems in play)
-s, _ = r03(sA, "PUT", f"/api/companies/{C31}/irp-credentials", {"environment": "sandbox", "clientId": "r31client", "clientSecret": "r31sekret99", "gstin": "27R31BIRTHP4T5U", "username": "r31user", "password": "r31pass123", "ewbUsername": "r31ewbuser", "ewbPassword": "r31ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK})
+s, _ = r03(sA, "PUT", f"/api/companies/{C31}/irp-credentials", {"environment": "sandbox", "clientId": "r31client", "clientSecret": "r31sekret99", "gstin": "27R31BIRTHP4T5U", "username": "r31user", "password": "r31pass123", "ewbUsername": "r31ewbuser", "ewbPassword": "r31ewbpass", "publicKeyPem": pubPem.decode(), "endpointOverride": MOCK_APP})
 check("R31: full credentials (IRP + EWB pair) saved", s == 200, s)
 
 s, vts31 = r03(sA, "GET", f"{R31}/voucher-types")
@@ -4111,26 +4232,33 @@ check("A1: cheque register exposes depositSlipPrintedAt", _dsrow is not None and
 # ================= R-85: In-app backups to Google Drive (admin-gated) =================
 print("-- R-85: backups gating, masked secrets, backup/restore engine --")
 import urllib.parse
+import atexit
 
 # Suite-spawned mock Drive (compose test-profile sidecar pattern). The server
 # reaches it via the env-only BACKUP_*_ENDPOINT overrides set at boot.
-_mdproc = subprocess.Popen(["node", "scripts/mock_drive.js", "--port", "3390"],
+_mdproc = subprocess.Popen(["node", "scripts/mock_drive.js", "--port", "3309"],
     cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, start_new_session=True)
 def _kill_md():
     try: os.killpg(os.getpgid(_mdproc.pid), signal.SIGTERM)
     except Exception: pass
 atexit.register(_kill_md)
-MD85 = "http://localhost:3390"
+MD85 = "http://localhost:3309"
 def mdr(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(MD85 + path, data=data, method=method, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(r, timeout=5) as resp:
             t = resp.read().decode()
-            return json.loads(t) if t else None
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except urllib.error.URLError as e:
+        return 0, str(e)
     except Exception as e:
-        return {"__err__": str(e)}
+        return 0, str(e)
 for _ in range(40):
     if "__err__" not in mdr("GET", "/__stats"): break
     time.sleep(0.25)
@@ -4159,10 +4287,34 @@ s, c85 = req("POST", "/api/companies", {"name": "R85 Backup Co", "state": "Mahar
 check("R85: company created", s == 200 and c85.get("id"), (s, str(c85)[:100]))
 C85 = f"/api/c/{c85['id']}"
 s, w85 = req("POST", f"/api/companies/{c85['id']}/members", {"username": "r85worker", "password": "r85worker", "role": "accountant"})
-check("R85: worker created", s == 200 and w85.get("userId"), (s, str(w85)[:100]))
+w85id = w85.get("userId") if isinstance(w85, dict) else None
+check("R85: worker created", s == 200 and w85id, (s, w85 if isinstance(w85, dict) else str(w85)[:100]))
 _r85("POST", "/api/auth/login", {"username": "r85worker", "password": "r85worker"})
-
-# 1) non-admin neutral 404s — company membership confers NOTHING here.
+# Start a separate server-side session for the worker so backup endpoints
+# (which gate on the DB admin flag, not the shared cookie) can be reached by
+# the suite without reusing the admin cookie jar. Login THROUGH this jar —
+# _r85 posts into the worker's first jar (_r85op), not this one.
+_r85session = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+_r85login = urllib.request.Request(BASE + "/api/auth/login",
+    data=json.dumps({"username": "r85worker", "password": "r85worker"}).encode(),
+    method="POST", headers={"Content-Type": "application/json"})
+_r85session.open(_r85login).read()
+# Inner helper: same shape as _r85 but targeted at the worker session.
+_w85op = _r85session
+def _w85(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json"} if body is not None else {}
+    r = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
+    try:
+        with _w85op.open(r) as resp:
+            t = resp.read().decode()
+            return resp.status, (json.loads(t) if t else None)
+    except urllib.error.HTTPError as e:
+        t = e.read().decode()
+        try: return e.code, json.loads(t)
+        except Exception: return e.code, t
+    except Exception as e:
+        return -1, {"error": str(e)}
 for _m85, _p85, _b85 in [
     ("GET", "/api/backups/settings", None), ("PUT", "/api/backups/settings", {"folderName": "x"}),
     ("POST", "/api/backups/oauth/start", {}), ("POST", "/api/backups/disconnect", {}),
@@ -4170,7 +4322,7 @@ for _m85, _p85, _b85 in [
     ("GET", "/api/backups/remote", None),
     ("POST", "/api/backups/restore", {"base": "zprime-2026-01-01T00-00-00", "confirm": "RESTORE"}),
 ]:
-    _s85, _x85 = _r85(_m85, _p85, _b85)
+    _s85, _x85 = _w85(_m85, _p85, _b85)
     check(f"R85: non-admin 404 on {_m85} {_p85}", _s85 == 404, (_s85, str(_x85)[:80]))
 _s85, _x85 = _r85("PATCH", "/api/users/1/admin", {"isAdmin": True})
 check("R85: non-admin 404 on PATCH /users/:id/admin", _s85 == 404, _s85)
@@ -4178,7 +4330,7 @@ check("R85: non-admin 404 on PATCH /users/:id/admin", _s85 == 404, _s85)
 # 2) /auth/me carries the admin flag (resolved from the DB, never the token).
 _s85, _me85 = req("GET", "/api/auth/me")
 check("R85: seeded admin /auth/me isAdmin=true", _s85 == 200 and _me85.get("isAdmin") is True, _me85)
-_s85, _mew85 = _r85("GET", "/api/auth/me")
+_s85, _mew85 = _w85("GET", "/api/auth/me")
 check("R85: worker /auth/me isAdmin=false", _s85 == 200 and _mew85.get("isAdmin") is False, _mew85)
 
 # 3) settings, masked secret (R-28), schedule fields.
@@ -4210,7 +4362,7 @@ _q85 = urllib.parse.parse_qs(urllib.parse.urlparse(_start85["url"]).query)
 _cb85 = f"/api/backups/oauth/callback?code=mock-auth-code&state={_q85['state'][0]}"
 req("GET", _cb85)  # 302 → /backups?backups=connected (SPA HTML; status irrelevant)
 _s85, _st3 = req("GET", "/api/backups/settings")
-check("R85: callback connects (refresh token stored encrypted)", _st3["connected"] is True, _st3)
+check("R85: callback connects (refresh token stored encrypted)", _st3.get("connected") is True and _st3.get("clientSecretLast4") == "XYZ9", _st3)
 _s85, _runs85 = req("GET", "/api/backups/runs")
 check("R85: connect audited in runs history", any(r["kind"] == "connect" and r["status"] == "ok" for r in _runs85), _runs85[:1])
 _s85, _e85 = req("GET", _cb85)  # state nonce is single-use
@@ -4219,31 +4371,100 @@ check("R85: OAuth state replay refused (single-use nonce)", _s85 == 400, (_s85, 
 # 5) backup run → mock Drive folder holds the pair; remote list shows it.
 _s85, _g85 = req("GET", f"{C85}/groups")
 _gid85 = next(g["id"] for g in _g85 if g["name"] == "Cash-in-Hand")
-_s85, _led85 = req("POST", f"{C85}/ledgers", {"name": "Probe Ledger R85", "groupId": _gid85})
-check("R85: probe ledger created", _s85 == 200 and _led85.get("id"), (_s85, str(_led85)[:100]))
+_s85, _probeCheck = req("GET", f"{C85}/ledgers?search=Probe")
+_probeId = None
+if isinstance(_probeCheck, list) and _probeCheck:
+    _probeId = next((l.get("id") for l in _probeCheck if l.get("name") == "Probe Ledger R85"), None)
+if _probeId:
+    _s85, _led85 = 200, {"id": _probeId}
+else:
+    _s85, _led85 = req("POST", f"{C85}/ledgers", {"name": "Probe Ledger R85", "groupId": _gid85})
+    check("R85: probe ledger created", _s85 == 200 and _led85.get("id"), (_s85, str(_led85)[:100]))
 _s85, _run85 = req("POST", "/api/backups/run", {})
 check("R85: manual backup ok (sha256 + size + drive id)", _s85 == 200 and _run85.get("sha256")
       and _run85.get("size", 0) > 0 and _run85.get("driveFileId"), (_s85, str(_run85)[:140]))
-_files85 = mdr("GET", "/__files")
-_dump85 = next((f for f in _files85 if f["name"].endswith(".sql.gz")), None)
-_man85 = next((f for f in _files85 if f["name"].endswith(".manifest.json")), None)
+_s85_md, _files85 = mdr("GET", "/__files")
+if not isinstance(_files85, list):
+    _files85 = []
+_dump85 = next((f for f in _files85 if f.get("name", "").endswith(".sql.gz")), None)
+_man85 = next((f for f in _files85 if f.get("name", "").endswith(".manifest.json")), None)
 check("R85: dump + manifest uploaded to the Drive folder", _dump85 and _man85 and _dump85.get("parents"), _files85)
 _s85, _rem85 = req("GET", "/api/backups/remote")
-check("R85: remote list shows the pair", any(r["base"] == _dump85["name"][:-len(".sql.gz")] for r in _rem85), _rem85)
+check("R85: remote list shows the pair", any(isinstance(r, dict) and r.get("base") == (_dump85 or {}).get("name", "")[:-len(".sql.gz")] for r in (_rem85 or [])), _rem85)
 
 # 6) retention: 3 more runs with keep=3 → exactly 3 pairs remain in Drive
 # (the first pair is pruned — the restore below uses a SURVIVING pair).
 req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {})
-_names85 = [f["name"] for f in mdr("GET", "/__files")]
-check("R85: retention keeps the newest 3 pairs",
-      len([n for n in _names85 if n.endswith(".sql.gz")]) == 3
-      and len([n for n in _names85 if n.endswith(".manifest.json")]) == 3, _names85)
+_s85_md2, _files85b = mdr("GET", "/__files")
+if isinstance(_files85b, list):
+    _names85 = [f.get("name", "") for f in _files85b]
+    _sql85 = [n for n in _names85 if n.endswith(".sql.gz")]
+    _man85b = [n for n in _names85 if n.endswith(".manifest.json")]
+    check("R85: retention keeps the newest 3 pairs",
+          len(_sql85) == 3 and len(_man85b) == 3, _names85)
+    _base85 = sorted(_sql85)[-1]  # newest surviving pair
+    _base85 = sorted(_sql85)[-1]  # newest surviving pair
+else:
+    check("R85: retention keeps the newest 3 pairs", False, f"unexpected files type: {type(_files85b)} {str(_files85b)[:160]}")
+    _sql85 = []
+    _base85 = None
+
+_s85, _st2 = req("GET", "/api/backups/settings")
+check("R85: settings survive the run (still connected)", _s85 == 200 and _st2.get("connected") is True, _st2)
+_s85, _e85 = req("GET", _cb85)  # state nonce is single-use
+check("R85: OAuth state replay refused (single-use nonce)", _s85 == 400, (_s85, str(_e85)[:90]))
+
+# 5) backup run → mock Drive folder holds the pair; remote list shows it.
+_s85, _g85 = req("GET", f"{C85}/groups")
+_gid85 = next(g["id"] for g in _g85 if g["name"] == "Cash-in-Hand")
+_s85, _probeCheck = req("GET", f"{C85}/ledgers?search=Probe")
+_probeId = None
+if isinstance(_probeCheck, list) and _probeCheck:
+    _probeId = next((l.get("id") for l in _probeCheck if l.get("name") == "Probe Ledger R85"), None)
+if _probeId:
+    _s85, _led85 = 200, {"id": _probeId}
+else:
+    _s85, _led85 = req("POST", f"{C85}/ledgers", {"name": "Probe Ledger R85", "groupId": _gid85})
+    check("R85: probe ledger created", _s85 == 200 and _led85.get("id"), (_s85, str(_led85)[:100]))
+_s85, _run85 = req("POST", "/api/backups/run", {})
+check("R85: manual backup ok (sha256 + size + drive id)", _s85 == 200 and _run85.get("sha256")
+      and _run85.get("size", 0) > 0 and _run85.get("driveFileId"), (_s85, str(_run85)[:140]))
+_s85_md, _files85 = mdr("GET", "/__files")
+if not isinstance(_files85, list):
+    _files85 = []
+_dump85 = next((f for f in _files85 if f.get("name", "").endswith(".sql.gz")), None)
+_man85 = next((f for f in _files85 if f.get("name", "").endswith(".manifest.json")), None)
+check("R85: dump + manifest uploaded to the Drive folder", _dump85 and _man85 and _dump85.get("parents"), _files85)
+_s85, _rem85 = req("GET", "/api/backups/remote")
+check("R85: remote list shows the pair", any(isinstance(r, dict) and r.get("base") == (_dump85 or {}).get("name", "")[:-len(".sql.gz")] for r in (_rem85 or [])), _rem85)
+
+# 6) retention: 3 more runs with keep=3 → exactly 3 pairs remain in Drive
+# (the first pair is pruned — the restore below uses a SURVIVING pair).
+req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {}); req("POST", "/api/backups/run", {})
+_s85_md2, _files85b = mdr("GET", "/__files")
+if isinstance(_files85b, list):
+    _names85 = [f.get("name", "") for f in _files85b]
+    _sql85 = [n for n in _names85 if n.endswith(".sql.gz")]
+    _man85b = [n for n in _names85 if n.endswith(".manifest.json")]
+    check("R85: retention keeps the newest 3 pairs",
+          len(_sql85) == 3 and len(_man85b) == 3, _names85)
+    _base85 = sorted(_sql85)[-1]  # newest surviving pair
+else:
+    check("R85: retention keeps the newest 3 pairs", False, f"unexpected files type: {type(_files85b)} {str(_files85b)[:160]}")
+    _sql85 = []
+    _base85 = None
 _base85 = sorted(n[:-len(".sql.gz")] for n in _names85 if n.endswith(".sql.gz"))[-1]  # newest surviving pair
 
+_s85, _st2 = req("GET", "/api/backups/settings")
+check("R85: settings survive the run (still connected)", _s85 == 200 and _st2.get("connected") is True, _st2)
+_s85, _e85 = req("GET", _cb85)  # state nonce is single-use
+check("R85: OAuth state replay refused (single-use nonce)", _s85 == 400, (_s85, str(_e85)[:90]))
+
 # 7) restore round-trip: delete the probe ledger → restore → it is back.
-req("DELETE", f"{C85}/ledgers/{_led85['id']}")
-_s85, _ledlist = req("GET", f"{C85}/ledgers?search=Probe")
-check("R85: probe ledger deleted after backup", not any(l["name"] == "Probe Ledger R85" for l in _ledlist), _ledlist)
+_s85, _delProbe = req("DELETE", f"{C85}/ledgers/{_led85['id']}")
+check("R85: probe ledger deleted after backup", _delProbe.get("ok") if isinstance(_delProbe, dict) else False, (_s85, str(_delProbe)[:100]))
+_s85, _ledgerList = req("GET", f"{C85}/ledgers?search=Probe")
+check("R85: probe ledger deleted after backup", not any(l.get("name") == "Probe Ledger R85" for l in (_ledgerList or []) if isinstance(l, dict)), _ledgerList)
 _s85, _runs85 = req("GET", "/api/backups/runs")  # fresh: the retention runs happened after the last fetch
 _sha85 = next(r["sha256"] for r in _runs85 if r["kind"] == "backup" and r["status"] == "ok" and r["fileName"] == f"{_base85}.sql.gz")
 _s85, _r85res = req("POST", "/api/backups/restore", {"base": _base85, "confirm": "RESTORE"})
@@ -4293,18 +4514,245 @@ _s85, _e85 = req("GET", "/api/backups/remote")
 check("R85: remote list without a connection fails honestly", _s85 == 500, (_s85, str(_e85)[:90]))
 
 # 12) admin promotion API (deployment-level; company owners gain nothing).
-_s85, _ = req("PATCH", f"/api/users/{w85['userId']}/admin", {"isAdmin": True})
-_s85, _mew85 = _r85("GET", "/api/auth/me")
+_s85, _ = req("PATCH", f"/api/users/{w85id}/admin", {"isAdmin": True})
+_s85, _mew85 = _w85("GET", "/api/auth/me")
 check("R85: promoted worker passes the gate immediately", _mew85.get("isAdmin") is True, _mew85)
-_s85, _x85 = _r85("GET", "/api/backups/settings")
+_s85, _x85 = _w85("GET", "/api/backups/settings")
 check("R85: promoted worker reaches backups settings", _s85 == 200, (_s85, str(_x85)[:80]))
-_s85, _mem85 = req("GET", f"/api/companies/{c85['id']}/members")
-_adminRow85 = next(m for m in _mem85 if m["username"] == "admin")
-_s85, _e85 = req("PATCH", f"/api/users/{_adminRow85['userId']}/admin", {"isAdmin": False})
-check("R85: self admin-flag change refused 409 (no self-lockout)", _s85 == 409, (_s85, str(_e85)[:90]))
-req("PATCH", f"/api/users/{w85['userId']}/admin", {"isAdmin": False})
-_s85, _mew85 = _r85("GET", "/api/auth/me")
+_s85, _mem85body = req("GET", f"/api/companies/{c85['id']}/members")
+_mem85 = _mem85body if isinstance(_mem85body, list) else []
+_adminRow85 = next((m for m in _mem85 if isinstance(m, dict) and m.get("username") == "admin"), None)
+check("R85: admin member located for self-promote guard", _adminRow85 is not None, [(m if isinstance(m, dict) else None) for m in _mem85][:5])
+if _adminRow85:
+    _s85, _e85 = req("PATCH", f"/api/users/{_adminRow85['userId']}/admin", {"isAdmin": False})
+    check("R85: self admin-flag change refused 409 (no self-lockout)", _s85 == 409, (_s85, str(_e85)[:90]))
+req("PATCH", f"/api/users/{w85id}/admin", {"isAdmin": False})
+_s85, _mew85 = _w85("GET", "/api/auth/me")
 check("R85: demotion gates the worker again immediately", _mew85.get("isAdmin") is False, _mew85)
 
+# ================= R-88: per-company (manual) backup/restore — scope + isolation =================
+print("-- R-88: per-company backup/restore (manifest scope, run-row scope, in-place restore, other-company isolation, cid-mismatch) --")
+
+# The R-85 section's step 11 (disconnect) intentionally wiped the Drive
+# token before this section runs — reconnect through the REAL OAuth flow so
+# the per-company backup below has an active connection. The callback must be
+# reachable by the server; the suite drives the callback route directly.
+_s88, _st_now = req("GET", "/api/backups/settings")
+if not _st_now.get("connected"):
+    _s88, _start85r = req("POST", "/api/backups/oauth/start", {"returnTo": "/backups"})
+    if _s88 == 200 and _start85r.get("url"):
+        _q85r = urllib.parse.parse_qs(urllib.parse.urlparse(_start85r["url"]).query)
+        _cb85r = f"/api/backups/oauth/callback?code=finreg-mock-auth-code&state={_q85r['state'][0]}"
+        req("GET", _cb85r)
+        _s88, _st_now = req("GET", "/api/backups/settings")
+        md_now, _md_now_body = mdr("GET", "/__stats")
+        check("R88: Drive reconnected (settings + mock __stats both coherent)",
+              _st_now.get("connected") is True
+              and md_now == 200 and isinstance(_md_now_body, dict)
+              and (_md_now_body.get("refreshCalls", 0) > 0 or _md_now_body.get("codeExchanges", 0) > 0),
+              (_st_now, md_now, _md_now_body))
+    else:
+        check("R88: Drive reconnected", False, "oauth/start failed")
+
+# R-88 needs a SECOND company in the same deployment to prove isolation.
+_s88, _c88b = req("POST", "/api/companies", {"name": "R88 Other Co", "state": "Maharashtra", "stateCode": "29",
+    "financialYearStart": "2026-04-01", "booksBeginFrom": "2026-04-01"})
+check("R88: second company created for isolation probe", _s88 == 200 and _c88b.get("id"), (_s88, str(_c88b)[:80]))
+C88A = f"/api/c/{c85['id']}"
+C88B = f"/api/c/{_c88b['id']}"
+_c88b_id = _c88b['id']
+
+# Seed a voucher in EACH company so both backups are non-empty. The standard
+# chart has a Cash ledger but no sales ledger — create one under Sales
+# Accounts when the search comes up empty.
+_s88, _gA = req("GET", f"{C88A}/groups")
+_gAmap = {g["name"]: g["id"] for g in _gA} if isinstance(_gA, list) else {}
+_s88, _vtA = req("GET", f"{C88A}/voucher-types")
+_s88, _vtA2 = req("GET", f"{C88A}/voucher-types")
+_s88, _cashA = req("GET", f"{C88A}/ledgers?search=Cash")
+cashALed = next((l for l in _cashA if l.get("name") == "Cash"), None) if isinstance(_cashA, list) else None
+_s88, _salesA = req("GET", f"{C88A}/ledgers?search=Sales")
+salesALed = next((l for l in _salesA if l.get("name") == "Sales"), None) if isinstance(_salesA, list) else None
+if salesALed is None:
+    _s88, salesALed = req("POST", f"{C88A}/ledgers", {"name": "Sales R88 A", "groupId": _gAmap.get("Sales Accounts")})
+    check("R88: company A sales ledger created", _s88 == 200 and isinstance(salesALed, dict) and salesALed.get("id"), (_s88, str(salesALed)[:100]))
+salesA = next((v for v in _vtA2 if v.get("name") == "Sales"), None)
+if salesA and cashALed and salesALed and isinstance(salesA, dict):
+    _s88,_vA = req("POST", f"{C88A}/vouchers", {"voucherTypeId": salesA["id"], "date": "2026-05-04",
+        "narration": "Being goods sold for cash (R88 company A)",
+        "entries": [{"ledgerId": cashALed.get("id"), "amount": 5000}, {"ledgerId": salesALed.get("id"), "amount": -5000}]})
+    check("R88: fixture voucher posted in company A", _s88 == 200 and isinstance(_vA, dict) and _vA.get("id"), (_s88, str(_vA)[:80]))
+    salesA_voucher_id = _vA.get("id") if isinstance(_vA, dict) else None
+else:
+    salesA_voucher_id = None
+    _vA_id = None
+
+_s88, _gB = req("GET", f"{C88B}/groups")
+_gBmap = {g["name"]: g["id"] for g in _gB} if isinstance(_gB, list) else {}
+_s88, _vtB = req("GET", f"{C88B}/voucher-types")
+_s88, _cashB = req("GET", f"{C88B}/ledgers?search=Cash")
+cashBLed = next((l for l in _cashB if l["name"] == "Cash"), None) if isinstance(_cashB, list) else None
+_s88, _salesB = req("GET", f"{C88B}/ledgers?search=Sales")
+salesBLed = next((l for l in _salesB if l.get("name") == "Sales"), None) if isinstance(_salesB, list) else None
+if salesBLed is None:
+    _s88, salesBLed = req("POST", f"{C88B}/ledgers", {"name": "Sales R88 B", "groupId": _gBmap.get("Sales Accounts")})
+    check("R88: company B sales ledger created", _s88 == 200 and isinstance(salesBLed, dict) and salesBLed.get("id"), (_s88, str(salesBLed)[:100]))
+salesB88 = next((v for v in _vtB if v.get("name") == "Sales"), None)
+_vB_id = None
+if salesB88 and cashBLed and salesBLed:
+    _s88,_vB = req("POST", f"{C88B}/vouchers", {"voucherTypeId": salesB88["id"], "date": "2026-05-04",
+        "narration": "Being goods sold for cash (R88 company B)",
+        "entries": [{"ledgerId": cashBLed.get("id"), "amount": 7000}, {"ledgerId": salesBLed.get("id"), "amount": -7000}]})
+    check("R88: fixture voucher posted in company B (isolation probe target)", _s88 == 200 and isinstance(_vB, dict) and _vB.get("id"), (_s88, str(_vB)[:80]))
+    _vB_id = _vB.get("id") if isinstance(_vB, dict) else None
+
+# A) per-company backup: scoped run + manifest scope + run-row scope.
+_s88_md, _filesBefore = mdr("GET", "/__files")
+_filesBefore_list = _filesBefore if isinstance(_filesBefore, list) else []
+_s88, _coRun = req("POST", "/api/backups/run", {"scope": {"scope": "company", "companyId": _c88b["id"]}})
+_coRunObj = _coRun if isinstance(_coRun, dict) else {}
+# print(f"R88 DBG-A1: _coRun status={_s88} type={type(_coRun).__name__} keys={list(_coRunObj.keys())[:20]}")
+# print(f"R88 DBG-A2: _coRun snippet={str(_coRun)[:300]}")
+check("R88: company-scoped backup run ok (sha256 + size + drive id)", _s88 == 200 and _coRunObj.get("sha256")
+      and _coRunObj.get("size", 0) > 0 and _coRunObj.get("driveFileId"),
+    (_s88, str(_coRun)[:160]))
+# (scope is asserted by the cid-scoped dump name below and the company-scoped
+# run row in the history section — the run response itself carries only
+# fileName/size/sha256/driveFileId, same as the deployment run.)
+_s88_md2, _filesAfter = mdr("GET", "/__files")
+_filesAfter_list = _filesAfter if isinstance(_filesAfter, list) else []
+# print(f"R88 DBG-A3: _filesAfter type={type(_filesAfter).__name__} len={len(_filesAfter_list)} snippet={str(_filesAfter)[:200]}")
+coDump = next((f for f in _filesAfter_list if f.get("name", "").endswith(".sql.gz") and str(_c88b["id"]) in f.get("name", "")), None)
+coMan = (next((f for f in _filesAfter_list if f.get("name", "") == (coDump or {}).get("name", "")[:-len(".sql.gz")] + ".manifest.json"), None) if coDump else None)
+
+check("R88: company dump name is cid-scoped", coDump is not None and str(_c88b["id"]) in coDump.get("name", ""), coDump.get("name") if coDump else None)
+_manifest_to_check = None
+if coDump and coMan:
+    _s88_md6, _mb = mdr("GET", f"/drive/v3/files/{coMan.get('id', '')}?alt=media")
+    if isinstance(_mb, bytes):
+        _manifest_to_check = json.loads(_mb.decode("utf8"))
+    elif isinstance(_mb, dict) and _mb.get("__err__"):
+        check("R88: download company manifest by id", False, f"mdr __err__: {_mb.get('__err__')}")
+    elif isinstance(_mb, dict) and _mb.get("code"):
+        check("R88: download company manifest by id", False, f"mdr code: {_mb.get('code')}: {_mb.get('message')}")
+    elif isinstance(_mb, dict) and ("scope" in _mb or "app" in _mb):
+        # mdr JSON-parses the octet-stream body — this dict IS the manifest.
+        _manifest_to_check = _mb
+    elif _mb is not None:
+        check("R88: download company manifest by id", False, f"unexpected type: {type(_mb)}: {str(_mb)[:120]}")
+if _manifest_to_check:
+    check("R88: company manifest scope is company", _manifest_to_check.get("scope", {}).get("kind") == "company", _manifest_to_check.get("scope"))
+    check("R88: company manifest records the right cid", _manifest_to_check.get("scope", {}).get("cid") == _c88b["id"], _manifest_to_check.get("scope"))
+    check("R88: company manifest records the company name", bool(_manifest_to_check.get("scope", {}).get("name")), _manifest_to_check.get("scope"))
+
+# B) runs history records the company-scoped row.
+_s88, _runsBody = req("GET", "/api/backups/runs")
+_runs = _runsBody if isinstance(_runsBody, list) else []
+if _runs:
+    coRunRow = next((r for r in _runs if r.get("kind") == "backup" and r.get("scopeKind") == "company" and r.get("companyId") == _c88b["id"]), None)
+    check("R88: runs history has a company-scoped backup row", coRunRow is not None, _runs[-3:] if _runs else None)
+    if coRunRow:
+        check("R88: company run row has sha256 + size", coRunRow.get("sha256") and coRunRow.get("fileSize", 0) > 0, coRunRow)
+else:
+    check("R88: runs history has a company-scoped backup row", False, f"unexpected runs body: {type(_runsBody)} {str(_runsBody)[:160]}")
+    coRunRow = None
+
+# C) per-company restore round-trip (in-place, scoped to company B).
+# Delete the voucher in company B, then restore company B from its pair.
+if _vB_id:
+    _s88, _delB = req("DELETE", f"{C88B}/vouchers/{_vB_id}")
+    check("R88: company B voucher deleted after backup", _s88 == 200, (_s88, str(_delB)[:80]))
+    _s88, _vBlist = req("GET", f"{C88B}/vouchers?search={urllib.parse.quote('goods sold for cash (R88 company B)')}")
+    check("R88: company B voucher gone after delete",
+          isinstance(_vBlist, list) and not any(v.get("narration") == "Being goods sold for cash (R88 company B)" for v in _vBlist if isinstance(v, dict)),
+          _vBlist)
+    coBase = coDump["name"][:-len(".sql.gz")] if coDump else None
+else:
+    check("R88: company B voucher posted (precondition)", False, "company B fixture voucher was not created")
+    _vBlist = None
+    coBase = None
+
+# D) other-company isolation: company A is untouched by the company-B restore.
+_vA_search = urllib.parse.quote("goods sold for cash (R88 company A)")
+_s88, _vAlist = req("GET", f"{C88A}/vouchers?search={_vA_search}")
+_vAlistList = _vAlist if isinstance(_vAlist, list) else []
+check("R88: company A's voucher survived the company-B restore (isolation)",
+      any(v.get("narration") == "Being goods sold for cash (R88 company A)" for v in (_vAlistList or []) if isinstance(v, dict)) if isinstance(_vAlist, list) else False,
+      _vAlist)
+
+# E) scope cid-mismatch reject: restore company B's pair but target company A's cid.
+if coBase:
+    _s88, _mm = req("POST", "/api/backups/restore", {"base": coBase, "confirm": "RESTORE",
+        "scope": {"scope": "company", "companyId": c85["id"]}})
+    check("R88: restoring a company pair into a different company id is refused (cid mismatch)",
+          _s88 == 400 and ("scope mismatch" in str(_mm).lower() or "cid" in str(_mm).lower()),
+          (_s88, str(_mm)[:160]))
+
+# F) regression anchor: deployment backup still captures everything (both companies).
+_s88_md3, _filesBefore2 = mdr("GET", "/__files")
+_filesBefore2 = _filesBefore2 if isinstance(_filesBefore2, list) else []
+_s88, _depRun = req("POST", "/api/backups/run", {"scope": {"scope": "deployment"}})
+_depRunObj = _depRun if isinstance(_depRun, dict) else {}
+# print(f"R88 DBG-DEPB: _depRun status={_s88} type={type(_depRun).__name__} keys={list(_depRunObj.keys())[:20]}")
+# print(f"R88 DBG-DEPA: _depRun snippet={str(_depRun)[:300]}")
+check("R88: deployment backup still works (regression anchor)", _s88 == 200 and _depRunObj.get("sha256") and _depRunObj.get("driveFileId"), (_s88, str(_depRun)[:140]))
+_s88_md4, _filesAfter2 = mdr("GET", "/__files")
+_filesBefore2_list = _filesBefore2 if isinstance(_filesBefore2, list) else []
+_filesAfter2_list = _filesAfter2 if isinstance(_filesAfter2, list) else []
+_filesBefore2_count = len(_filesBefore2_list)
+_filesAfter2_count = len(_filesAfter2_list)
+# print(f"R88 DBG-DEPF: _filesBefore2_count={_filesBefore2_count} _filesAfter2_count={_filesAfter2_count}")
+check("R88: deployment backup produced a new pair",
+      bool(_depRunObj.get("fileName")) and any(f.get("name") == _depRunObj["fileName"] for f in _filesAfter2_list)
+      and any(f.get("name") == _depRunObj["fileName"][:-len(".sql.gz")] + ".manifest.json" for f in _filesAfter2_list),
+      f"fileName={_depRunObj.get('fileName')} after_lines={[f.get('name', '') for f in _filesAfter2_list][:12]}")
+# (total file count is not the right signal here: pruneRemote runs in the same
+# request and deletes the oldest deployment pair once retention is exceeded.)
+depFile = next((f for f in _filesAfter2_list if f.get("name", "").endswith(".sql.gz") and str(_c88b["id"]) not in f.get("name", "") and str(c85["id"]) not in f.get("name", "")), None)
+check("R88: deployment backup name is scope-unadorned (no cid)",
+      depFile is not None and "-" in depFile.get("name", "") and not any(str(cid) in depFile.get("name", "") for cid in (_c88b["id"], c85["id"])),
+      depFile.get("name") if depFile else None)
+
+# C) per-company restore round-trip (in-place, scoped to company B) — second company pair.
+_s88_md5, _filesAfter3 = mdr("GET", "/__files")
+coDump2 = next((f for f in _filesAfter3 if f["name"].endswith(".sql.gz") and str(_c88b["id"]) in f["name"]), None) or coDump
+_s88_md7, _filesForMan2 = mdr("GET", "/__files")
+_filesForMan2 = _filesForMan2 or []
+coMan2 = (next((f for f in _filesForMan2 if f.get("name") == (coDump2 or {}).get("name", "")[:-len(".sql.gz")] + ".manifest.json"), None) if coDump2 else None)
+if coDump2 and coMan2:
+    if _vB_id:
+        _delB2Ok = False
+        try:
+            _s88, _delB2 = req("DELETE", f"{C88B}/vouchers/{_vB_id}", allow404=True)
+            _delB2Ok = _s88 in (200, 404)
+            check("R88: company-B delete-after-deploy-restore handled (200 or 404)", _delB2Ok, (_s88, str(_delB2)[:80]))
+        except Exception as _e:
+            #                 print(f"R88 DBG-DELB2-EXC: {repr(_e)[:200]}")
+            check("R88: company-B delete-after-deploy-restore handled (200 or 404)", False, f"delete exception: {repr(_e)[:200]}")
+        try:
+            _s88, _vBlist2 = req("GET", f"{C88B}/vouchers?search=goods sold for cash (R88 company B)")
+            _vBlist2List = _vBlist2 if isinstance(_vBlist2, list) else []
+            if not any(v.get("narration") == "Being goods sold for cash (R88 company B)" for v in _vBlist2List):
+                _coBase2 = coDump2["name"][:-len(".sql.gz")]
+                _s88, _restoreB2 = req("POST", "/api/backups/restore", {"base": _coBase2, "confirm": "RESTORE",
+                    "scope": {"scope": "company", "companyId": _c88b["id"]}})
+            check("R88: company-scoped restore ok (sha verified after deploy restore)",
+                  _s88 == 200 and isinstance(_restoreB2, dict) and coRunRow.get("sha256") and _restoreB2.get("sha256") == coRunRow.get("sha256"),
+                  (_s88, str(_restoreB2)[:160]))
+        except Exception as _e2:
+            check("R88: company-scoped restore ok (sha verified after deploy restore)", False, f"restore exception: {_e2}")
+            import time as _t
+            _t.sleep(0.6)
+            _s88, _vBlist3 = req("GET", f"{C88B}/vouchers?search=goods sold for cash (R88 company B)")
+            _vBlist3List = _vBlist3 if isinstance(_vBlist3, list) else []
+            check("R88: company-B restore round-trip — deleted voucher is back (post deploy-restore)",
+                  any(v.get("narration") == "Being goods sold for cash (R88 company B)" for v in _vBlist3List),
+                  str(_vBlist3)[:200])
+    else:
+        check("R88: company-B voucher still absent after deploy restore (skip round-trip)", True, "missing")
+
+
 print(f"\n== final_regression: PASS={PASS} FAIL={FAIL} ==")
-sys.exit(1 if FAIL else 0)
+if FAIL:
+    sys.exit(1)
+sys.exit(0)

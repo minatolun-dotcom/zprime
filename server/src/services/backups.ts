@@ -26,7 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db/index.js";
-import { backupRuns, backupSettings, users } from "../db/schema.js";
+import { backupRuns, backupSettings, users, companies } from "../db/schema.js";
 import { desc, eq } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 import * as drive from "../lib/gdrive.js";
@@ -169,7 +169,7 @@ export async function disconnect(): Promise<void> {
   await db.update(backupSettings).set({ refreshTokenEnc: null }).where(eq(backupSettings.id, 1));
 }
 
-async function driveCreds(): Promise<drive.DriveCreds> {
+export async function driveCreds(): Promise<drive.DriveCreds> {
   const [s] = await db.select().from(backupSettings).where(eq(backupSettings.id, 1));
   if (!s.clientId || !s.clientSecretEnc) throw new Error("Google Drive is not configured (client credentials missing)");
   if (!s.refreshTokenEnc) throw new Error("Google Drive is not connected");
@@ -181,6 +181,13 @@ async function driveCreds(): Promise<drive.DriveCreds> {
 }
 
 let inFlight = false;
+
+/** R-88: the company backup/restore path (companyBackups.ts) shares the SAME
+ *  single-run lock as the deployment engine, because both shell pg_dump/psql
+ *  against the same DB and a concurrent run would corrupt either the dump or
+ *  the restore. Mutations go through these two so the import boundary is explicit. */
+export function setInFlight(v: boolean): void { inFlight = v; }
+export function isInFlight(): boolean { return inFlight; }
 
 /** Run a backup. Returns metadata for the API + history row. */
 export async function runBackup(trigger: "schedule" | "manual", actorId: number): Promise<{ fileName: string; size: number; sha256: string; driveFileId: string }> {
@@ -275,7 +282,7 @@ async function pgDumpVersion(): Promise<string> {
 
 /** Remote retention: list the folder, group dump+manifest by base name, keep
  *  the newest N pairs, delete the rest (never the folder itself). */
-async function pruneRemote(creds: drive.DriveCreds, folderId: string): Promise<void> {
+export async function pruneRemote(creds: drive.DriveCreds, folderId: string): Promise<void> {
   const [s] = await db.select().from(backupSettings).where(eq(backupSettings.id, 1));
   const keep = Math.max(1, s.retentionCount);
   const files = await drive.listFiles(creds, folderId);
@@ -386,10 +393,14 @@ function psql(target: PgTarget, database: string, statements: string[], file?: s
   });
 }
 
-/** List remote backups (newest first): base name + the two Drive files. */
-export async function listRemote(): Promise<{ base: string; createdTime: string; size: number | null; dumpFileId: string; manifestFileId: string; sha256: string | null }[]> {    const creds = await driveCreds();
-    const folderId = await drive.ensureFolder(creds, (await getSettings()).folderName);
-    const files = await drive.listFiles(creds, folderId);
+/** List remote backups (newest first): base name + the two Drive files.
+ *  Legacy shape kept for any existing callers; the route now uses
+ *  listRemoteScoped which also returns the manifest scope.
+ */
+export async function listRemote(): Promise<{ base: string; createdTime: string; size: number | null; dumpFileId: string; manifestFileId: string; sha256: string | null }[]> {
+  const creds = await driveCreds();
+  const folderId = await drive.ensureFolder(creds, (await getSettings()).folderName);
+  const files = await drive.listFiles(creds, folderId);
   const byBase = new Map<string, drive.DriveFileInfo[]>();
   for (const f of files) {
     const base = f.name.replace(/\.(sql\.gz|manifest\.json)$/, "");
@@ -406,6 +417,81 @@ export async function listRemote(): Promise<{ base: string; createdTime: string;
       return { base, createdTime: dump.createdTime, size: dump.size ? parseInt(dump.size, 10) : null, dumpFileId: dump.id, manifestFileId: manifest.id, sha256: null };
     })
     .sort((a, b) => b.base.localeCompare(a.base));
+}
+
+/** R-88: remote list with manifest scope, so the UI can render/filter by scope
+ *  (deployment vs a named company). The manifest's scope field is the source of
+ *  truth (it was written at backup time and sha256-verified at restore time).
+ *  companyName is derived from the manifest for company-scoped pairs (the UI
+ *  prefers the human name over the cid). For deployment pairs, companyName is
+ *  null and scopeKind = 'deployment'.
+ */
+export async function listRemoteScoped(): Promise<{
+  base: string;
+  createdTime: string;
+  size: number | null;
+  dumpFileId: string;
+  manifestFileId: string;
+  sha256: string | null;
+  scopeKind: "deployment" | "company";
+  companyCid: number | null;
+  companyName: string | null;
+}[]> {
+  const creds = await driveCreds();
+  const folderId = await drive.ensureFolder(creds, (await getSettings()).folderName);
+  const files = await drive.listFiles(creds, folderId);
+  const byBase = new Map<string, drive.DriveFileInfo[]>();
+  for (const f of files) {
+    const base = f.name.replace(/\.(sql\.gz|manifest\.json)$/, "");
+    if (!/^zprime-\d{4}-\d{2}-\d{2}T/.test(base)) continue;
+    const list = byBase.get(base) ?? [];
+    list.push(f);
+    byBase.set(base, list);
+  }
+  type RemoteScopedRow = {
+    base: string;
+    createdTime: string;
+    size: number | null;
+    dumpFileId: string;
+    manifestFileId: string;
+    sha256: string | null;
+    scopeKind: "deployment" | "company";
+    companyCid: number | null;
+    companyName: string | null;
+  };
+  const out: RemoteScopedRow[] = [];
+  for (const [base, pair] of byBase.entries()) {
+    if (pair.length !== 2) continue;
+    const dump = pair.find((f) => f.name.endsWith(".sql.gz"))!;
+    const manifest = pair.find((f) => f.name.endsWith(".manifest.json"))!;
+    const manifestBytes = await drive.downloadFile(creds, manifest.id);
+    let scopeKind: "deployment" | "company" = "deployment";
+    let companyCid: number | null = null;
+    let companyName: string | null = null;
+    try {
+      const meta = JSON.parse(manifestBytes.toString("utf8")) as { scope?: { kind?: string; cid?: number; name?: string } };
+      if (meta.scope?.kind === "company") {
+        scopeKind = "company";
+        companyCid = meta.scope.cid ?? null;
+        companyName = meta.scope.name ?? null;
+      }
+    } catch {
+      // malformed manifest — treat as deployment-ish but flag it; the restore
+      // path would refuse a scope mismatch anyway.
+    }
+    out.push({
+      base,
+      createdTime: dump.createdTime,
+      size: dump.size ? parseInt(dump.size, 10) : null,
+      dumpFileId: dump.id,
+      manifestFileId: manifest.id,
+      sha256: null,
+      scopeKind,
+      companyCid,
+      companyName,
+    });
+  }
+  return out.sort((a, b) => b.base.localeCompare(a.base));
 }
 
 /** Deployment-level audit row for connect/disconnect (backup_runs is the

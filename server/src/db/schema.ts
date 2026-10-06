@@ -653,4 +653,16 @@ export const backupRuns = pgTable("backup_runs", {
   // deployment-level audit trail for this surface (audit_events is
   // company-scoped; backups are not).
   actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
-});
+  // R-88: scope dimension on the run history. A deployment run (current
+  // behavior) has scope_kind = 'deployment' and no company_id; a per-company
+  // run (R-88) has scope_kind = 'company' and the company_id it touched.
+  // Backfilling existing rows to 'deployment' is done once in migration 0025
+  // (every pre-R-88 run is a deployment run by construction).
+  scopeKind: text("scope_kind").notNull().default("deployment"),
+  companyId: integer("company_id").references(() => companies.id, { onDelete: "set null" }),
+}, (t) => [
+  // R-88: company-run history is scoped by company; the UI lists a company's
+  // runs and the restore engine validates the target. Deployment runs have
+  // company_id NULL so they are naturally excluded from a company filter.
+  index("backup_runs_company_scope_idx").on(t.companyId, t.scopeKind),
+]);

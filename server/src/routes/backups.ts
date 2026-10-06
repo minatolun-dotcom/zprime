@@ -16,6 +16,10 @@ import { z } from "zod";
 import { requireAdmin, bad } from "../lib/routes.js";
 import { authorizeUrl, exchangeCode, revokeToken } from "../lib/gdrive.js";
 import * as backups from "../services/backups.js";
+import * as companyBackups from "../services/companyBackups.js";
+import { db } from "../db/index.js";
+import { companies } from "../db/schema.js";
+import { eq, asc } from "drizzle-orm";
 
 const stateStore = new Map<string, { redirectUri: string; returnTo: string; exp: number }>();
 const STATE_TTL = 10 * 60_000;
@@ -40,8 +44,34 @@ const settingsPatchSchema = z.strictObject({
 });
 
 // Base shape: zprime-<date>T<time> with the optional uniqueness tail added by
-// the engine (rapid runs must never share one name).
-const restoreSchema = z.object({ base: z.string().regex(/^zprime-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(-[a-f0-9]{4})?$/, "Invalid backup name") });
+// the engine (rapid runs must never share one name). R-88: company-scoped
+// dumps carry a `-<cid>-<company-slug>-` infix (runCompanyBackup) — the
+// restore route must accept the exact names its own backup path produces;
+// restoreCompany re-verifies the manifest scope (cid) before applying.
+const restoreSchema = z.object({
+  base: z.string().regex(
+    /^(?:zprime-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(-[a-f0-9]{4})?|zprime-\d+-[a-zA-Z0-9_-]{1,60}-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-[a-f0-9]{4})$/,
+    "Invalid backup name"),
+  // R-88: optional scope — default (omitted) = deployment (current behavior);
+  // { scope: "company", companyId } = per-company restore (in-place, scoped to
+  // one cid). companyId must be a real company in the instance.
+  scope: z.lazy(() =>
+    z.union([
+      z.object({ scope: z.literal("company"), companyId: z.number().int().min(1) }),
+      z.object({ scope: z.literal("deployment") }).optional(),
+    ]),
+  ).optional(),
+});
+
+// R-88: the backup run body may name a scope (deployment = default/current,
+// company = per-company manual backup). Zod strict keeps the surface closed.
+const runSchema = z.object({
+  // R-88: per-company manual backup — omitted = deployment (current behavior).
+  scope: z.union([
+    z.object({ scope: z.literal("company"), companyId: z.number().int().min(1) }),
+    z.object({ scope: z.literal("deployment") }).optional(),
+  ]).optional(),
+});
 
 /** R-85: rethrow an operational backup failure so the sanitizer passes OUR
  *  operator-facing wording (never SQL/stacks — these messages are authored
@@ -129,6 +159,15 @@ export default async function backupRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // R-88: a lightweight admin-only company list for the per-company picker
+  // (deployment scope — every company in the instance). The normal
+  // /api/companies endpoint is membership-gated (a deployment admin may not hold
+  // membership to every company), so the picker needs its own admin view.
+  app.get("/backups/companies", async (req) => {
+    await admin(req);
+    return db.select({ id: companies.id, name: companies.name }).from(companies).orderBy(asc(companies.name));
+  });
+
   app.get("/backups/runs", async (req) => {
     await admin(req);
     return backups.history();
@@ -136,6 +175,22 @@ export default async function backupRoutes(app: FastifyInstance) {
 
   app.post("/backups/run", async (req) => {
     const uid = await admin(req);
+    const parsed = runSchema.safeParse((req.body ?? {}) as any);
+    if (!parsed.success) throw bad(`Invalid run request: ${parsed.error.issues[0]?.message}`);
+    const scope = parsed.data.scope;
+    if (scope?.scope === "company") {
+      // R-88: per-company manual backup — the company must exist in the instance.
+      const [company] = await db.select().from(companies).where(eq(companies.id, scope.companyId)).limit(1);
+      if (!company) throw bad(`Company ${scope.companyId} not found`, 404);
+      try {
+        const out = await companyBackups.runCompanyBackup({ cid: company.id, companyName: company.name }, "manual", uid);
+        return { ok: true, ...out };
+      } catch (err: any) {
+        if (String(err?.message ?? "").includes("already running")) throw bad("A backup or restore is already running", 409);
+        throw opError(err, "Backup failed");
+      }
+    }
+    // default = deployment (current behavior, unchanged)
     try {
       const out = await backups.runBackup("manual", uid);
       return { ok: true, ...out };
@@ -147,7 +202,8 @@ export default async function backupRoutes(app: FastifyInstance) {
 
   app.get("/backups/remote", async (req) => {
     await admin(req);
-    return backups.listRemote();
+    // R-88: the remote list now carries scope so the UI can render/filter by it.
+    return backups.listRemoteScoped();
   });
 
   // The destructive path: typed confirmation is enforced client-side AND the
@@ -158,6 +214,24 @@ export default async function backupRoutes(app: FastifyInstance) {
     if (!parsed.success) throw bad(`Invalid restore request: ${parsed.error.issues[0]?.message}`);
     const confirm = String((req.body as any)?.confirm ?? "");
     if (confirm !== "RESTORE") throw bad("Type RESTORE to confirm — restoring replaces the entire database", 400);
+    const scope = parsed.data.scope;
+    if (scope?.scope === "company") {
+      // R-88: per-company in-place restore. companyId must be a real company.
+      if (!scope.companyId) throw bad("companyId is required for a company restore", 400);
+      const [company] = await db.select().from(companies).where(eq(companies.id, scope.companyId)).limit(1);
+      if (!company) throw bad(`Company ${scope.companyId} not found`, 404);
+      try {
+        const out = await companyBackups.restoreCompany(parsed.data.base, company.id, uid);
+        return { ok: true, ...out };
+      } catch (err: any) {
+        if (String(err?.message ?? "").includes("already running")) throw bad("A backup or restore is already running", 409);
+        // A manifest-scope/cid mismatch is a caller mistake (the selected pair
+        // belongs to a different company) — 400, not an operational failure.
+        if (/scope mismatch/i.test(String(err?.message ?? ""))) throw bad(String(err?.message ?? err), 400);
+        throw opError(err, "Restore failed");
+      }
+    }
+    // default = deployment (current behavior, unchanged)
     try {
       const out = await backups.restoreBackup(parsed.data.base, uid);
       return { ok: true, ...out };
