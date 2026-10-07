@@ -4354,10 +4354,17 @@ _s85, _e85 = req("PUT", "/api/backups/settings", {"scheduleHhmm": "9:99"})
 check("R85: bad HH:MM rejected", _s85 == 400, (_s85, str(_e85)[:80]))
 
 # 4) connect end-to-end through the REAL callback route (mock consent host).
+# The authorize HOST is env-only posture (gdrive.ts: BACKUP_AUTHORIZE_ENDPOINT ||
+# accounts.google.com): the compose test rig sets it to the mock's host-published
+# http://localhost:3309 (the browser follows the consent redirect from the host),
+# so assert the authorize PATH + state nonce and either known-good host.
 _s85, _start85 = req("POST", "/api/backups/oauth/start", {"returnTo": "/backups"})
+_u85 = _start85.get("url", "")
 check("R85: oauth/start returns an authorize URL with state", _s85 == 200
-      and _start85.get("url", "").startswith("https://accounts.google.com/o/oauth2/v2/auth")
-      and "state=" in _start85.get("url", ""), _start85)
+      and "/o/oauth2/v2/auth" in _u85
+      and "state=" in _u85
+      and (_u85.startswith("https://accounts.google.com/") or _u85.startswith("http://localhost:3309/")),
+      _start85)
 _q85 = urllib.parse.parse_qs(urllib.parse.urlparse(_start85["url"]).query)
 _cb85 = f"/api/backups/oauth/callback?code=mock-auth-code&state={_q85['state'][0]}"
 req("GET", _cb85)  # 302 → /backups?backups=connected (SPA HTML; status irrelevant)

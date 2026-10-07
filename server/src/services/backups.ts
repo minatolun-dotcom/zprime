@@ -443,7 +443,14 @@ export async function listRemoteScoped(): Promise<{
   const byBase = new Map<string, drive.DriveFileInfo[]>();
   for (const f of files) {
     const base = f.name.replace(/\.(sql\.gz|manifest\.json)$/, "");
-    if (!/^zprime-\d{4}-\d{2}-\d{2}T/.test(base)) continue;
+    // R-88: two name shapes — deployment `zprime-<stamp>` and company
+    // `zprime-<cid>-<safeName>-<stamp>` (companyBackups.ts baseName). The
+    // deployment-only filter silently dropped every company pair from the
+    // remote list (and thus from the restore UI).
+    if (
+      !/^zprime-\d{4}-\d{2}-\d{2}T/.test(base) &&
+      !/^zprime-\d+-[a-zA-Z0-9_-]+-\d{4}-\d{2}-\d{2}T/.test(base)
+    ) continue;
     const list = byBase.get(base) ?? [];
     list.push(f);
     byBase.set(base, list);

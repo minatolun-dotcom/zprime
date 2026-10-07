@@ -48,31 +48,29 @@ async function mockDownload(id) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function gj(p) {
-  return (await page.request.get(`${BASE}${p}`)).json();
-}
-
-async function mreq(method, path, body) {
-  const res = await page.request.fetch(`${BASE}${path}`, { method, data: body ?? undefined });
-  let j = null;
-  try { j = await res.json(); } catch { /* text */ }
-  return { s: res.status(), j };
-}
-
-async function mock(method, path, body) {
-  const res = await page.request.fetch(`${MOCK}${path}`, {
-    method,
-    data: body ? JSON.stringify(body) : undefined,
-    headers: { "Content-Type": "application/json" },
-  });
-  return res.json().catch(() => null);
-}
-
+// The page-scoped helpers live INSIDE the IIFE (they close over `page`,
+// exactly like r85_ui — module scope has no `page` binding).
 (async () => {
   await D.launch();
   const page = D.page();
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e?.message ?? e)));
+
+  const gj = async (p) => (await page.request.get(`${BASE}${p}`)).json();
+  const mreq = async (method, path, body) => {
+    const res = await page.request.fetch(`${BASE}${path}`, { method, data: body ?? undefined });
+    let j = null;
+    try { j = await res.json(); } catch { /* text */ }
+    return { s: res.status(), j };
+  };
+  const mock = async (method, path, body) => {
+    const res = await page.request.fetch(`${MOCK}${path}`, {
+      method,
+      data: body ? JSON.stringify(body) : undefined,
+      headers: { "Content-Type": "application/json" },
+    });
+    return res.json().catch(() => null);
+  };
 
   // ---------- bootstrap a multi-company deployment ----------
   await D.login();
@@ -81,7 +79,7 @@ async function mock(method, path, body) {
     name: `R88 Deployment ${stamp}`, stateCode: "27",
     fyStart: "2026-04-01", booksBegin: "2026-04-01",
   });
-  const deployCid = D.cid();
+  const deployCid = Number(D.cid());
   ok("deployment company created", !!deployCid, deployCid);
 
   // A second company (company B) for the isolation probe.
@@ -97,7 +95,7 @@ async function mock(method, path, body) {
   await modal.locator('button:has-text("Create")').last().click();
   await page.waitForSelector("text=Gateway", { timeout: 20000 });
   await D.sleep(400);
-  const otherCid = D.cid();
+  const otherCid = Number(D.cid());
   ok("second company (company B) created", !!otherCid, otherCid);
 
   // Admin user + a non-admin user.
@@ -118,6 +116,37 @@ async function mock(method, path, body) {
     });
   });
 
+  // R-88: establish the suite's own connection (self-contained — do not rely on
+  // r85 having run first and left one behind). A disconnect first makes the
+  // start deterministic whether or not a previous suite left a connection;
+  // settings are saved r85-style and the wizard connect runs the mock OAuth
+  // dance (BACKUP_AUTHORIZE_ENDPOINT=http://localhost:3309, host-reachable).
+  await mreq("POST", "/api/backups/disconnect");
+  await page.goto(`${BASE}/backups`);
+  await page.waitForSelector('[data-testid="backup-drive-card"]', { timeout: 10000 });
+  await page.fill('[data-testid="backup-client-id"]', "mock-client-id.apps.googleusercontent.com");
+  await page.fill('[data-testid="backup-client-secret"]', "mock-client-secret-ABC");
+  await page.click('[data-testid="backup-save"]');
+  await page.waitForSelector("text=Backup settings saved.");
+  await page.click('[data-testid="connect-drive"]');
+  await page.waitForSelector("text=Google Drive connected.", { timeout: 15000 });
+
+  // R-88: Node-side state shared across sections. (The deployment pair name is
+  // re-derived per backup and read by the section-F restore row and the
+  // section-I exclusion.) These live as plain Node variables — `window` does not
+  // exist in the Node driver context.
+  let deployBase = null;
+  // The deployment pair is the one whose name is NOT cid-adorned. Names carry an
+  // ISO timestamp, so sort-desc picks the pair the suite just uploaded even when
+  // earlier suites' pairs still sit in the mock.
+  // Company dumps embed the cid as a PREFIX segment: `zprime-<cid>-<slug>-<stamp>`
+  // (companyBackups.ts baseName) — deployment dumps are `zprime-<stamp>` with no
+  // cid, so prefix matching is the exact discriminator (an infix `-<cid>-` can
+  // collide with timestamp segments).
+  const deploymentDumps = (list) => list
+    .filter((f) => f.name.endsWith(".sql.gz") && !f.name.startsWith(`zprime-${deployCid}-`) && !f.name.startsWith(`zprime-${otherCid}-`))
+    .sort((a, b) => (a.name < b.name ? 1 : -1));
+
   // R-88: in-flight probe fragility deduction — the deployment backup that opens
   // this run is itself a backup; the guard already rejects a concurrent company
   // backup. Fire the deployment backup first, wait for it to land, then probe the
@@ -132,10 +161,9 @@ async function mock(method, path, body) {
     ok("R88: deployment backup (in-flight opener) itself succeeds", deployRes.status() === 200, deployJson);
     const afterDeploy = await mock("GET", "/__files");
     ok("R88: deployment backup produced a new pair", afterDeploy.length > beforeDeploy, afterDeploy.map((f) => f.name).slice(-3));
-    const deployFile = afterDeploy.find((f) => f.name.endsWith(".sql.gz") && !f.name.includes(`-${deployCid}-`) && !f.name.includes(`-${otherCid}-`));
-    ok("R88: deployment backup name is scope-unadorned (no cid in the name)", deployFile && !deployFile.name.includes("-"), deployFile?.name);
-    window.__deployBase = deployFile?.name?.replace(/\.sql\.gz$/, "");
-    window.__deployFileId = deployFile?.id;
+    const deployFile = deploymentDumps(afterDeploy)[0];
+    ok("R88: deployment backup name is scope-unadorned (no cid in the name)", !!deployFile && !deployFile.name.startsWith(`zprime-${deployCid}-`) && !deployFile.name.startsWith(`zprime-${otherCid}-`), deployFile?.name);
+    deployBase = deployFile?.name?.replace(/\.sql\.gz$/, "");
   }
 
   // Clean slate for deterministic chip assertions (settings are a deployment singleton).
@@ -147,12 +175,15 @@ async function mock(method, path, body) {
   // ---------- seed fixtures in BOTH companies ----------
   // Company A: ledger + voucher (so the backup is non-empty).
   await D.openCompany(`R88 Deployment ${stamp}`);
+  // R-88: create the fixture ledgers the vouchers below post against (r85's
+  // createMaster pattern — a fresh company seeds no such posting ledgers).
+  await D.createMaster("ledgers", [["Name *", "Sales R88"], ["Under Group *", { label: "Sales Accounts" }]]);
+  await D.createMaster("ledgers", [["Name *", "Cash R88"], ["Under Group *", { label: "Cash-in-Hand" }]]);
   {
     const vt = await gj(`/api/c/${deployCid}/voucher-types`);
     const sales = vt.find((v) => v.name === "Sales");
-    const salesL = (await gj(`/api/c/${deployCid}/ledgers?search=Sales R88`)).find((l) => l.name === "Sales R88")
-      || (await gj(`/api/c/${deployCid}/ledgers?search=Sales 85`)).find((l) => l.name === "Sales 85");
-    const cashL = (await gj(`/api/c/${deployCid}/ledgers?search=Cash 85`)).find((l) => l.name === "Cash 85");
+    const salesL = (await gj(`/api/c/${deployCid}/ledgers?search=Sales R88`)).find((l) => l.name === "Sales R88");
+    const cashL = (await gj(`/api/c/${deployCid}/ledgers?search=Cash R88`)).find((l) => l.name === "Cash R88");
     if (!salesL || !cashL || !sales) throw new Error("fixture ledgers/types missing in company A");
     const v = await (await page.request.post(`${BASE}/api/c/${deployCid}/vouchers`, {
       data: {
@@ -161,16 +192,16 @@ async function mock(method, path, body) {
       },
     })).json();
     ok("fixture voucher posted in company A", !!v.id, v.id);
-    window.__companyAVoucherNarration = "Being goods sold for cash (R88 company A)";
   }
   // Company B: voucher (so we can assert B is untouched by the company-A restore).
   await D.openCompany(`R88 Other Company ${stamp}`);
+  await D.createMaster("ledgers", [["Name *", "Sales R88 Other"], ["Under Group *", { label: "Sales Accounts" }]]);
+  await D.createMaster("ledgers", [["Name *", "Cash R88 Other"], ["Under Group *", { label: "Cash-in-Hand" }]]);
   {
     const vt = await gj(`/api/c/${otherCid}/voucher-types`);
     const sales = vt.find((v) => v.name === "Sales");
-    const salesL = (await gj(`/api/c/${otherCid}/ledgers?search=Sales R88 Other`)).find((l) => l.name === "Sales R88 Other")
-      || (await gj(`/api/c/${otherCid}/ledgers?search=Sales 85`)).find((l) => l.name === "Sales 85");
-    const cashL = (await gj(`/api/c/${otherCid}/ledgers?search=Cash 85`)).find((l) => l.name === "Cash 85");
+    const salesL = (await gj(`/api/c/${otherCid}/ledgers?search=Sales R88 Other`)).find((l) => l.name === "Sales R88 Other");
+    const cashL = (await gj(`/api/c/${otherCid}/ledgers?search=Cash R88 Other`)).find((l) => l.name === "Cash R88 Other");
     if (!salesL || !cashL || !sales) throw new Error("fixture ledgers/types missing in company B");
     const v = await (await page.request.post(`${BASE}/api/c/${otherCid}/vouchers`, {
       data: {
@@ -182,19 +213,27 @@ async function mock(method, path, body) {
   }
 
 
+  await page.goto(`${BASE}/backups`);
   await page.waitForSelector('[data-testid="backup-drive-card"]', { timeout: 10000 });
   {
+    // Re-connect: the clean slate above cleared the connection; the saved
+    // settings (client id + stored secret) survive a disconnect, so the wizard
+    // connect alone restores it (r85's dance).
+    const st = (await mreq("GET", "/api/backups/settings")).j;
+    await page.fill('[data-testid="backup-client-id"]', st.clientId);
+    await page.click('[data-testid="connect-drive"]');
+    await page.waitForSelector("text=Google Drive connected.", { timeout: 15000 });
     const before = (await mock("GET", "/__files")).length;
     await page.click('[data-testid="run-now"]');
     await page.waitForSelector("text=Backup uploaded:", { timeout: 30000 });
     ok("deployment backup succeeded (regression anchor)", (await page.textContent("body")).includes("Backup uploaded:"), (await page.textContent("body")).slice(0, 80));
     const after = await mock("GET", "/__files");
     ok("deployment backup produced a new pair", after.length > before, after.map((f) => f.name).slice(-3));
-    // The deployment pair is the one whose name is NOT cid-adorned.
-    const deployFile = after.find((f) => f.name.endsWith(".sql.gz") && !f.name.includes(`-${deployCid}-`) && !f.name.includes(`-${otherCid}-`));
-    ok("deployment backup name is scope-unadorned (no cid in the name)", deployFile && !deployFile.name.includes("-"), deployFile?.name);
-    window.__deployBase = deployFile?.name?.replace(/\.sql\.gz$/, "");
-    window.__deployFileId = deployFile?.id;
+    // The deployment pair is the one whose name is NOT cid-adorned (newest, as
+    // above).
+    const deployFile = deploymentDumps(after)[0];
+    ok("deployment backup name is scope-unadorned (no cid in the name)", !!deployFile && !deployFile.name.startsWith(`zprime-${deployCid}-`) && !deployFile.name.startsWith(`zprime-${otherCid}-`), deployFile?.name);
+    deployBase = deployFile?.name?.replace(/\.sql\.gz$/, "");
   }
 
   // ---------- A) + B) per-company backup: manifest scope + run row ----------
@@ -216,7 +255,7 @@ async function mock(method, path, body) {
   // id, parse scope.
   {
     const files = await mock("GET", "/__files");
-    const dump = files.find((f) => f.name.endsWith(".sql.gz") && f.name.includes(`-${deployCid}-`));
+    const dump = files.find((f) => f.name.endsWith(".sql.gz") && f.name.startsWith(`zprime-${deployCid}-`));
     ok("company backup produced a cid-scoped dump name", !!dump, dump?.name);
     const manifestFile = files.find((f) => f.name === `${dump.name.replace(/\.sql\.gz$/, "")}.manifest.json`);
     ok("company backup produced a matching manifest", !!manifestFile, manifestFile?.name);
@@ -250,6 +289,7 @@ async function mock(method, path, body) {
   await D.openCompany(`R88 Deployment ${stamp}`);
   await D.deleteVoucher("goods sold for cash (R88 company A)", null);
   await D.openCompany(`R88 Deployment ${stamp}`);
+  await page.goto(`${BASE}/company/${deployCid}/daybook`);
   await page.waitForSelector("table tbody tr", { timeout: 10000 });
   const goneInA = await page.locator("table tbody tr", { hasText: "goods sold for cash (R88 company A)" }).count();
   ok("fixture voucher deleted in company A (restore target)", goneInA === 0, goneInA);
@@ -257,7 +297,7 @@ async function mock(method, path, body) {
   // Restore company A.
   await page.goto(`${BASE}/backups`);
   await page.waitForSelector('[data-testid="remote-table"]', { timeout: 10000 });
-  const companyDump = (await mock("GET", "/__files")).find((f) => f.name.endsWith(".sql.gz") && f.name.includes(`-${deployCid}-`));
+  const companyDump = (await mock("GET", "/__files")).find((f) => f.name.endsWith(".sql.gz") && f.name.startsWith(`zprime-${deployCid}-`));
   const companyBase = companyDump?.name?.replace(/\.sql\.gz$/, "");
   const row = page.locator('[data-testid="remote-table"] tbody tr', { hasText: companyBase }).first();
   if (!(await row.isVisible().catch(() => false))) {
@@ -268,7 +308,7 @@ async function mock(method, path, body) {
   await page.waitForSelector('[data-testid="restore-confirm-modal"]', { timeout: 8000 });
   ok("restore modal opens for a company pair", await page.locator('[data-testid="restore-confirm-modal"]').isVisible(), null);
   const modalText = await page.textContent('[data-testid="restore-confirm-modal"]');
-  ok("company restore modal is scope-aware (names the company, mentions other companies untouched)", modalText.includes(`R88 Deployment ${stamp}`) && modalText.includes("other companies are untouched") && modalText.includes("replaces company"), modalText.slice(0, 240));
+  ok("company restore modal is scope-aware (names the company, mentions other companies untouched)", modalText.includes(`R88 Deployment ${stamp}`) && /other companies are untouched/i.test(modalText) && /replaces company/i.test(modalText), modalText.slice(0, 240));
   await page.fill('[data-testid="restore-confirm-input"]', "RESTORE");
   await page.click('[data-testid="restore-confirm-go"]');
   await page.waitForSelector("text=Restored company", { timeout: 60000 });
@@ -276,12 +316,14 @@ async function mock(method, path, body) {
   await page.waitForLoadState("load").catch(() => {});
   await D.sleep(2500);
   await D.openCompany(`R88 Deployment ${stamp}`);
+  await page.goto(`${BASE}/company/${deployCid}/daybook`);
   await page.waitForSelector("table tbody tr", { timeout: 10000 });
   const backInA = await page.locator("table tbody tr", { hasText: "goods sold for cash (R88 company A)" }).count();
   ok("company-A restore round-trip: deleted voucher is back", backInA >= 1, backInA);
 
   // D) other-company isolation.
   await D.openCompany(`R88 Other Company ${stamp}`);
+  await page.goto(`${BASE}/company/${otherCid}/daybook`);
   await page.waitForSelector("table tbody tr", { timeout: 10000 });
   const stillInB = await page.locator("table tbody tr", { hasText: "goods sold for cash (R88 company B)" }).count();
   ok("company B's voucher survived the company-A restore (isolation)", stillInB >= 1, stillInB);
@@ -314,9 +356,8 @@ async function mock(method, path, body) {
   {
     const vt = await gj(`/api/c/${otherCid}/voucher-types`);
     const sales = vt.find((v) => v.name === "Sales");
-    const salesL = (await gj(`/api/c/${otherCid}/ledgers?search=Sales R88 Other`)).find((l) => l.name === "Sales R88 Other")
-      || (await gj(`/api/c/${otherCid}/ledgers?search=Sales 85`)).find((l) => l.name === "Sales 85");
-    const cashL = (await gj(`/api/c/${otherCid}/ledgers?search=Cash 85`)).find((l) => l.name === "Cash 85");
+    const salesL = (await gj(`/api/c/${otherCid}/ledgers?search=Sales R88 Other`)).find((l) => l.name === "Sales R88 Other");
+    const cashL = (await gj(`/api/c/${otherCid}/ledgers?search=Cash R88 Other`)).find((l) => l.name === "Cash R88 Other");
     if (!salesL || !cashL || !sales) throw new Error("fixture ledgers/types missing in company B (regression anchor)");
     const v = await (await page.request.post(`${BASE}/api/c/${otherCid}/vouchers`, {
       data: {
@@ -328,7 +369,7 @@ async function mock(method, path, body) {
   }
   await page.goto(`${BASE}/backups`);
   await page.waitForSelector('[data-testid="remote-table"]', { timeout: 10000 });
-  const deployRow = page.locator('[data-testid="remote-table"] tbody tr', { hasText: window.__deployBase }).first();
+  const deployRow = page.locator('[data-testid="remote-table"] tbody tr', { hasText: deployBase }).first();
   await deployRow.locator('button:has-text("Restore…")').click();
   await page.waitForSelector('[data-testid="restore-confirm-modal"]', { timeout: 8000 });
   await page.fill('[data-testid="restore-confirm-input"]', "RESTORE");
@@ -338,10 +379,12 @@ async function mock(method, path, body) {
   await page.waitForLoadState("load").catch(() => {});
   await D.sleep(2500);
   await D.openCompany(`R88 Deployment ${stamp}`);
+  await page.goto(`${BASE}/company/${deployCid}/daybook`);
   await page.waitForSelector("table tbody tr", { timeout: 10000 });
   const backInAAfterDeployRestore = await page.locator("table tbody tr", { hasText: "goods sold for cash (R88 company A)" }).count();
   ok("deployment restore brought company A's voucher back (whole-instance replace)", backInAAfterDeployRestore >= 1, backInAAfterDeployRestore);
   await D.openCompany(`R88 Other Company ${stamp}`);
+  await page.goto(`${BASE}/company/${otherCid}/daybook`);
   await page.waitForSelector("table tbody tr", { timeout: 10000 });
   const markerGoneInB = await page.locator("table tbody tr", { hasText: "goods sold for cash (R88 company B marker AFTER deployment backup)" }).count();
   ok("deployment restore removed company B's post-backup marker (whole-instance replace)", markerGoneInB === 0, markerGoneInB);
@@ -366,7 +409,7 @@ async function mock(method, path, body) {
   await page.waitForSelector('[data-testid="remote-table"]', { timeout: 10000 });
   // R-88: pick a company pair created before the deployment restore so the probe
   // survives the whole-instance replace. Re-derive from __files each run.
-  const companyBase2 = (await mock("GET", "/__files")).find((f) => f.name.endsWith(".sql.gz") && f.name.includes(`-${deployCid}-`) && f.name !== `${window.__deployBase}.sql.gz`)?.name?.replace(/\.sql\.gz$/, "");
+  const companyBase2 = (await mock("GET", "/__files")).find((f) => f.name.endsWith(".sql.gz") && f.name.startsWith(`zprime-${deployCid}-`) && f.name !== `${deployBase}.sql.gz`)?.name?.replace(/\.sql\.gz$/, "");
   if (companyBase2) {
     const r = page.locator('[data-testid="remote-table"] tbody tr', { hasText: companyBase2 }).first();
     await r.locator('button:has-text("Restore company…")').click();
