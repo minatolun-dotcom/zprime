@@ -38,10 +38,49 @@ the zcircuit file. The working token was in the **repo's own gitignored
 - Git identity is set at user level once (2026-10-07,
   `Popsickle <minatolun@gmail.com>`) — the inline `-c user.name=...` dance in
   older ledger entries is retired; plain `git commit` carries it.
-- Reboots wipe the compose test rig's env — recreate the app with all three
-  `BACKUP_DRIVE_ENDPOINT/BACKUP_OAUTH_ENDPOINT=http://mock-drive:3309` and
-  `BACKUP_AUTHORIZE_ENDPOINT=http://localhost:3309`, else backup suites
-  silently hit real Google.
+- ~~Reboots wipe the compose test rig's env — recreate the app with all three
+  `BACKUP_*_ENDPOINT`~~ **FIXED (2026-10-09, Docker persistence pack):** the
+  boot warm-up below now restores the three BACKUP_* envs + `compose up -d`
+  automatically at every boot — no manual recreate.
+
+## Docker persistence at boot (2026-10-09)
+
+The rig survives reboots unattended:
+
+1. `docker.service` and `docker.socket` both `enabled` (operator ran
+   `systemctl enable docker`). `docker-compose.yml` already carries
+   `restart: unless-stopped` on all four services (R-16 F-R1) — once the
+   daemon is up it self-restores the previously-running containers.
+2. `/etc/systemd/system/zprime-stack.service` (static, but pulled in by
+   docker.service.wants — see below) runs
+   `/usr/local/bin/zprime-stack-warm.sh` at boot: exports the three
+   `BACKUP_*_ENDPOINT` **rig-only values** (`http://mock-drive:3309` ×2,
+   authorize `http://localhost:3309`), then `docker compose up -d` in
+   `/home/popsickle/zprime`. WITHOUT this the `${VAR:-}` passthrough bakes
+   EMPTY envs and the app silently falls back to real Google.
+3. To run stock (real Google) on a real deployment: edit
+   `/usr/local/bin/zprime-stack-warm.sh` and DELETE the 3 export lines —
+   the yml's `${VAR:-}` passthrough then resolves to empty = factory
+   behavior.
+4. A short-lived `zprime.user.service` glue unit (cross-bus ordering anchor)
+   was installed then deliberately disabled + its file deleted — the
+   user-manager timer can't be ordered against system docker.service from a
+   system-bus unit; the 02:30 `zprime-backup.timer` (user) runs fine as long
+   as you log in, which has already been the observed pattern (it never ran
+   unattended anyway).
+
+Verify after a reboot:
+
+```bash
+systemctl is-enabled docker docker.socket   # enabled
+systemctl is-active zprime-stack.service    # active (exited) = warm-up ran
+docker compose ps                           # 4 containers Up healthy
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # 200
+docker exec zprime-app-1 env | grep BACKUP_ # all 3 rig mock URLs present
+```
+
+### Other standing machine facts (continued)
+
 - `~/.cache/ms-playwright` Chromium at
   `chromium-1148/chrome-linux/chrome`; export `CHROME_PATH=` to it when the
   playwright suites run.
