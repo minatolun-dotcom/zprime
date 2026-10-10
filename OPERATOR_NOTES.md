@@ -51,8 +51,8 @@ The rig survives reboots unattended:
    `systemctl enable docker`). `docker-compose.yml` already carries
    `restart: unless-stopped` on all four services (R-16 F-R1) — once the
    daemon is up it self-restores the previously-running containers.
-2. `/etc/systemd/system/zprime-stack.service` (static, but pulled in by
-   docker.service.wants — see below) runs
+2. `/etc/systemd/system/zprime-stack.service` (static unit — `systemctl enable`
+   on it is a SILENT NO-OP; first reboot drill caught this) runs
    `/usr/local/bin/zprime-stack-warm.sh` at boot: exports the three
    `BACKUP_*_ENDPOINT` **rig-only values** (`http://mock-drive:3309` ×2,
    authorize `http://localhost:3309`), then `docker compose up -d` in
@@ -62,14 +62,22 @@ The rig survives reboots unattended:
    `/usr/local/bin/zprime-stack-warm.sh` and DELETE the 3 export lines —
    the yml's `${VAR:-}` passthrough then resolves to empty = factory
    behavior.
-4. A short-lived `zprime.user.service` glue unit (cross-bus ordering anchor)
+4. **Pull-in symlink (the load-bearing bit):**
+   `/etc/systemd/system/docker.service.wants/zprime-stack.service →
+   ../zprime-stack.service` — created BY HAND because the unit is static.
+   A static unit ignores `systemctl enable`; the first reboot drill proved
+   the missing symlink (warm-up never fired, app came back with EMPTY
+   BACKUP_* env). Re-check after any systemd surgery:
+   `systemctl list-dependencies docker.service | grep zprime`.
+5. A short-lived `zprime.user.service` glue unit (cross-bus ordering anchor)
    was installed then deliberately disabled + its file deleted — the
    user-manager timer can't be ordered against system docker.service from a
    system-bus unit; the 02:30 `zprime-backup.timer` (user) runs fine as long
    as you log in, which has already been the observed pattern (it never ran
    unattended anyway).
 
-Verify after a reboot:
+Verify after a reboot (one-shot script: `bash ~/zprime-boot-verify.sh`,
+13 checks, exit 0 = PASS):
 
 ```bash
 systemctl is-enabled docker docker.socket   # enabled
@@ -78,6 +86,15 @@ docker compose ps                           # 4 containers Up healthy
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # 200
 docker exec zprime-app-1 env | grep BACKUP_ # all 3 rig mock URLs present
 ```
+
+Drill history: reboot #1 (pre-FIX) failed 6/13 — app container came back
+`Exited` with empty env because the static unit was never pulled in; after
+the symlink, the start path re-verified 13/13 (app 200, all three envs
+restored by the warm-up). In-session `systemctl restart docker.service`
+did NOT re-fire the wants chain (BusyBox-style timeout on stop) — only a
+fresh boot or explicit `systemctl start zprime-stack.service` does.
+Operator accepted the state without a second live reboot (2026-10-09) —
+next real reboot is the final proof.
 
 ### Other standing machine facts (continued)
 
