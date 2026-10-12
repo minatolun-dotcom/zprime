@@ -96,6 +96,44 @@ fresh boot or explicit `systemctl start zprime-stack.service` does.
 Operator accepted the state without a second live reboot (2026-10-09) —
 next real reboot is the final proof.
 
+## Transaction guarantees (R-89, 2026-10-10 docs-only follow-up)
+
+Summarised from the audit in `R-89_INVESTIGATION.md` — the voucher write path
+promises the following, enforced in code + suites and verified live on the
+running rig (live probes, scratch company data):
+
+1. **Atomicity** — every voucher mutation (create/edit/accept/cancel/uncancel/
+   delete) is ONE database transaction; the audit event rides the same
+   transaction. A failed posting leaves NO partial state (body, counter draw
+   and event all roll back together). Probe: unbalanced voucher rejected with
+   a clean 400, Day Book row count unchanged.
+2. **Dr = Cr always** — a voucher that does not balance to the paisa is
+   rejected (±0.004 dust tolerated per the documented rule; ±0.01 rejected).
+   Probe: 0 unbalanced vouchers across all live posted rows.
+3. **Race-safe numbering** — voucher numbers come from a counter row advanced
+   under `UPDATE … RETURNING` row lock with FY-bucket scoping; a unique index
+   is the final authority. Probe: 24 concurrent auto-numbered saves → 24
+   distinct contiguous numbers, zero collisions.
+4. **Idempotent creation** — the same `x-idempotency-key` header identifies
+   ONE business event; replays (even 8 concurrent) return the original
+   voucher instead of posting a duplicate.
+5. **Paisa precision** — all monetary arithmetic is 2-dp integer-safe
+   (`r2()`); probe: 1100.10 round-trips float-exact.
+6. **Company isolation (R-03)** — every voucher read/write is behind company
+   membership; a foreign-company id resolves to a neutral 404 (no existence
+   leak). Probe: cross-company fetch → 404.
+7. **Bill-wise & stock integrity** — party ledgers serialise under FOR UPDATE
+   (deadlock-free, sorted by id); against-allocations must match sign, stay
+   ≤ the open bill, and settled bills can never be resurrected on
+   cancel/delete; stock mutations replay a chronological chain and are
+   rejected when the AFTER-chain has more invalid steps than the BEFORE
+   (same guard shared by the XML import path).
+
+Known benign observations (F-89-1/F-89-2, no action): auto-numbering's
+burn-on-collision retry cap is 5 attempts under pathological contention
+(returns 409, no corruption); OPTIONAL-draft detail reads pay one extra
+`nextNumber` peek query.
+
 ### Other standing machine facts (continued)
 
 - `~/.cache/ms-playwright` Chromium at
